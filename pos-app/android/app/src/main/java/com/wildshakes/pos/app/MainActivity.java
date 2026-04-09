@@ -1,0 +1,5 @@
+package com.wildshakes.pos.app;
+
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {}

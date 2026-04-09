@@ -1,0 +1,50 @@
+Role: You are an expert Senior Full-Stack Developer.
+Project: Wildshakes Cafe POS System (Android Tablet Optimized).
+
+Objective:
+Build a functional POS frontend using React/Vite and Tailwind CSS that connects to my existing Supabase database. The app must handle a "Dine-in" workflow with a specific "Hold" and "Dual-Receipt" system.
+
+1. Core Features & Logic:
+
+Menu Display: Fetch categories and items from the menu_items table. Organize by the category column (e.g., Fruitshakes Grande, Pasta).
+
+Cart Management: Add/Remove items with a real-time total.
+
+Kitchen Ticket (KOT) Logic:
+
+Add a "Send to Kitchen" button.
+
+This button must insert the order into the transactions table with a status of preparing and then generate a print-ready layout (ESC/POS style) for a Bluetooth thermal printer (no prices, just Item + Qty).
+
+Hold System:
+
+Add a "Hold" button to save the current order to the database and clear the active cart.
+
+Create a "Pending Orders" sidebar to retrieve and resume these held orders when the customer is ready to pay.
+
+Final Checkout:
+
+Update the transactions status to paid.
+
+Generate a final receipt layout including branding, unit prices, and total.
+
+Inventory Integration: When an order is finalized, reference the recipe_mapping table to prepare for inventory deduction logic.
+
+2. Database Context (Supabase):
+
+Table menu_items: Use item_name, new_price, category, and cost_per_serving.
+
+Table transactions: Columns: id, created_at, status (preparing/held/paid), total_price, table_number.
+
+Table transaction_items: Links transaction_id to menu_item_id and quantity.
+
+3. UI/UX Requirements:
+
+Tablet Layout: Use a two-pane layout. Left 70% for the Menu Grid; Right 30% for the Cart/Receipt.
+
+Touch Friendly: Large buttons for categories and cart controls.
+
+Visual Status: Items in the cart that have been "Sent to Kitchen" should be visually marked so they aren't sent twice.
+
+Deliverable:
+Please generate the React components (MenuGrid, Cart, PendingOrders) and the Supabase helper functions to handle the status updates and data fetching.

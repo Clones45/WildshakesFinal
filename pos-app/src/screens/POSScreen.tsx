@@ -1,0 +1,289 @@
+import { useState, useEffect } from 'react'
+import { useAuthStore } from '../store/authStore'
+import { useCartStore } from '../store/cartStore'
+import { useSyncStore } from '../store/syncStore'
+import { useHoldStore } from '../store/holdStore'
+import { useMenuItems } from '../hooks/useMenuItems'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { db, type LocalTransaction } from '../lib/db'
+import { logAudit } from '../lib/auditLog'
+import { ProductGrid } from '../components/ProductGrid'
+import { Cart } from '../components/Cart'
+import { CheckoutModal } from '../components/CheckoutModal'
+import { DiscountModal } from '../components/DiscountModal'
+import { ReceiptModal } from '../components/ReceiptModal'
+import { ManagerPinModal } from '../components/ManagerPinModal'
+import { SyncStatusBar } from '../components/SyncStatusBar'
+import { PendingOrders } from '../components/PendingOrders'
+import { HoldModal } from '../components/HoldModal'
+import { LogOut, Clock } from 'lucide-react'
+import { toast } from 'react-hot-toast'
+import { v4 as uuidv4 } from 'uuid'
+
+export function POSScreen() {
+    const { user, branch, logout } = useAuthStore()
+    const { items, discountType, discountAmount, total, reset, resumedHoldId, resumedHoldRef } = useCartStore()
+    const { syncPending, refreshPendingCount } = useSyncStore()
+    const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder } = useHoldStore()
+
+    // Use the new hook that reads from menu_items (item_name, new_price, category)
+    const { products, categories, isLoading, error: menuError } = useMenuItems()
+    useOnlineStatus()
+
+    const [showCheckout, setShowCheckout] = useState(false)
+    const [showDiscount, setShowDiscount] = useState(false)
+    const [showReceipt, setShowReceipt] = useState(false)
+    const [showManagerPin, setShowManagerPin] = useState(false)
+    const [showPending, setShowPending] = useState(false)
+    const [showHoldModal, setShowHoldModal] = useState(false)
+    const [managerPinCallback, setManagerPinCallback] = useState<() => void>(() => () => { })
+    const [lastTransaction, setLastTransaction] = useState<LocalTransaction | null>(null)
+    const [isProcessing, setIsProcessing] = useState(false)
+    const [now, setNow] = useState(new Date())
+
+    // Clock
+    useEffect(() => {
+        const interval = setInterval(() => setNow(new Date()), 1000)
+        return () => clearInterval(interval)
+    }, [])
+
+    // Background sync every 30s
+    useEffect(() => {
+        const interval = setInterval(syncPending, 30_000)
+        return () => clearInterval(interval)
+    }, [])
+
+    // Fetch held orders count on mount so the badge shows immediately
+    useEffect(() => {
+        fetchHeldOrders()
+    }, [])
+
+    const requireManager = (callback: () => void) => {
+        if (user?.role === 'manager' || user?.role === 'investor') {
+            callback()
+            return
+        }
+        setManagerPinCallback(() => callback)
+        setShowManagerPin(true)
+    }
+
+    // ─── Hold logic ─────────────────────────────────────────────────────────────
+    const handleHoldConfirm = async (tableNumber: string | null) => {
+        let success: boolean
+        if (resumedHoldId) {
+            // Resuming an existing hold — UPDATE the same transaction row
+            success = await updateHeldOrder(
+                resumedHoldId,
+                items,
+                tableNumber ?? resumedHoldRef ?? undefined
+            )
+        } else {
+            // Fresh hold — INSERT a new transaction
+            success = await holdOrder(items, tableNumber ?? undefined)
+        }
+        if (success) {
+            reset() // also clears resumedHoldId
+        }
+    }
+
+    // ─── Checkout logic ──────────────────────────────────────────────────────────
+    const handleCheckout = async (method: string, tendered: number) => {
+        if (items.length === 0) return
+        setIsProcessing(true)
+
+        if (discountType === 'manager' && user?.role === 'cashier') {
+            setIsProcessing(false)
+            requireManager(() => processCheckout(method, tendered))
+            return
+        }
+
+        await processCheckout(method, tendered)
+    }
+
+    const processCheckout = async (method: string, _tendered: number) => {
+        setIsProcessing(true)
+        try {
+            const localRef = uuidv4()
+            const disc = discountAmount()
+            const tot = total()
+            const createdAt = new Date().toISOString()
+
+            const localTx: LocalTransaction = {
+                localRef,
+                branchId: branch!.id,
+                cashierId: user?.id ?? null,
+                totalAmount: tot,
+                discountType,
+                discountAmount: disc,
+                paymentMethod: method,
+                status: 'completed',
+                source: 'pos',
+                items: items.map((i) => ({
+                    productId: i.product.id,
+                    productName: i.product.name,
+                    quantity: i.quantity,
+                    unitPrice: i.product.price,
+                    subtotal: i.product.price * i.quantity,
+                })),
+                syncStatus: 'pending',
+                createdAt,
+            }
+
+            // Write locally first (offline-first)
+            await db.transactions.add(localTx)
+            setLastTransaction(localTx)
+            await refreshPendingCount()
+
+            // Fire-and-forget sync attempt
+            syncPending()
+
+            // Log discount to audit_logs if applicable (offline-first)
+            if (discountType !== 'none') {
+                logAudit({
+                    actionType: 'discount',
+                    performedBy: user?.id,
+                    branchId: branch?.id,
+                    referenceTable: 'transactions',
+                    notes: `${discountType} discount of ₱${disc.toFixed(2)} on order ${localRef}`,
+                    metadata: { discount_type: discountType, discount_amount: disc, total: tot },
+                }).catch(console.error)
+            }
+
+            reset()
+            setShowCheckout(false)
+            setShowReceipt(true)
+            toast.success('Order saved!', { duration: 2000 })
+        } catch (err) {
+            toast.error('Failed to save order. Try again.')
+            console.error(err)
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleVoid = (localRef: string) => {
+        requireManager(async () => {
+            await db.transactions.update(localRef, { status: 'voided', syncStatus: 'pending' })
+
+            // Log void to audit trail (offline-first — never lost during outage)
+            logAudit({
+                actionType: 'void',
+                performedBy: user?.id,
+                branchId: branch?.id,
+                referenceTable: 'transactions',
+                notes: `Transaction ${localRef} voided`,
+                metadata: { local_ref: localRef },
+            }).catch(console.error)
+
+            toast.success('Transaction voided')
+            setShowReceipt(false)
+            syncPending()
+        })
+    }
+
+    const handleNewOrder = () => {
+        reset()
+        setShowReceipt(false)
+        setLastTransaction(null)
+    }
+
+    return (
+        <div className="fixed inset-0 flex flex-col bg-brand-50">
+            {/* Top Bar */}
+            <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-brand-200 flex-shrink-0 shadow-sm z-10">
+                {/* Left: Logo + Branch */}
+                <div className="flex items-center gap-4">
+                    <img src="/Logo 1.png" alt="Wildshakes Logo" className="w-12 h-12 object-contain" />
+                    <div>
+                        <p className="font-serif text-brand-700 text-2xl font-bold leading-none tracking-tight">
+                            Wildshakes <span className="text-brand-500 font-sans text-lg uppercase tracking-wider font-bold ml-1">POS</span>
+                        </p>
+                        <p className="text-surface-600 text-xs leading-tight font-bold mt-1 uppercase tracking-wider">{branch?.name} · {branch?.location}</p>
+                    </div>
+                </div>
+
+                {/* Center: Clock */}
+                <div className="flex items-center gap-2 text-brand-700 text-sm font-bold hidden sm:flex bg-brand-50 px-4 py-2 rounded-full border border-brand-200">
+                    <Clock size={16} className="text-brand-500" />
+                    <span>{now.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                    <span className="text-surface-800 ml-2">{now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                </div>
+
+                {/* Right: Sync + User + Logout */}
+                <div className="flex items-center gap-4">
+                    <SyncStatusBar />
+                    <div className="hidden md:block text-right">
+                        <p className="text-surface-800 text-sm font-bold leading-tight">{user?.name}</p>
+                        <p className="text-brand-500 text-xs font-bold uppercase tracking-wider leading-tight">{user?.role}</p>
+                    </div>
+                    <button
+                        onClick={logout}
+                        className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center hover:bg-red-100 hover:text-red-600 text-brand-700 transition-all border border-brand-200"
+                        title="Sign out"
+                    >
+                        <LogOut size={18} />
+                    </button>
+                </div>
+            </header>
+
+            {/* Main POS Layout — 70/30 split */}
+            <div className="flex flex-1 overflow-hidden p-4 gap-4">
+                {/* Product panel (70%) */}
+                <div className="flex-1 overflow-hidden bg-white rounded-3xl shadow-sm border border-brand-200">
+                    <ProductGrid products={products} categories={categories} isLoading={isLoading} menuError={menuError} />
+                </div>
+
+                {/* Cart panel (30%) */}
+                <div className="w-80 xl:w-96 flex-shrink-0 bg-white rounded-3xl shadow-sm border border-brand-200 overflow-hidden">
+                    <Cart
+                        onCheckout={() => setShowCheckout(true)}
+                        onDiscount={() => setShowDiscount(true)}
+                        onHold={() => setShowHoldModal(true)}
+                        heldCount={heldOrders.length}
+                        onShowPending={() => setShowPending(true)}
+                    />
+                </div>
+            </div>
+
+            {/* ── Modals & Drawers ── */}
+            <CheckoutModal
+                isOpen={showCheckout}
+                onClose={() => setShowCheckout(false)}
+                onConfirm={handleCheckout}
+                isProcessing={isProcessing}
+            />
+
+            <DiscountModal
+                isOpen={showDiscount}
+                onClose={() => setShowDiscount(false)}
+            />
+
+            <ReceiptModal
+                isOpen={showReceipt}
+                transaction={lastTransaction}
+                onClose={() => setShowReceipt(false)}
+                onVoid={handleVoid}
+                onNewOrder={handleNewOrder}
+            />
+
+            <ManagerPinModal
+                isOpen={showManagerPin}
+                title="Manager Authorization"
+                onSuccess={() => managerPinCallback()}
+                onClose={() => setShowManagerPin(false)}
+            />
+
+            <HoldModal
+                isOpen={showHoldModal}
+                itemCount={items.length}
+                onConfirm={handleHoldConfirm}
+                onClose={() => setShowHoldModal(false)}
+            />
+
+            <PendingOrders
+                isOpen={showPending}
+                onClose={() => setShowPending(false)}
+            />
+        </div>
+    )
+}

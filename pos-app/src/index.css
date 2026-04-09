@@ -1,0 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #F5F7F5; /* brand-50 */
+  color: #302E2E; /* surface-800 */
+  font-family: 'Open Sans', sans-serif;
+  user-select: none;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #A7B5A5; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #657962; }
+
+/* Touch-friendly inputs */
+button, [role="button"] {
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+h1, h2, h3, h4, h5, h6, .font-serif {
+  font-family: 'Times New Roman', serif;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-500 text-white font-bold rounded-full px-8 py-4 
+           active:scale-95 transition-all duration-150 shadow-md
+           hover:bg-brand-600 disabled:opacity-40 disabled:scale-100;
+  }
+  .btn-teal {
+    @apply bg-brand-700 text-white font-bold rounded-full px-8 py-4
+           active:scale-95 transition-all duration-150 shadow-md
+           hover:bg-brand-800 disabled:opacity-40 disabled:scale-100;
+  }
+  .btn-ghost {
+    @apply bg-white text-brand-700 font-bold rounded-full px-8 py-4 border-2 border-brand-500
+           active:scale-95 transition-all duration-150 hover:bg-brand-50;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white font-bold rounded-full px-8 py-4
+           active:scale-95 transition-all duration-150 shadow-md;
+  }
+  .card {
+    @apply bg-white border border-brand-200 rounded-3xl shadow-sm;
+  }
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white rounded-3xl shadow-sm;
+  }
+  .input-field {
+    @apply bg-surface-100 border-2 border-brand-200 rounded-full px-6 py-4 text-surface-800 font-medium
+           placeholder-surface-500 focus:outline-none focus:border-brand-500 focus:bg-white transition-colors w-full shadow-inner;
+  }
+  .category-tab {
+    @apply px-6 py-3 rounded-full font-bold text-sm transition-all duration-200 whitespace-nowrap shadow-sm;
+  }
+  .category-tab-active {
+    @apply bg-brand-500 text-white border-2 border-brand-500 scale-105;
+  }
+  .category-tab-inactive {
+    @apply bg-white text-brand-700 border-2 border-brand-200 hover:border-brand-400 hover:bg-brand-50;
+  }
+  .product-card {
+    @apply card p-5 flex flex-col gap-3 active:scale-95 transition-all duration-150
+           hover:border-brand-400 hover:shadow-md cursor-pointer relative overflow-hidden bg-white;
+  }
+}
