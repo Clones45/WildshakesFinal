@@ -1,10 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useHoldStore, type HeldOrder } from '../store/holdStore'
 import { useCartStore } from '../store/cartStore'
 import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
-import { Clock, Loader2, RotateCcw, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Clock, Loader2, RotateCcw, Trash2, X } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
 interface PendingOrdersProps {
@@ -23,20 +23,27 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
     const { heldOrders, isLoading, fetchHeldOrders, deleteHeldOrder } = useHoldStore()
     const { addItem, reset, items, setResumedHold } = useCartStore()
 
+    // Id of the order awaiting confirmation before resume
+    const [confirmResumeId, setConfirmResumeId] = useState<string | null>(null)
+
     useEffect(() => {
         if (isOpen) fetchHeldOrders()
     }, [isOpen])
 
-    const handleResume = async (order: HeldOrder) => {
+    // Called when cashier taps Resume button
+    const handleResumeRequest = (order: HeldOrder) => {
         if (items.length > 0) {
-            const ok = window.confirm(
-                'Resuming this order will clear the current cart. Continue?'
-            )
-            if (!ok) return
+            // Cart has items — ask for confirmation inline (no window.confirm!)
+            setConfirmResumeId(order.id)
+        } else {
+            doResume(order)
         }
+    }
 
+    const doResume = async (order: HeldOrder) => {
+        setConfirmResumeId(null)
         try {
-            // ── Step 1: Build lookup from local Dexie cache (always available) ──
+            // ── Step 1: Build product lookup from local Dexie cache ───────────
             const cachedProducts = await db.products.toArray()
             const menuLookup = new Map<string, Product>(
                 cachedProducts.map((p) => [
@@ -52,7 +59,7 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                 ])
             )
 
-            // ── Step 2: For any item not in cache, try Supabase as fallback ──────
+            // ── Step 2: Fetch from Supabase for any items missing in cache ────
             const missingIds = order.items
                 .map((i) => i.menu_item_id)
                 .filter((id) => !menuLookup.has(id))
@@ -79,13 +86,12 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                 })
             }
 
-            // ── Step 3: Rebuild the cart ─────────────────────────────────────────
+            // ── Step 3: Rebuild cart ─────────────────────────────────────────
             reset()
 
             for (const item of order.items) {
                 const cached = menuLookup.get(item.menu_item_id)
                 const product: Product = cached ?? {
-                    // Fallback: reconstruct from stored held order data
                     id: item.menu_item_id,
                     name: item.item_name,
                     category: 'Unknown',
@@ -93,16 +99,13 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                     image_url: null,
                     is_available: true,
                 }
-
                 for (let q = 0; q < item.quantity; q++) {
                     addItem(product)
                 }
             }
 
-            // Track which held order we resumed so the next Hold will UPDATE it
-            // instead of creating a new transaction row in the DB.
+            // Remember which held order we resumed so the next Hold updates it
             setResumedHold(order.id, order.local_ref)
-
             toast.success('Order resumed — add items then Hold or Checkout', { icon: '▶️', duration: 3000 })
             onClose()
         } catch (err) {
@@ -111,6 +114,15 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
         }
     }
 
+    const handleDelete = async (order: HeldOrder) => {
+        try {
+            await deleteHeldOrder(order.id)
+            toast.success('Held order removed', { icon: '🗑️' })
+        } catch (err) {
+            console.error('Delete held order failed', err)
+            toast.error('Failed to delete held order')
+        }
+    }
 
     return (
         <AnimatePresence>
@@ -203,23 +215,53 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                                                 ))}
                                             </ul>
 
+                                            {/* Inline confirmation banner (replaces window.confirm) */}
+                                            {confirmResumeId === order.id && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: -6 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex flex-col gap-2"
+                                                >
+                                                    <div className="flex items-center gap-2 text-amber-400 text-xs font-semibold">
+                                                        <AlertTriangle size={13} />
+                                                        Current cart will be cleared. Continue?
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => doResume(order)}
+                                                            className="flex-1 bg-amber-500 hover:bg-amber-400 text-white text-xs font-bold py-1.5 rounded-lg transition-all active:scale-95"
+                                                        >
+                                                            Yes, Resume
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setConfirmResumeId(null)}
+                                                            className="flex-1 bg-surface-600 hover:bg-surface-500 text-gray-300 text-xs font-bold py-1.5 rounded-lg transition-all active:scale-95"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </motion.div>
+                                            )}
+
                                             {/* Actions */}
-                                            <div className="flex gap-2 pt-1">
-                                                <button
-                                                    onClick={() => handleResume(order)}
-                                                    className="flex-1 flex items-center justify-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-semibold text-sm rounded-xl py-2.5 transition-all active:scale-95"
-                                                >
-                                                    <RotateCcw size={14} />
-                                                    Resume
-                                                </button>
-                                                <button
-                                                    onClick={() => deleteHeldOrder(order.id)}
-                                                    className="w-10 flex items-center justify-center bg-surface-600 hover:bg-red-500/20 hover:text-red-400 text-gray-500 rounded-xl transition-all active:scale-95"
-                                                    title="Delete held order"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
+                                            {confirmResumeId !== order.id && (
+                                                <div className="flex gap-2 pt-1">
+                                                    <button
+                                                        onClick={() => handleResumeRequest(order)}
+                                                        className="flex-1 flex items-center justify-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-semibold text-sm rounded-xl py-2.5 transition-all active:scale-95"
+                                                    >
+                                                        <RotateCcw size={14} />
+                                                        Resume
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(order)}
+                                                        className="w-10 flex items-center justify-center bg-surface-600 hover:bg-red-500/20 hover:text-red-400 text-gray-500 rounded-xl transition-all active:scale-95"
+                                                        title="Delete held order"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
                                         </motion.div>
                                     ))}
                                 </AnimatePresence>
