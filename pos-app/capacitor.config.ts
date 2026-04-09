@@ -13,7 +13,7 @@ const config: CapacitorConfig = {
   //     Comment this block out only if you want to bundle the app locally.
   // ─────────────────────────────────────────────────────────────────────────
   server: {
-    url: 'https://wildshakes-pos.vercel.app', // 👈 replace with your real URL
+    url: 'https://wildshakes-final.vercel.app', // 👈 Live URL Strategy active!
     cleartext: false,   // keep false — always use HTTPS in production
   },
 };

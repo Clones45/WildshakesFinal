@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useHoldStore, type HeldOrder } from '../store/holdStore'
 import { useCartStore } from '../store/cartStore'
 import { supabase, type Product } from '../lib/supabase'
+import { db } from '../lib/db'
 import { Clock, Loader2, RotateCcw, Trash2, X } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
@@ -35,41 +36,63 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
         }
 
         try {
-            // menu_items has no id column — match by synthesised id (category::item_name)
-            // Just fetch all items and build a lookup — dataset is small
-            const { data: menuRows } = await supabase
-                .from('menu_items')
-                .select('category, item_name, new_price')
+            // ── Step 1: Build lookup from local Dexie cache (always available) ──
+            const cachedProducts = await db.products.toArray()
+            const menuLookup = new Map<string, Product>(
+                cachedProducts.map((p) => [
+                    p.id,
+                    {
+                        id: p.id,
+                        name: p.name,
+                        category: p.category,
+                        price: p.price,
+                        image_url: p.image_url,
+                        is_available: p.is_available,
+                    },
+                ])
+            )
 
-            const menuLookup = new Map<string, Record<string, unknown>>()
-            ;(menuRows ?? [] as Record<string, unknown>[]).forEach((r: Record<string, unknown>) => {
-                const cat = String(r.category ?? '')
-                const name = String(r.item_name ?? '')
-                const synthId = `${cat}::${name}`.replace(/\s+/g, '_').toLowerCase()
-                menuLookup.set(synthId, r)
-            })
+            // ── Step 2: For any item not in cache, try Supabase as fallback ──────
+            const missingIds = order.items
+                .map((i) => i.menu_item_id)
+                .filter((id) => !menuLookup.has(id))
 
+            if (missingIds.length > 0 && navigator.onLine) {
+                const { data: menuRows } = await supabase
+                    .from('menu_items')
+                    .select('category, item_name, new_price')
+
+                ;(menuRows ?? [] as Record<string, unknown>[]).forEach((r: Record<string, unknown>) => {
+                    const cat = String(r.category ?? '')
+                    const name = String(r.item_name ?? '')
+                    const synthId = `${cat}::${name}`.replace(/\s+/g, '_').toLowerCase()
+                    if (!menuLookup.has(synthId)) {
+                        menuLookup.set(synthId, {
+                            id: synthId,
+                            name,
+                            category: cat,
+                            price: Number(r.new_price ?? 0),
+                            image_url: null,
+                            is_available: true,
+                        })
+                    }
+                })
+            }
+
+            // ── Step 3: Rebuild the cart ─────────────────────────────────────────
             reset()
 
             for (const item of order.items) {
-                const row = menuLookup.get(item.menu_item_id)
-                const product: Product = row
-                    ? {
-                        id: item.menu_item_id,
-                        name: String(row.item_name),
-                        category: String(row.category),
-                        price: Number(row.new_price ?? item.unit_price),
-                        image_url: null,
-                        is_available: true,
-                    }
-                    : {
-                        id: item.menu_item_id,
-                        name: item.item_name,
-                        category: 'Unknown',
-                        price: item.unit_price,
-                        image_url: null,
-                        is_available: true,
-                    }
+                const cached = menuLookup.get(item.menu_item_id)
+                const product: Product = cached ?? {
+                    // Fallback: reconstruct from stored held order data
+                    id: item.menu_item_id,
+                    name: item.item_name,
+                    category: 'Unknown',
+                    price: item.unit_price,
+                    image_url: null,
+                    is_available: true,
+                }
 
                 for (let q = 0; q < item.quantity; q++) {
                     addItem(product)
@@ -80,13 +103,14 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
             // instead of creating a new transaction row in the DB.
             setResumedHold(order.id, order.local_ref)
 
-            toast.success(`Order resumed — add items then Hold or Checkout`, { icon: '▶️', duration: 3000 })
+            toast.success('Order resumed — add items then Hold or Checkout', { icon: '▶️', duration: 3000 })
             onClose()
         } catch (err) {
             console.error('Resume order failed', err)
             toast.error('Failed to resume order')
         }
     }
+
 
     return (
         <AnimatePresence>
