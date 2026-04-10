@@ -1,33 +1,45 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCartStore } from '../store/cartStore'
-import { X, CreditCard, Smartphone, Banknote, Check } from 'lucide-react'
+import { X, Banknote, Smartphone, QrCode, Landmark, Check, AlertCircle } from 'lucide-react'
 
 interface CheckoutModalProps {
     isOpen: boolean
     onClose: () => void
-    onConfirm: (method: string, tendered: number) => Promise<void>
+    onConfirm: (method: string, tendered: number, referenceNumber: string) => Promise<void>
     isProcessing: boolean
 }
 
 const PAYMENT_METHODS = [
-    { id: 'cash', label: 'Cash', icon: Banknote, color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/30' },
-    { id: 'gcash', label: 'GCash', icon: Smartphone, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30' },
-    { id: 'card', label: 'Card', icon: CreditCard, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30' },
+    { id: 'cash',          label: 'Cash',          icon: Banknote,    color: 'text-green-400',  bg: 'bg-green-500/10 border-green-500/30' },
+    { id: 'gcash',         label: 'GCash',         icon: Smartphone,  color: 'text-blue-400',   bg: 'bg-blue-500/10 border-blue-500/30' },
+    { id: 'maya',          label: 'Maya',          icon: QrCode,      color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30' },
+    { id: 'bank_transfer', label: 'Bank Transfer', icon: Landmark,    color: 'text-amber-400',  bg: 'bg-amber-500/10 border-amber-500/30' },
 ]
 
 const QUICK_AMOUNTS = [20, 50, 100, 200, 500, 1000]
+const DIGITAL_METHODS = ['gcash', 'maya', 'bank_transfer']
 
 export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: CheckoutModalProps) {
-    const { paymentMethod, setPaymentMethod, cashTendered, setCashTendered, total, change, items } = useCartStore()
+    const {
+        paymentMethod, setPaymentMethod,
+        cashTendered, setCashTendered,
+        referenceNumber, setReferenceNumber,
+        total, change, items,
+    } = useCartStore()
 
     const tot = total()
     const chg = change()
+    const isDigital = DIGITAL_METHODS.includes(paymentMethod)
+    const refValid = referenceNumber.length === 5
 
     const handleQuickAmount = (amount: number) => {
         setCashTendered(Math.ceil(tot / amount) * amount)
     }
 
     const handleExactAmount = () => setCashTendered(tot)
+
+    const canConfirm = !isProcessing &&
+        (paymentMethod === 'cash' ? cashTendered >= tot : refValid)
 
     return (
         <AnimatePresence>
@@ -63,32 +75,35 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                 <p className="text-5xl font-extrabold text-teal-400">₱{tot.toFixed(2)}</p>
                             </div>
 
-                            {/* Payment method */}
+                            {/* Payment method — 2×2 grid */}
                             <div>
                                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Payment Method</p>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-2 gap-2">
                                     {PAYMENT_METHODS.map((m) => (
                                         <button
                                             key={m.id}
                                             onClick={() => setPaymentMethod(m.id as never)}
-                                            className={`py-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${paymentMethod === m.id ? `${m.bg} ${m.color}` : 'border-surface-500 bg-surface-700 text-gray-500 hover:border-surface-400'
+                                            className={`py-3 px-4 rounded-xl border flex items-center gap-2.5 transition-all ${paymentMethod === m.id
+                                                ? `${m.bg} ${m.color} font-bold`
+                                                : 'border-surface-500 bg-surface-700 text-gray-500 hover:border-surface-400'
                                                 }`}
                                         >
-                                            <m.icon size={20} />
-                                            <span className="text-xs font-semibold">{m.label}</span>
+                                            <m.icon size={18} />
+                                            <span className="text-sm font-semibold">{m.label}</span>
                                         </button>
                                     ))}
                                 </div>
                             </div>
 
                             {/* Cash section */}
-                            <AnimatePresence>
+                            <AnimatePresence mode="wait">
                                 {paymentMethod === 'cash' && (
                                     <motion.div
+                                        key="cash"
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}
                                         exit={{ opacity: 0, height: 0 }}
-                                        className="space-y-3"
+                                        className="space-y-3 overflow-hidden"
                                     >
                                         <div>
                                             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Cash Tendered</p>
@@ -128,14 +143,59 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                         )}
                                     </motion.div>
                                 )}
+
+                                {/* Reference Number — shown for GCash / Maya / Bank Transfer */}
+                                {isDigital && (
+                                    <motion.div
+                                        key="digital"
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        className="space-y-2 overflow-hidden"
+                                    >
+                                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+                                            Reference Number <span className="text-red-400">*</span>
+                                        </p>
+                                        <p className="text-xs text-gray-500">Enter the last 5 digits of the transaction reference</p>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                maxLength={5}
+                                                value={referenceNumber}
+                                                onChange={(e) => setReferenceNumber(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                                                placeholder="e.g. 12345"
+                                                className={`input-field text-2xl font-bold tracking-[0.35em] w-full text-center transition-all ${refValid ? 'border-green-500/50 bg-green-500/5' : ''}`}
+                                            />
+                                            {refValid && (
+                                                <motion.div
+                                                    initial={{ scale: 0 }}
+                                                    animate={{ scale: 1 }}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                                                >
+                                                    <Check size={18} className="text-green-400" />
+                                                </motion.div>
+                                            )}
+                                        </div>
+                                        {!refValid && referenceNumber.length > 0 && (
+                                            <div className="flex items-center gap-1.5 text-amber-400 text-xs">
+                                                <AlertCircle size={12} />
+                                                <span>{5 - referenceNumber.length} more digit{5 - referenceNumber.length !== 1 ? 's' : ''} required</span>
+                                            </div>
+                                        )}
+                                        {!refValid && referenceNumber.length === 0 && (
+                                            <p className="text-xs text-gray-600">Required for {PAYMENT_METHODS.find(m => m.id === paymentMethod)?.label} payments</p>
+                                        )}
+                                    </motion.div>
+                                )}
                             </AnimatePresence>
                         </div>
 
                         {/* Confirm button */}
                         <div className="px-6 pb-6">
                             <button
-                                onClick={() => onConfirm(paymentMethod, cashTendered)}
-                                disabled={isProcessing || (paymentMethod === 'cash' && cashTendered < tot)}
+                                onClick={() => onConfirm(paymentMethod, cashTendered, referenceNumber)}
+                                disabled={!canConfirm}
                                 className="w-full btn-teal py-4 text-lg flex items-center justify-center gap-2 disabled:opacity-40"
                             >
                                 {isProcessing ? (

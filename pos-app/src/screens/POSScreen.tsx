@@ -16,17 +16,20 @@ import { ManagerPinModal } from '../components/ManagerPinModal'
 import { SyncStatusBar } from '../components/SyncStatusBar'
 import { PendingOrders } from '../components/PendingOrders'
 import { HoldModal } from '../components/HoldModal'
-import { LogOut, Clock } from 'lucide-react'
+import { TransactionsViewGated } from '../components/TransactionsView'
+import { LogOut, Clock, ReceiptText } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
 
 export function POSScreen() {
     const { user, branch, logout } = useAuthStore()
-    const { items, discountType, discountAmount, total, reset, resumedHoldId, resumedHoldRef, resumedTableNumber } = useCartStore()
+    const {
+        items, discountType, discountAmount, total, reset,
+        resumedHoldId, resumedHoldRef, resumedTableNumber,
+    } = useCartStore()
     const { syncPending, refreshPendingCount } = useSyncStore()
     const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder } = useHoldStore()
 
-    // Use the new hook that reads from menu_items (item_name, new_price, category)
     const { products, categories, isLoading, error: menuError } = useMenuItems()
     useOnlineStatus()
 
@@ -36,6 +39,7 @@ export function POSScreen() {
     const [showManagerPin, setShowManagerPin] = useState(false)
     const [showPending, setShowPending] = useState(false)
     const [showHoldModal, setShowHoldModal] = useState(false)
+    const [showTransactions, setShowTransactions] = useState(false)
     const [managerPinCallback, setManagerPinCallback] = useState<() => void>(() => () => { })
     const [lastTransaction, setLastTransaction] = useState<LocalTransaction | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
@@ -71,36 +75,34 @@ export function POSScreen() {
     const handleHoldConfirm = async (tableNumber: string | null) => {
         let success: boolean
         if (resumedHoldId) {
-            // Resuming an existing hold — UPDATE the same transaction row
             success = await updateHeldOrder(
                 resumedHoldId,
                 items,
                 tableNumber ?? resumedHoldRef ?? undefined
             )
         } else {
-            // Fresh hold — INSERT a new transaction
             success = await holdOrder(items, tableNumber ?? undefined)
         }
         if (success) {
-            reset() // also clears resumedHoldId
+            reset()
         }
     }
 
     // ─── Checkout logic ──────────────────────────────────────────────────────────
-    const handleCheckout = async (method: string, tendered: number) => {
+    const handleCheckout = async (method: string, tendered: number, refNumber: string) => {
         if (items.length === 0) return
         setIsProcessing(true)
 
         if (discountType === 'manager' && user?.role === 'cashier') {
             setIsProcessing(false)
-            requireManager(() => processCheckout(method, tendered))
+            requireManager(() => processCheckout(method, tendered, refNumber))
             return
         }
 
-        await processCheckout(method, tendered)
+        await processCheckout(method, tendered, refNumber)
     }
 
-    const processCheckout = async (method: string, _tendered: number) => {
+    const processCheckout = async (method: string, _tendered: number, refNumber: string) => {
         setIsProcessing(true)
         try {
             const localRef = uuidv4()
@@ -116,8 +118,10 @@ export function POSScreen() {
                 discountType,
                 discountAmount: disc,
                 paymentMethod: method,
+                referenceNumber: refNumber || undefined,
                 status: 'completed',
                 source: 'pos',
+                tableNumber: resumedTableNumber ?? undefined,
                 items: items.map((i) => ({
                     productId: i.product.id,
                     productName: i.product.name,
@@ -165,7 +169,6 @@ export function POSScreen() {
         requireManager(async () => {
             await db.transactions.update(localRef, { status: 'voided', syncStatus: 'pending' })
 
-            // Log void to audit trail (offline-first — never lost during outage)
             logAudit({
                 actionType: 'void',
                 performedBy: user?.id,
@@ -209,9 +212,20 @@ export function POSScreen() {
                     <span className="text-surface-800 ml-2">{now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                 </div>
 
-                {/* Right: Sync + User + Logout */}
-                <div className="flex items-center gap-4">
+                {/* Right: Transactions + Sync + User + Logout */}
+                <div className="flex items-center gap-3">
+                    {/* Transactions button — visible to all; PIN-gated internally for non-managers */}
+                    <button
+                        onClick={() => setShowTransactions(true)}
+                        className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-brand-50 border border-brand-200 text-brand-700 text-sm font-bold hover:bg-brand-100 transition-all"
+                        title="View Transactions (Manager)"
+                    >
+                        <ReceiptText size={15} className="text-brand-500" />
+                        <span>Transactions</span>
+                    </button>
+
                     <SyncStatusBar />
+
                     <div className="hidden md:block text-right">
                         <p className="text-surface-800 text-sm font-bold leading-tight">{user?.name}</p>
                         <p className="text-brand-500 text-xs font-bold uppercase tracking-wider leading-tight">{user?.role}</p>
@@ -284,6 +298,12 @@ export function POSScreen() {
             <PendingOrders
                 isOpen={showPending}
                 onClose={() => setShowPending(false)}
+            />
+
+            {/* Manager-gated Transactions view */}
+            <TransactionsViewGated
+                isOpen={showTransactions}
+                onClose={() => setShowTransactions(false)}
             />
         </div>
     )

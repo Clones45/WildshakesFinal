@@ -1,0 +1,35 @@
+I need to finalize the POS app today. Please use the MCP server to check my database schema and implement the following features. Ensure all changes are offline-first (saving to Dexie/IndexedDB before syncing to Supabase).
+
+1. Manager-Only Transaction Section:
+
+Create a secure 'Transactions' view within the POS.
+
+This view must be accessible only after entering a Manager PIN (check the users table for roles).
+
+Filtering: Add filters for Payment Method (Cash, GCash, Maya, Bank Transfer) and Transaction Type (Completed, Voided, Discounted).
+
+2. Payment Method & Reference Tracking:
+
+Checkout Options: Update the checkout modal to show 4 buttons: Cash, GCash, Maya, and Bank Transfer.
+
+Validation: If GCash, Maya, or Bank Transfer is selected, require the cashier to input the last 5 digits of the Reference Number.
+
+Database: Ensure these 5 digits and the payment method are saved in the transactions table. Use MCP to add a reference_number column if it doesn't exist.
+
+3. The 'Void' Workflow (Security):
+
+Rename: Change the 'Delete' button in the Held Orders sidebar to 'Void'.
+
+Manager Authorization: When 'Void' is clicked, trigger a PIN entry modal. The action can only proceed if a PIN belonging to a user with a 'Manager' or 'Admin' role is entered.
+
+Audit Logging: Every void must be logged in the audit_logs table with the Manager's ID, the reason, and the timestamp.
+
+4. Table Number Persistence (Fix):
+
+Ensure that when an order is Resumed, the table_number is visible on the card and remains attached to the order without re-prompting the user.
+
+5. Database Synchronization:
+
+Verify that all new fields (payment_method, reference_number, void_reason, authorized_by) are correctly mapped in the syncStore.ts to ensure 100% data integrity between the tablet and Supabase.
+
+Please start by updating the database schema via MCP, then proceed to the logic in holdStore.ts and POSScreen.tsx.

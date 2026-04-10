@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { db, type LocalHeldOrder } from '../lib/db'
 import type { CartItem } from './cartStore'
 import { useAuthStore } from './authStore'
+import { logAudit } from '../lib/auditLog'
 import { toast } from 'react-hot-toast'
 
 /**
@@ -28,7 +29,8 @@ export interface HeldOrder {
     total_amount: number
     created_at: string
     local_ref: string | null
-    isLocal: boolean         // true = only in IndexedDB, not yet synced
+    table_number: string | null  // dedicated table number column
+    isLocal: boolean             // true = only in IndexedDB, not yet synced
     items: HeldOrderItem[]
 }
 
@@ -49,6 +51,7 @@ interface HoldState {
     updateHeldOrder: (id: string, cartItems: CartItem[], tableRef?: string) => Promise<boolean>
     resumeOrder: (order: HeldOrder) => HeldOrder
     deleteHeldOrder: (id: string) => Promise<void>
+    voidHeldOrder: (id: string, voidedBy: string, reason: string) => Promise<void>
     syncLocalHeldOrders: () => Promise<void>
 }
 
@@ -59,6 +62,7 @@ function localToHeld(local: LocalHeldOrder): HeldOrder {
         total_amount: local.totalAmount,
         created_at: local.createdAt,
         local_ref: local.tableRef,
+        table_number: local.tableRef,
         isLocal: true,
         items: local.items.map((i) => ({
             id: i.productId,
@@ -89,7 +93,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             if (navigator.onLine) {
                 const { data: txns, error: txnErr } = await supabase
                     .from('transactions')
-                    .select('id, total_amount, created_at, local_ref')
+                    .select('id, total_amount, created_at, local_ref, table_number')
                     .eq('status', 'pending')
                     .order('created_at', { ascending: false })
 
@@ -112,6 +116,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                         total_amount: Number(t.total_amount),
                         created_at: String(t.created_at),
                         local_ref: (t.local_ref as string | null) ?? null,
+                        table_number: (t.table_number as string | null) ?? null,
                         isLocal: false,
                         items: ((allItems ?? []) as Record<string, unknown>[])
                             .filter((i) => i.transaction_id === t.id)
@@ -154,7 +159,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
 
         // Guard: duplicate table ref in held orders
         const duplicate = get().heldOrders.find(
-            (o) => o.local_ref === ref && ref !== null
+            (o) => (o.table_number === ref || o.local_ref === ref) && ref !== null
         )
         if (duplicate) {
             toast.error('Table already has an active held order. Resume it to add items or check out.', { duration: 4000 })
@@ -171,7 +176,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
 
         // ── Offline path ──────────────────────────────────────────────────────
         if (!navigator.onLine) {
-            const localHeld: import('../lib/db').LocalHeldOrder = {
+            const localHeld: LocalHeldOrder = {
                 localId,
                 branchId: branch.id,
                 cashierId: user?.id ?? null,
@@ -199,6 +204,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                 payment_method: 'cash',
                 source: 'pos',
                 local_ref: ref ?? `hold-${localId}`,
+                table_number: ref ?? null,
             }
 
             let { data: txn, error: txnErr } = await supabase
@@ -233,7 +239,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
         } catch (err) {
             // Supabase failed mid-attempt → save locally so no order is ever lost
             console.error('Hold online failed, saving locally', err)
-            const localHeld: import('../lib/db').LocalHeldOrder = {
+            const localHeld: LocalHeldOrder = {
                 localId,
                 branchId: branch.id,
                 cashierId: user?.id ?? null,
@@ -282,7 +288,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                 .update({
                     total_amount: total,
                     cashier_id: user?.id ?? null,
-                    ...(tableRef !== undefined ? { local_ref: tableRef } : {}),
+                    ...(tableRef !== undefined ? { local_ref: tableRef, table_number: tableRef } : {}),
                 })
                 .eq('id', id)
             if (txnErr) throw txnErr
@@ -329,6 +335,58 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
         }
     },
 
+    // ── Void: marks the held order as voided + audit log ───────────────────
+    voidHeldOrder: async (id, voidedBy, reason) => {
+        const { branch } = useAuthStore.getState()
+
+        if (id.startsWith('local::')) {
+            // Local-only hold — just remove from IndexedDB, can't un-create it in Supabase
+            const localId = id.replace('local::', '')
+            await db.localHeldOrders.delete(localId)
+
+            logAudit({
+                actionType: 'void',
+                performedBy: voidedBy,
+                branchId: branch?.id,
+                referenceTable: 'transactions',
+                notes: `Local held order ${localId} voided. Reason: ${reason}`,
+                metadata: { local_id: localId, void_reason: reason, authorized_by: voidedBy },
+            }).catch(console.error)
+
+            set((s) => ({ heldOrders: s.heldOrders.filter((o) => o.id !== id) }))
+            toast.success('Order voided ✓', { icon: '🚫' })
+            return
+        }
+
+        // Remote hold — update status in Supabase
+        try {
+            const { error } = await supabase
+                .from('transactions')
+                .update({
+                    status: 'voided',
+                    void_reason: reason,
+                    voided_by: voidedBy,
+                })
+                .eq('id', id)
+            if (error) throw error
+
+            logAudit({
+                actionType: 'void',
+                performedBy: voidedBy,
+                branchId: branch?.id,
+                referenceTable: 'transactions',
+                notes: `Transaction ${id} voided. Reason: ${reason}`,
+                metadata: { transaction_id: id, void_reason: reason, authorized_by: voidedBy },
+            }).catch(console.error)
+
+            set((s) => ({ heldOrders: s.heldOrders.filter((o) => o.id !== id) }))
+            toast.success('Order voided ✓', { icon: '🚫' })
+        } catch (err) {
+            console.error('Void held order failed', err)
+            toast.error('Failed to void order')
+        }
+    },
+
     // ── Sync local-only holds to Supabase (called on reconnect) ────────────
     syncLocalHeldOrders: async () => {
         const pending = await db.localHeldOrders.where('syncStatus').equals('local').toArray()
@@ -347,6 +405,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                     payment_method: 'cash',
                     source: 'pos',
                     local_ref: local.tableRef ?? `hold-${local.localId}`,
+                    table_number: local.tableRef ?? null,
                 }
 
                 const { data: txn, error: txnErr } = await supabase

@@ -7,6 +7,7 @@ export interface CartItem {
 }
 
 export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'custom'
+export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'other'
 
 const DISCOUNT_RATES: Record<DiscountType, number> = {
     none: 0,
@@ -20,8 +21,9 @@ interface CartState {
     items: CartItem[]
     discountType: DiscountType
     customDiscountAmount: number
-    paymentMethod: 'cash' | 'gcash' | 'card' | 'other'
+    paymentMethod: PaymentMethod
     cashTendered: number
+    referenceNumber: string        // Last 5 digits for GCash / Maya / Bank Transfer
 
     // Computed getters
     subtotal: () => number
@@ -39,8 +41,9 @@ interface CartState {
     removeItem: (productId: string) => void
     updateQty: (productId: string, qty: number) => void
     setDiscount: (type: DiscountType, customAmount?: number) => void
-    setPaymentMethod: (method: 'cash' | 'gcash' | 'card' | 'other') => void
+    setPaymentMethod: (method: PaymentMethod) => void
     setCashTendered: (amount: number) => void
+    setReferenceNumber: (ref: string) => void
     setResumedHold: (id: string | null, ref: string | null, tableNumber?: string | null) => void
     reset: () => void
 }
@@ -49,8 +52,9 @@ const initialState = {
     items: [] as CartItem[],
     discountType: 'none' as DiscountType,
     customDiscountAmount: 0,
-    paymentMethod: 'cash' as const,
+    paymentMethod: 'cash' as PaymentMethod,
     cashTendered: 0,
+    referenceNumber: '',
     resumedHoldId: null as string | null,
     resumedHoldRef: null as string | null,
     resumedTableNumber: null as string | null,
@@ -93,9 +97,11 @@ export const useCartStore = create<CartState>()((set, get) => ({
     setDiscount: (type, customAmount = 0) =>
         set({ discountType: type, customDiscountAmount: customAmount }),
 
-    setPaymentMethod: (method) => set({ paymentMethod: method }),
+    setPaymentMethod: (method) => set({ paymentMethod: method, referenceNumber: '' }),
 
     setCashTendered: (amount) => set({ cashTendered: amount }),
+
+    setReferenceNumber: (ref) => set({ referenceNumber: ref }),
 
     setResumedHold: (id, ref, tableNumber = null) => set({ resumedHoldId: id, resumedHoldRef: ref, resumedTableNumber: tableNumber }),
 

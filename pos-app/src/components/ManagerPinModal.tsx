@@ -7,7 +7,7 @@ import { useAuthStore } from '../store/authStore'
 interface ManagerPinModalProps {
     isOpen: boolean
     title: string
-    onSuccess: () => void
+    onSuccess: (managerId: string) => void
     onClose: () => void
 }
 
@@ -42,8 +42,9 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
 
         setChecking(false)
         if (data && data.length > 0) {
+            const managerId = (data[0] as { id: string }).id
             setPin('')
-            onSuccess()
+            onSuccess(managerId)
             onClose()
         } else {
             setError('Invalid manager PIN')

@@ -48,7 +48,6 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
             }
 
             // ── 2. Sync locally held orders ─────────────────────────────────
-            // Dynamically import to avoid a circular dependency
             const { useHoldStore } = await import('./holdStore')
             await useHoldStore.getState().syncLocalHeldOrders()
 
@@ -90,9 +89,13 @@ async function pushTransaction(local: LocalTransaction) {
                 discount_type: local.discountType,
                 discount_amount: local.discountAmount,
                 payment_method: local.paymentMethod,
+                reference_number: local.referenceNumber ?? null,
                 status: local.status,
                 source: local.source,
                 local_ref: local.localRef,
+                table_number: local.tableNumber ?? null,
+                void_reason: local.voidReason ?? null,
+                voided_by: local.voidedBy ?? null,
                 created_at: local.createdAt,
             },
             { onConflict: 'local_ref', ignoreDuplicates: false }

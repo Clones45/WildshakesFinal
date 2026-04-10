@@ -9,8 +9,12 @@ export interface LocalTransaction {
     discountType: string
     discountAmount: number
     paymentMethod: string
+    referenceNumber?: string  // Last 5 digits for GCash / Maya / Bank Transfer
     status: string
     source: string
+    tableNumber?: string      // Table number if order came from a held order
+    voidReason?: string       // Populated when status = 'voided'
+    voidedBy?: string         // Manager user ID who authorised the void
     items: LocalTransactionItem[]
     syncStatus: 'pending' | 'synced' | 'failed'
     createdAt: string
@@ -90,6 +94,16 @@ export class WildshakesDB extends Dexie {
 
         // Version 2 — adds offline held orders and audit log outboxes
         this.version(2).stores({
+            transactions: 'localRef, syncStatus, branchId, createdAt',
+            localHeldOrders: 'localId, syncStatus, branchId, createdAt',
+            localAuditLogs: 'localId, syncStatus, createdAt',
+            products: 'id, category, name',
+            branches: 'id',
+        })
+
+        // Version 3 — referenceNumber / tableNumber / voidReason / voidedBy
+        // stored as plain object properties; no new indexes required.
+        this.version(3).stores({
             transactions: 'localRef, syncStatus, branchId, createdAt',
             localHeldOrders: 'localId, syncStatus, branchId, createdAt',
             localAuditLogs: 'localId, syncStatus, createdAt',
