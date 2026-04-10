@@ -32,6 +32,7 @@ interface CartState {
     // Resumed hold tracking
     resumedHoldId: string | null
     resumedHoldRef: string | null
+    resumedTableNumber: string | null
 
     // Actions
     addItem: (product: Product) => void
@@ -40,7 +41,7 @@ interface CartState {
     setDiscount: (type: DiscountType, customAmount?: number) => void
     setPaymentMethod: (method: 'cash' | 'gcash' | 'card' | 'other') => void
     setCashTendered: (amount: number) => void
-    setResumedHold: (id: string | null, ref: string | null) => void
+    setResumedHold: (id: string | null, ref: string | null, tableNumber?: string | null) => void
     reset: () => void
 }
 
@@ -52,6 +53,7 @@ const initialState = {
     cashTendered: 0,
     resumedHoldId: null as string | null,
     resumedHoldRef: null as string | null,
+    resumedTableNumber: null as string | null,
 }
 
 export const useCartStore = create<CartState>()((set, get) => ({
@@ -95,7 +97,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
     setCashTendered: (amount) => set({ cashTendered: amount }),
 
-    setResumedHold: (id, ref) => set({ resumedHoldId: id, resumedHoldRef: ref }),
+    setResumedHold: (id, ref, tableNumber = null) => set({ resumedHoldId: id, resumedHoldRef: ref, resumedTableNumber: tableNumber }),
 
     reset: () => set({ ...initialState }),
 }))

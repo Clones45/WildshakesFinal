@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCartStore } from '../store/cartStore'
-import { Minus, Plus, Trash2, Tag, ShoppingCart, PauseCircle, Clock } from 'lucide-react'
+import { Minus, Plus, Trash2, Tag, ShoppingCart, PauseCircle, Clock, MapPin } from 'lucide-react'
 
 interface CartProps {
     onCheckout: () => void
@@ -14,6 +14,7 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
     const {
         items, discountType, updateQty, removeItem,
         subtotal, discountAmount, total,
+        resumedHoldId, resumedTableNumber,
     } = useCartStore()
 
     const sub = subtotal()
@@ -50,6 +51,17 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                     )}
                 </button>
             </div>
+
+            {/* Active resumed-order banner — table number always visible */}
+            {resumedHoldId && (
+                <div className="px-5 py-2.5 flex items-center gap-2 bg-teal-50 border-b border-teal-200">
+                    <MapPin size={14} className="text-teal-600 flex-shrink-0" />
+                    <span className="text-teal-700 font-bold text-sm">
+                        {resumedTableNumber ? `Table #${resumedTableNumber}` : 'Held Order'}
+                    </span>
+                    <span className="text-teal-500 text-xs ml-1">— Updating held order</span>
+                </div>
+            )}
 
             {/* Cart items */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">

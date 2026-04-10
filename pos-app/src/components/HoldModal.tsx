@@ -1,16 +1,23 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { PauseCircle, X } from 'lucide-react'
+import { Lock, MapPin, PauseCircle, X } from 'lucide-react'
 
 interface HoldModalProps {
     isOpen: boolean
     itemCount: number
+    initialTableNumber?: string | null  // pre-filled when updating a resumed hold
     onConfirm: (tableNumber: string | null) => void
     onClose: () => void
 }
 
-export function HoldModal({ isOpen, itemCount, onConfirm, onClose }: HoldModalProps) {
-    const [tableNumber, setTableNumber] = useState('')
+export function HoldModal({ isOpen, itemCount, initialTableNumber, onConfirm, onClose }: HoldModalProps) {
+    const [tableNumber, setTableNumber] = useState(initialTableNumber ?? '')
+    const isUpdating = !!initialTableNumber
+
+    // Sync if the prop changes (e.g., when opening for a new resumed order)
+    useEffect(() => {
+        setTableNumber(initialTableNumber ?? '')
+    }, [initialTableNumber, isOpen])
 
     const handleConfirm = () => {
         onConfirm(tableNumber.trim() || null)
@@ -62,8 +69,14 @@ export function HoldModal({ isOpen, itemCount, onConfirm, onClose }: HoldModalPr
 
                         {/* Table number input */}
                         <div className="space-y-2">
-                            <label className="text-gray-400 text-xs font-medium uppercase tracking-wide">
-                                Table Number <span className="text-gray-600 normal-case">(optional)</span>
+                            <label className="text-gray-400 text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">
+                                {isUpdating ? (
+                                    <><Lock size={11} className="text-teal-400" />
+                                    <span className="text-teal-400">Table Number (locked)</span></>
+                                ) : (
+                                    <><MapPin size={11} />
+                                    Table Number <span className="text-gray-600 normal-case">(optional)</span></>
+                                )}
                             </label>
                             <input
                                 type="text"
@@ -71,9 +84,17 @@ export function HoldModal({ isOpen, itemCount, onConfirm, onClose }: HoldModalPr
                                 onChange={(e) => setTableNumber(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
                                 placeholder="e.g. 3, A2, Window Seat…"
-                                className="input-field text-lg text-center font-semibold tracking-widest"
-                                autoFocus
+                                readOnly={isUpdating}
+                                className={`input-field text-lg text-center font-semibold tracking-widest ${
+                                    isUpdating ? 'opacity-70 cursor-not-allowed border-teal-500/40 bg-teal-900/10' : ''
+                                }`}
+                                autoFocus={!isUpdating}
                             />
+                            {isUpdating && (
+                                <p className="text-teal-500 text-xs text-center">
+                                    Table number is inherited from the original held order.
+                                </p>
+                            )}
                         </div>
 
                         {/* Buttons */}

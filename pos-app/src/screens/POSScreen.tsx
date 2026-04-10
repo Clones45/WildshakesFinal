@@ -22,7 +22,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 export function POSScreen() {
     const { user, branch, logout } = useAuthStore()
-    const { items, discountType, discountAmount, total, reset, resumedHoldId, resumedHoldRef } = useCartStore()
+    const { items, discountType, discountAmount, total, reset, resumedHoldId, resumedHoldRef, resumedTableNumber } = useCartStore()
     const { syncPending, refreshPendingCount } = useSyncStore()
     const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder } = useHoldStore()
 
@@ -276,6 +276,7 @@ export function POSScreen() {
             <HoldModal
                 isOpen={showHoldModal}
                 itemCount={items.length}
+                initialTableNumber={resumedTableNumber}
                 onConfirm={handleHoldConfirm}
                 onClose={() => setShowHoldModal(false)}
             />

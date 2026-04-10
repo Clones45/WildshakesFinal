@@ -4,7 +4,7 @@ import { useHoldStore, type HeldOrder } from '../store/holdStore'
 import { useCartStore } from '../store/cartStore'
 import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
-import { AlertTriangle, Clock, Loader2, RotateCcw, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Clock, Loader2, MapPin, RotateCcw, Trash2, X } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
 interface PendingOrdersProps {
@@ -104,8 +104,9 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                 }
             }
 
-            // Remember which held order we resumed so the next Hold updates it
-            setResumedHold(order.id, order.local_ref)
+            // Remember which held order we resumed so the next Hold updates it.
+            // Also persist the table number so the cart header can show it.
+            setResumedHold(order.id, order.local_ref, order.local_ref ?? null)
             toast.success('Order resumed — add items then Hold or Checkout', { icon: '▶️', duration: 3000 })
             onClose()
         } catch (err) {
@@ -191,12 +192,16 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                                             {/* Order meta */}
                                             <div className="flex items-start justify-between">
                                                 <div>
-                                                    <p className="text-white font-semibold text-sm">
-                                                        {order.local_ref
-                                                            ? `Ref: ${order.local_ref}`
-                                                            : `Order #${order.id.slice(-4).toUpperCase()}`}
-                                                    </p>
-                                                    <p className="text-gray-500 text-xs mt-0.5 font-mono">
+                                                    {/* Table number badge — shown prominently */}
+                                                    {order.local_ref ? (
+                                                        <div className="flex items-center gap-1.5 mb-1">
+                                                            <MapPin size={12} className="text-teal-400" />
+                                                            <span className="text-teal-400 font-bold text-sm">Table #{order.local_ref}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-gray-500 text-xs font-mono mb-1">No table assigned</p>
+                                                    )}
+                                                    <p className="text-gray-500 text-xs font-mono">
                                                         {formatTime(order.created_at)} · #{order.id.slice(-4).toUpperCase()}
                                                     </p>
                                                 </div>
