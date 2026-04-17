@@ -1,11 +1,26 @@
+import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
+import { SetupScreen } from './screens/SetupScreen';
 import { LoginScreen } from './screens/LoginScreen'
 import { POSScreen } from './screens/POSScreen'
 import { Toaster } from 'react-hot-toast'
 
+
 export default function App() {
-  const { user, sessionToken } = useAuthStore()
-  const isAuthenticated = !!(user && sessionToken)
+  const { user, sessionToken, branch, clearError } = useAuthStore()
+  
+  // Clear any stale errors on mount
+  useEffect(() => {
+    clearError()
+  }, [])
+
+  // Phase 1: Device is not claimed by any branch
+  // We check the store's branch. Even if localstorage has something, we rely on the store
+  // (which is persisted).
+  const isClaimed = !!branch
+
+  // Phase 2/3: Device is claimed. Is a cashier logged in?
+  const isCashierLoggedIn = !!(user && sessionToken)
 
   return (
     <>
@@ -23,7 +38,9 @@ export default function App() {
           error: { iconTheme: { primary: '#ef4444', secondary: '#0a0a0f' } },
         }}
       />
-      {isAuthenticated ? <POSScreen /> : <LoginScreen />}
+      {!isClaimed && <SetupScreen />}
+      {isClaimed && !isCashierLoggedIn && <LoginScreen />}
+      {isClaimed && isCashierLoggedIn && <POSScreen />}
     </>
   )
 }

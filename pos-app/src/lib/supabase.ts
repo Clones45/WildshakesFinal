@@ -9,11 +9,18 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 })
 
 // ─── Types matching our Supabase schema ─────────────────────────────────────
+
 export type Branch = {
     id: string
     name: string
     location: string
     status: 'active' | 'inactive'
+    owner_name: string | null
+    owner_email: string | null
+    auth_id: string | null          // Supabase Auth UUID of the franchisee owner
+    region: string | null
+    active_device_id: string | null // Device lock — UUID of the claiming tablet
+    franchise_id: string | null
     created_at: string
 }
 

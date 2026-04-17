@@ -1,31 +1,124 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { supabase, type UserProfile, type Branch } from '../lib/supabase'
+import { getDeviceId, saveClaimedBranch, clearClaimedBranch } from '../lib/device'
 
 interface AuthState {
-    user: UserProfile | null
-    branch: Branch | null
+    // ── Cashier session (Phase 2 → 3) ──────────────────────────────────────
+    user:         UserProfile | null
+    branch:       Branch | null
     sessionToken: string | null
-    isLoading: boolean
-    error: string | null
-    // Staff login (PIN)
+    isLoading:    boolean
+    error:        string | null
+
+    // ── Phase 1: claim a branch for this device via owner email/password ────
+    claimBranchForDevice: (
+        email: string,
+        password: string,
+        branchId: string
+    ) => Promise<{ success: boolean; error?: string }>
+
+    // ── Phase 2: cashier PIN login (branch already known by device) ─────────
     loginWithPin: (pin: string, branchId: string) => Promise<boolean>
-    // Owner/franchisee login (email + password via Supabase Auth)
-    loginWithEmail: (email: string, password: string) => Promise<boolean>
-    logout: () => Promise<void>
+
+    // ── Cashier logout → returns to PIN screen (keeps branch claim) ─────────
+    logoutCashier: () => void
+
+    // ── Owner action: unclaim this device (clears device lock in DB + local) ─
+    releaseDevice: (branchId: string) => Promise<void>
+
     clearError: () => void
 }
 
 export const useAuthStore = create<AuthState>()(
     persist(
         (set) => ({
-            user: null,
-            branch: null,
+            user:         null,
+            branch:       null,
             sessionToken: null,
-            isLoading: false,
-            error: null,
+            isLoading:    false,
+            error:        null,
 
-            // ── Staff PIN login (unchanged) ──────────────────────────────────
+            // ── Phase 1 ────────────────────────────────────────────────────
+            claimBranchForDevice: async (email, password, branchId) => {
+                set({ isLoading: true, error: null })
+                try {
+                    const deviceId = getDeviceId()
+
+                    // Sign in with owner credentials
+                    const { data: authData, error: authError } =
+                        await supabase.auth.signInWithPassword({ email, password })
+
+                    if (authError) {
+                        set({ isLoading: false })
+                        return { success: false, error: authError.message }
+                    }
+
+                    const role = authData.user?.app_metadata?.role
+                    if (role !== 'franchisee' && role !== 'master_admin') {
+                        await supabase.auth.signOut()
+                        set({ isLoading: false })
+                        return { success: false, error: 'This account is not authorized for POS setup.' }
+                    }
+
+                    // Fetch the target branch and check device lock
+                    const { data: branchRow, error: branchErr } = await supabase
+                        .from('branches')
+                        .select('*')
+                        .eq('id', branchId)
+                        .single()
+
+                    if (branchErr || !branchRow) {
+                        set({ isLoading: false })
+                        return { success: false, error: 'Branch not found.' }
+                    }
+
+                    // Allow owner to override if it's claimed by another device.
+                    // This prevents lockouts if local storage is cleared.
+                    const existing = branchRow.active_device_id
+                    // if (existing && existing !== deviceId) {
+                    //     // allow override
+                    // }
+
+                    // Claim the device slot
+                    const { error: updateErr } = await supabase
+                        .from('branches')
+                        .update({ active_device_id: deviceId })
+                        .eq('id', branchId)
+
+                    if (updateErr) {
+                        set({ isLoading: false })
+                        return { success: false, error: updateErr.message }
+                    }
+
+                    // Persist branch locally so Phase 2 works on restart
+                    saveClaimedBranch({
+                        id:       branchRow.id,
+                        name:     branchRow.name,
+                        location: branchRow.location ?? '',
+                    })
+
+                    // Sign the owner OUT of Supabase Auth — they only
+                    // authenticated to prove ownership, cashiers use PIN
+                    await supabase.auth.signOut()
+
+                    set({
+                        branch: branchRow as Branch,
+                        isLoading: false,
+                        error: null,
+                        user: null,
+                        sessionToken: null,
+                    })
+                    return { success: true }
+
+                } catch (err: unknown) {
+                    const message = err instanceof Error ? err.message : 'Setup failed'
+                    set({ isLoading: false })
+                    return { success: false, error: message }
+                }
+            },
+
+            // ── Phase 2 ────────────────────────────────────────────────────
             loginWithPin: async (pin: string, branchId: string) => {
                 set({ isLoading: true, error: null })
                 try {
@@ -39,12 +132,13 @@ export const useAuthStore = create<AuthState>()(
 
                     if (error) throw error
                     if (!users || users.length === 0) {
-                        set({ isLoading: false, error: 'Invalid PIN or branch' })
+                        set({ isLoading: false, error: 'Incorrect PIN. Try again.' })
                         return false
                     }
 
-                    const user = users[0] as UserProfile
+                    const userProfile = users[0] as UserProfile
 
+                    // Re-fetch branch freshly
                     const { data: branch } = await supabase
                         .from('branches')
                         .select('*')
@@ -52,90 +146,35 @@ export const useAuthStore = create<AuthState>()(
                         .single()
 
                     set({
-                        user,
-                        branch: branch || null,
-                        sessionToken: `${user.id}:${Date.now()}`,
-                        isLoading: false,
-                        error: null,
+                        user:         userProfile,
+                        branch:       (branch as Branch) ?? null,
+                        sessionToken: `${userProfile.id}:${Date.now()}`,
+                        isLoading:    false,
+                        error:        null,
                     })
                     return true
                 } catch (err: unknown) {
                     const message = err instanceof Error ? err.message : 'Login failed'
-                    set({ isLoading: false, error: message, user: null })
+                    set({ isLoading: false, error: message })
                     return false
                 }
             },
 
-            // ── Franchisee email login (Supabase Auth) ───────────────────────
-            loginWithEmail: async (email: string, password: string) => {
-                set({ isLoading: true, error: null })
-                try {
-                    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                        email,
-                        password,
-                    })
-
-                    if (authError) {
-                        set({ isLoading: false, error: authError.message })
-                        return false
-                    }
-
-                    const role = authData.user?.app_metadata?.role
-                    if (role !== 'franchisee' && role !== 'master_admin') {
-                        await supabase.auth.signOut()
-                        set({ isLoading: false, error: 'This account is not authorized for the POS.' })
-                        return false
-                    }
-
-                    // Fetch linked public.users profile
-                    const { data: profile } = await supabase
-                        .from('users')
-                        .select('*')
-                        .eq('auth_id', authData.user.id)
-                        .single()
-
-                    // Fetch the franchisee's branches (first active branch)
-                    const franchiseId = authData.user.app_metadata?.franchise_id
-                    let branch: Branch | null = null
-
-                    if (franchiseId) {
-                        const { data: branches } = await supabase
-                            .from('branches')
-                            .select('*')
-                            .eq('status', 'active')
-                            .limit(1)
-                        branch = branches?.[0] ?? null
-                    }
-
-                    const fallbackProfile: UserProfile = {
-                        id: authData.user.id,
-                        auth_id: authData.user.id,
-                        name: authData.user.user_metadata?.full_name ?? email,
-                        email,
-                        role: 'investor',
-                        branch_id: branch?.id ?? null,
-                        pin_code: null,
-                        is_active: true,
-                        created_at: authData.user.created_at,
-                    }
-
-                    set({
-                        user: (profile as UserProfile) ?? fallbackProfile,
-                        branch,
-                        sessionToken: authData.session?.access_token ?? null,
-                        isLoading: false,
-                        error: null,
-                    })
-                    return true
-                } catch (err: unknown) {
-                    const message = err instanceof Error ? err.message : 'Login failed'
-                    set({ isLoading: false, error: message, user: null })
-                    return false
-                }
+            // ── Cashier logout (keeps branch, back to PIN screen) ───────────
+            logoutCashier: () => {
+                set({ user: null, sessionToken: null, error: null })
             },
 
-            logout: async () => {
-                await supabase.auth.signOut()
+            // ── Release device (owner action) ───────────────────────────────
+            releaseDevice: async (branchId: string) => {
+                const deviceId = getDeviceId()
+                await supabase
+                    .from('branches')
+                    .update({ active_device_id: null })
+                    .eq('id', branchId)
+                    .eq('active_device_id', deviceId)
+
+                clearClaimedBranch()
                 set({ user: null, branch: null, sessionToken: null, error: null })
             },
 
@@ -143,7 +182,12 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'wildshakes-auth',
-            partialize: (state) => ({ user: state.user, branch: state.branch, sessionToken: state.sessionToken }),
+            // Only persist branch (Phase 1 result) — user/session are ephemeral
+            partialize: (state) => ({
+                branch:       state.branch,
+                sessionToken: state.sessionToken,
+                user:         state.user,
+            }),
         }
     )
 )

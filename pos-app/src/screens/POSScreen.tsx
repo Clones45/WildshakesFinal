@@ -17,12 +17,12 @@ import { SyncStatusBar } from '../components/SyncStatusBar'
 import { PendingOrders } from '../components/PendingOrders'
 import { HoldModal } from '../components/HoldModal'
 import { TransactionsViewGated } from '../components/TransactionsView'
-import { LogOut, Clock, ReceiptText } from 'lucide-react'
+import { LogOut, Clock, ReceiptText, Lock } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
 
 export function POSScreen() {
-    const { user, branch, logout } = useAuthStore()
+    const { user, branch, logoutCashier, releaseDevice } = useAuthStore()
     const {
         items, discountType, discountAmount, total, reset,
         resumedHoldId, resumedHoldRef, resumedTableNumber,
@@ -231,9 +231,22 @@ export function POSScreen() {
                         <p className="text-brand-500 text-xs font-bold uppercase tracking-wider leading-tight">{user?.role}</p>
                     </div>
                     <button
-                        onClick={logout}
+                        onClick={() => {
+                            requireManager(() => {
+                                if (confirm('Are you sure you want to release this device? This will require the owner to log in again.')) {
+                                    if (branch) releaseDevice(branch.id)
+                                }
+                            })
+                        }}
+                        className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center hover:bg-gold-100 hover:text-gold-600 text-brand-700 transition-all border border-brand-200"
+                        title="Release Device (Manager Only)"
+                    >
+                        <Lock size={18} />
+                    </button>
+                    <button
+                        onClick={logoutCashier}
                         className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center hover:bg-red-100 hover:text-red-600 text-brand-700 transition-all border border-brand-200"
-                        title="Sign out"
+                        title="Sign out Cashier"
                     >
                         <LogOut size={18} />
                     </button>
