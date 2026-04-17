@@ -75,10 +75,8 @@ export const useAuthStore = create<AuthState>()(
 
                     // Allow owner to override if it's claimed by another device.
                     // This prevents lockouts if local storage is cleared.
-                    const existing = branchRow.active_device_id
-                    // if (existing && existing !== deviceId) {
-                    //     // allow override
-                    // }
+                    // const existing = branchRow.active_device_id
+                    // if (existing && existing !== deviceId) { ... }
 
                     // Claim the device slot
                     const { error: updateErr } = await supabase
