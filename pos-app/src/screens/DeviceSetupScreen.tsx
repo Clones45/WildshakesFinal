@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { supabase, type Branch } from '../lib/supabase'
 import { Mail, Lock, Loader2 } from 'lucide-react'
 
-export function SetupScreen() {
+export function DeviceSetupScreen() {
     const { claimBranchForDevice, isLoading, error, clearError } = useAuthStore()
 
     const [step, setStep] = useState<'auth' | 'branch'>('auth')

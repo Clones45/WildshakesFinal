@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
-import { SetupScreen } from './screens/SetupScreen';
+import { DeviceSetupScreen } from './screens/DeviceSetupScreen';
 import { LoginScreen } from './screens/LoginScreen'
 import { POSScreen } from './screens/POSScreen'
 import { Toaster } from 'react-hot-toast'
@@ -38,7 +38,7 @@ export default function App() {
           error: { iconTheme: { primary: '#ef4444', secondary: '#0a0a0f' } },
         }}
       />
-      {!isClaimed && <SetupScreen />}
+      {!isClaimed && <DeviceSetupScreen />}
       {isClaimed && !isCashierLoggedIn && <LoginScreen />}
       {isClaimed && isCashierLoggedIn && <POSScreen />}
     </>
