@@ -1,0 +1,21 @@
+Role: You are an expert Full-Stack Architect specializing in SaaS multi-tenant systems.
+
+Project Goal: Create the "Wildshake Master Admin Portal"—a centralized Command & Control center for the Wildshake franchise ecosystem.
+
+Core Architecture Requirements:
+
+Franchise Provisioning: The Master Admin must be able to register new franchises. Upon registration, the system should automatically generate a unique sub-dashboard/tenant for that franchiser with dedicated login credentials.
+
+The "Commissary" Engine: Implement a global inventory tracking system. The Admin must see real-time ingredient levels across all franchises. Use a centralized database to track shipments from the main commissary to individual outlets, including low-stock alerts and usage analytics.
+
+Omniscient Data View: The Admin dashboard must feature a "Global Analytics" tab. This should aggregate sales, labor costs, and ingredient waste from every franchise into a single high-level view (charts and data tables), with the ability to drill down into a specific franchise’s record.
+
+Broadcast & Communication Hub: Build a notification system where the Master Admin can send "System Updates" or "Global Announcements." These should appear as high-priority alerts on every franchiser’s dashboard.
+
+User Hierarchy:
+
+Level 0 (God Mode): Master Admin (Full access to all data, settings, and franchise management).
+
+Level 1 (Franchisee): Access only to their specific store data, inventory ordering from the commissary, and staff management.
+
+Visual Style: Professional, Wildshakes UI with high-contrast data visualizations. Use a sidebar for navigation: Dashboard, Franchises, Commissary/Supply Chain, Financials, and Global Broadcast. you can see the https://www.wildshakes.com/ so that you can see and Copy the theme

@@ -8,8 +8,11 @@ interface AuthState {
     sessionToken: string | null
     isLoading: boolean
     error: string | null
+    // Staff login (PIN)
     loginWithPin: (pin: string, branchId: string) => Promise<boolean>
-    logout: () => void
+    // Owner/franchisee login (email + password via Supabase Auth)
+    loginWithEmail: (email: string, password: string) => Promise<boolean>
+    logout: () => Promise<void>
     clearError: () => void
 }
 
@@ -22,10 +25,10 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null,
 
+            // ── Staff PIN login (unchanged) ──────────────────────────────────
             loginWithPin: async (pin: string, branchId: string) => {
                 set({ isLoading: true, error: null })
                 try {
-                    // Fetch user by branch + pin
                     const { data: users, error } = await supabase
                         .from('users')
                         .select('*')
@@ -42,7 +45,6 @@ export const useAuthStore = create<AuthState>()(
 
                     const user = users[0] as UserProfile
 
-                    // Fetch branch info
                     const { data: branch } = await supabase
                         .from('branches')
                         .select('*')
@@ -64,7 +66,76 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            logout: () => {
+            // ── Franchisee email login (Supabase Auth) ───────────────────────
+            loginWithEmail: async (email: string, password: string) => {
+                set({ isLoading: true, error: null })
+                try {
+                    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                        email,
+                        password,
+                    })
+
+                    if (authError) {
+                        set({ isLoading: false, error: authError.message })
+                        return false
+                    }
+
+                    const role = authData.user?.app_metadata?.role
+                    if (role !== 'franchisee' && role !== 'master_admin') {
+                        await supabase.auth.signOut()
+                        set({ isLoading: false, error: 'This account is not authorized for the POS.' })
+                        return false
+                    }
+
+                    // Fetch linked public.users profile
+                    const { data: profile } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('auth_id', authData.user.id)
+                        .single()
+
+                    // Fetch the franchisee's branches (first active branch)
+                    const franchiseId = authData.user.app_metadata?.franchise_id
+                    let branch: Branch | null = null
+
+                    if (franchiseId) {
+                        const { data: branches } = await supabase
+                            .from('branches')
+                            .select('*')
+                            .eq('status', 'active')
+                            .limit(1)
+                        branch = branches?.[0] ?? null
+                    }
+
+                    const fallbackProfile: UserProfile = {
+                        id: authData.user.id,
+                        auth_id: authData.user.id,
+                        name: authData.user.user_metadata?.full_name ?? email,
+                        email,
+                        role: 'investor',
+                        branch_id: branch?.id ?? null,
+                        pin_code: null,
+                        is_active: true,
+                        created_at: authData.user.created_at,
+                    }
+
+                    set({
+                        user: (profile as UserProfile) ?? fallbackProfile,
+                        branch,
+                        sessionToken: authData.session?.access_token ?? null,
+                        isLoading: false,
+                        error: null,
+                    })
+                    return true
+                } catch (err: unknown) {
+                    const message = err instanceof Error ? err.message : 'Login failed'
+                    set({ isLoading: false, error: message, user: null })
+                    return false
+                }
+            },
+
+            logout: async () => {
+                await supabase.auth.signOut()
                 set({ user: null, branch: null, sessionToken: null, error: null })
             },
 
