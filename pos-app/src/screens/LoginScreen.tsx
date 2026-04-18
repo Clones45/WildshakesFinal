@@ -1,13 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
+import { useSyncStore } from '../store/syncStore'
 import { Delete, Loader2 } from 'lucide-react'
 
 export function LoginScreen() {
     const { loginWithPin, isLoading, error, clearError, branch } = useAuthStore()
+    const { syncPending } = useSyncStore()
 
     const [pin, setPin] = useState<string>('')
     const [shake, setShake] = useState(false)
+
+    useEffect(() => {
+        syncPending()
+    }, [])
 
     // ── PIN handlers ─────────────────────────────────────────────────────────
     const handlePad = (val: string) => {

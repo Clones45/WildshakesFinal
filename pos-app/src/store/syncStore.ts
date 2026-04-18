@@ -62,6 +62,24 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
                 }
             }
 
+            // ── 4. Pull latest users for offline login ──────────────────────
+            const { useAuthStore } = await import('./authStore')
+            const currentBranch = useAuthStore.getState().branch
+            if (currentBranch) {
+                const { data: users } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('branch_id', currentBranch.id)
+                    .eq('is_active', true)
+                
+                if (users) {
+                    await db.users.clear()
+                    await db.users.bulkPut(
+                        users.map(u => ({ ...u, cachedAt: new Date().toISOString() }))
+                    )
+                }
+            }
+
             const stillPending =
                 (await db.transactions.where('syncStatus').equals('pending').count()) +
                 (await db.localHeldOrders.where('syncStatus').equals('local').count()) +

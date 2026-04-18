@@ -55,6 +55,17 @@ export interface LocalAuditLog {
     createdAt: string
 }
 
+// ─── User Cache (Offline Login) ────────────────────────────────────────────
+export interface CachedUser {
+    id: string
+    name: string
+    role: string
+    branch_id: string
+    pin_code: string
+    is_active: boolean
+    cachedAt: string
+}
+
 // ─── Menu Cache ────────────────────────────────────────────────────────────
 export interface CachedProduct {
     id: string
@@ -81,6 +92,7 @@ export class WildshakesDB extends Dexie {
     localAuditLogs!: Table<LocalAuditLog>
     products!: Table<CachedProduct>
     branches!: Table<CachedBranch>
+    users!: Table<CachedUser>
 
     constructor() {
         super('WildshakesNexus')
@@ -109,6 +121,16 @@ export class WildshakesDB extends Dexie {
             localAuditLogs: 'localId, syncStatus, createdAt',
             products: 'id, category, name',
             branches: 'id',
+        })
+
+        // Version 4 — offline users cache
+        this.version(4).stores({
+            transactions: 'localRef, syncStatus, branchId, createdAt',
+            localHeldOrders: 'localId, syncStatus, branchId, createdAt',
+            localAuditLogs: 'localId, syncStatus, createdAt',
+            products: 'id, category, name',
+            branches: 'id',
+            users: 'id, branch_id, pin_code, role',
         })
     }
 }

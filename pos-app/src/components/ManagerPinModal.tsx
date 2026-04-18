@@ -31,18 +31,39 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
 
     const verify = async (pinValue: string) => {
         setChecking(true)
-        const { data } = await supabase
-            .from('users')
-            .select('id')
-            .eq('pin_code', pinValue)
-            .in('role', ['manager', 'investor'])
-            .eq('branch_id', branch?.id ?? '')
-            .eq('is_active', true)
-            .limit(1)
+        let managerId: string | null = null
+
+        if (navigator.onLine) {
+            try {
+                const { data } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('pin_code', pinValue)
+                    .in('role', ['manager', 'investor'])
+                    .eq('branch_id', branch?.id ?? '')
+                    .eq('is_active', true)
+                    .limit(1)
+
+                if (data && data.length > 0) {
+                    managerId = (data[0] as { id: string }).id
+                }
+            } catch (e) {
+                // fallback to Dexie
+            }
+        }
+
+        // Fallback to offline
+        if (!managerId) {
+            const { db } = await import('../lib/db')
+            const cachedUsers = await db.users.where({ branch_id: branch?.id ?? '', pin_code: pinValue }).toArray()
+            const match = cachedUsers.find(u => u.is_active && (u.role === 'manager' || u.role === 'investor'))
+            if (match) {
+                managerId = match.id
+            }
+        }
 
         setChecking(false)
-        if (data && data.length > 0) {
-            const managerId = (data[0] as { id: string }).id
+        if (managerId) {
             setPin('')
             onSuccess(managerId)
             onClose()

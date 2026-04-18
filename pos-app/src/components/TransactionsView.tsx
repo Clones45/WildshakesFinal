@@ -117,12 +117,27 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
             const cashierIds = [...new Set(rows.map((r) => r.cashier_id).filter(Boolean))] as string[]
             let nameMap: Record<string, string> = {}
             if (cashierIds.length > 0) {
-                const { data: users } = await supabase
-                    .from('users')
-                    .select('id, name')
-                    .in('id', cashierIds)
-                if (users) {
-                    nameMap = Object.fromEntries((users as { id: string; name: string }[]).map((u) => [u.id, u.name]))
+                let usersList: { id: string; name: string }[] = []
+                if (navigator.onLine) {
+                    try {
+                        const { data: users } = await supabase
+                            .from('users')
+                            .select('id, name')
+                            .in('id', cashierIds)
+                        if (users) usersList = users as { id: string; name: string }[]
+                    } catch (e) {
+                        // fallback
+                    }
+                }
+
+                if (usersList.length === 0) {
+                    const { db } = await import('../lib/db')
+                    const cachedUsers = await db.users.where('id').anyOf(cashierIds).toArray()
+                    usersList = cachedUsers.map((u) => ({ id: u.id, name: u.name }))
+                }
+
+                if (usersList.length > 0) {
+                    nameMap = Object.fromEntries(usersList.map((u) => [u.id, u.name]))
                 }
             }
 

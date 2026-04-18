@@ -48,13 +48,25 @@ export async function createFranchise(formData: FormData) {
     return { error: `Auth error: ${authError.message}` }
   }
 
-  // ── Step 3: Insert a public.users profile row linking auth → franchise ───
+  // ── Step 3: Auto-create the first branch for this franchise ────────────
+  const { data: branch, error: branchError } = await supabase.from('branches').insert({
+    name: `${name} - Main`,
+    location: region,
+    franchise_id: franchise.id,
+    status: 'active'
+  }).select().single()
+
+  if (branchError) console.error('[createFranchise] initial branch insert failed:', branchError.message)
+
+  // ── Step 4: Insert a public.users profile row linking auth → franchise ───
   const { error: profileError } = await supabase.from('users').insert({
     auth_id:     authData.user.id,
     name:        ownerName,
     email:       ownerEmail,
-    role:        'investor',        // franchisee owner role in the POS
+    role:        'manager',         // let them log in as manager on the POS
     franchise_id: franchise.id,
+    branch_id:   branch?.id,        // link to their initial branch
+    pin_code:    '123456',          // default PIN for testing/initial login
     is_active:   true,
   })
 

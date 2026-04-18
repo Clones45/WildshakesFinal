@@ -120,32 +120,64 @@ export const useAuthStore = create<AuthState>()(
             loginWithPin: async (pin: string, branchId: string) => {
                 set({ isLoading: true, error: null })
                 try {
-                    const { data: users, error } = await supabase
-                        .from('users')
-                        .select('*')
-                        .eq('branch_id', branchId)
-                        .eq('pin_code', pin)
-                        .eq('is_active', true)
-                        .limit(1)
+                    let userProfile: UserProfile | null = null
+                    let branchData: Branch | null = null
 
-                    if (error) throw error
-                    if (!users || users.length === 0) {
+                    if (navigator.onLine) {
+                        try {
+                            const { data: users, error } = await supabase
+                                .from('users')
+                                .select('*')
+                                .eq('branch_id', branchId)
+                                .eq('pin_code', pin)
+                                .eq('is_active', true)
+                                .limit(1)
+
+                            if (!error && users && users.length > 0) {
+                                userProfile = users[0] as UserProfile
+                            }
+
+                            const { data: branch } = await supabase
+                                .from('branches')
+                                .select('*')
+                                .eq('id', branchId)
+                                .single()
+                            
+                            if (branch) branchData = branch as Branch
+                        } catch (e) {
+                            // fallback to offline
+                        }
+                    }
+
+                    // Fallback to Dexie if offline or Supabase failed
+                    if (!userProfile) {
+                        const { db } = await import('../lib/db')
+                        const cachedUsers = await db.users.where({ branch_id: branchId, pin_code: pin }).toArray()
+                        if (cachedUsers.length > 0) {
+                            const c = cachedUsers[0]
+                            userProfile = {
+                                id: c.id,
+                                name: c.name,
+                                email: '', // not strictly needed for UI
+                                role: c.role,
+                                franchise_id: null,
+                                branch_id: c.branch_id,
+                                is_active: c.is_active,
+                            }
+                            
+                            // Re-use current branch state if we are offline
+                            branchData = get().branch
+                        }
+                    }
+
+                    if (!userProfile) {
                         set({ isLoading: false, error: 'Incorrect PIN. Try again.' })
                         return false
                     }
 
-                    const userProfile = users[0] as UserProfile
-
-                    // Re-fetch branch freshly
-                    const { data: branch } = await supabase
-                        .from('branches')
-                        .select('*')
-                        .eq('id', branchId)
-                        .single()
-
                     set({
                         user:         userProfile,
-                        branch:       (branch as Branch) ?? null,
+                        branch:       branchData ?? get().branch,
                         sessionToken: `${userProfile.id}:${Date.now()}`,
                         isLoading:    false,
                         error:        null,
