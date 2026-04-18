@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Lock, MapPin, PauseCircle, X } from 'lucide-react'
+import { Lock, MapPin, PauseCircle, X, Printer } from 'lucide-react'
 
 interface HoldModalProps {
     isOpen: boolean
     itemCount: number
-    initialTableNumber?: string | null  // pre-filled when updating a resumed hold
-    onConfirm: (tableNumber: string | null) => void
+    initialTableNumber?: string | null
+    onConfirm: (tableNumber: string | null, shouldPrint: boolean) => void
     onClose: () => void
 }
 
@@ -19,8 +19,8 @@ export function HoldModal({ isOpen, itemCount, initialTableNumber, onConfirm, on
         setTableNumber(initialTableNumber ?? '')
     }, [initialTableNumber, isOpen])
 
-    const handleConfirm = () => {
-        onConfirm(tableNumber.trim() || null)
+    const handleConfirm = (shouldPrint: boolean) => {
+        onConfirm(tableNumber.trim() || null, shouldPrint)
         setTableNumber('')
         onClose()
     }
@@ -82,7 +82,7 @@ export function HoldModal({ isOpen, itemCount, initialTableNumber, onConfirm, on
                                 type="text"
                                 value={tableNumber}
                                 onChange={(e) => setTableNumber(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
+                                onKeyDown={(e) => e.key === 'Enter' && handleConfirm(false)}
                                 placeholder="e.g. 3, A2, Window Seat…"
                                 readOnly={isUpdating}
                                 className={`input-field text-lg text-center font-semibold tracking-widest ${
@@ -98,19 +98,26 @@ export function HoldModal({ isOpen, itemCount, initialTableNumber, onConfirm, on
                         </div>
 
                         {/* Buttons */}
-                        <div className="flex gap-3">
+                        <div className="flex gap-2">
                             <button
                                 onClick={onClose}
-                                className="flex-1 btn-ghost text-sm"
+                                className="px-4 py-3 bg-surface-600 hover:bg-surface-500 text-gray-300 font-semibold rounded-xl transition-all"
                             >
                                 Cancel
                             </button>
                             <button
-                                onClick={handleConfirm}
-                                className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-amber-500 text-white font-semibold rounded-xl py-3 active:scale-95 transition-all shadow-lg shadow-amber-900/30 hover:from-amber-500 hover:to-amber-400"
+                                onClick={() => handleConfirm(false)}
+                                className="flex-1 flex items-center justify-center gap-2 bg-surface-600 hover:bg-amber-500/20 text-white hover:text-amber-400 font-semibold rounded-xl py-3 active:scale-95 transition-all"
                             >
                                 <PauseCircle size={16} />
-                                Hold Order
+                                Hold
+                            </button>
+                            <button
+                                onClick={() => handleConfirm(true)}
+                                className="flex-[1.5] flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-amber-500 text-white font-semibold rounded-xl py-3 active:scale-95 transition-all shadow-lg shadow-amber-900/30 hover:from-amber-500 hover:to-amber-400"
+                            >
+                                <Printer size={16} />
+                                Hold & Print Ticket
                             </button>
                         </div>
                     </motion.div>

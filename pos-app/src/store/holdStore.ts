@@ -47,8 +47,8 @@ interface HoldState {
     isLoading: boolean
 
     fetchHeldOrders: () => Promise<void>
-    holdOrder: (cartItems: CartItem[], tableRef?: string) => Promise<boolean>
-    updateHeldOrder: (id: string, cartItems: CartItem[], tableRef?: string) => Promise<boolean>
+    holdOrder: (cartItems: CartItem[], tableRef?: string) => Promise<string | null>
+    updateHeldOrder: (id: string, cartItems: CartItem[], tableRef?: string) => Promise<string | null>
     resumeOrder: (order: HeldOrder) => HeldOrder
     deleteHeldOrder: (id: string) => Promise<void>
     voidHeldOrder: (id: string, voidedBy: string, reason: string) => Promise<void>
@@ -145,12 +145,12 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
 
     // ── Hold: try Supabase, fall back to IndexedDB ──────────────────────────
     holdOrder: async (cartItems, tableRef) => {
-        if (cartItems.length === 0) return false
+        if (cartItems.length === 0) return null
 
         const { branch, user } = useAuthStore.getState()
         if (!branch?.id) {
             toast.error('No branch selected — please log in again')
-            return false
+            return null
         }
 
         const total = cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0)
@@ -163,7 +163,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
         )
         if (duplicate) {
             toast.error('Table already has an active held order. Resume it to add items or check out.', { duration: 4000 })
-            return false
+            return null
         }
 
         const localItems = cartItems.map((i) => ({
@@ -189,7 +189,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             await db.localHeldOrders.add(localHeld)
             toast.success('Order held locally (offline) ✓', { icon: '📦' })
             await get().fetchHeldOrders()
-            return true
+            return `local::${localId}`
         }
 
         // ── Online path ───────────────────────────────────────────────────────
@@ -235,7 +235,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
 
             toast.success('Order held ✓', { icon: '⏸️' })
             await get().fetchHeldOrders()
-            return true
+            return String(txn.id)
         } catch (err) {
             // Supabase failed mid-attempt → save locally so no order is ever lost
             console.error('Hold online failed, saving locally', err)
@@ -252,7 +252,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             await db.localHeldOrders.add(localHeld)
             toast.success('Connection issue — order held locally ✓', { icon: '📦' })
             await get().fetchHeldOrders()
-            return true
+            return `local::${localId}`
         }
     },
 
@@ -278,7 +278,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             })
             toast.success('Order updated locally ✓', { icon: '✏️' })
             await get().fetchHeldOrders()
-            return true
+            return id
         }
 
         // Remote hold: update via Supabase
@@ -306,11 +306,11 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
 
             toast.success('Order updated ✓', { icon: '✏️' })
             await get().fetchHeldOrders()
-            return true
+            return id
         } catch (err) {
             console.error('Update held order failed', err)
             toast.error('Failed to update held order')
-            return false
+            return null
         }
     },
 

@@ -20,6 +20,7 @@ import { TransactionsViewGated } from '../components/TransactionsView'
 import { LogOut, Clock, ReceiptText, Lock } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
+import { printKitchenTicket } from '../lib/printer'
 
 export function POSScreen() {
     const { user, branch, logoutCashier, releaseDevice } = useAuthStore()
@@ -72,18 +73,21 @@ export function POSScreen() {
     }
 
     // ─── Hold logic ─────────────────────────────────────────────────────────────
-    const handleHoldConfirm = async (tableNumber: string | null) => {
-        let success: boolean
+    const handleHoldConfirm = async (tableNumber: string | null, shouldPrint: boolean) => {
+        let orderId: string | null
         if (resumedHoldId) {
-            success = await updateHeldOrder(
+            orderId = await updateHeldOrder(
                 resumedHoldId,
                 items,
                 tableNumber ?? resumedHoldRef ?? undefined
             )
         } else {
-            success = await holdOrder(items, tableNumber ?? undefined)
+            orderId = await holdOrder(items, tableNumber ?? undefined)
         }
-        if (success) {
+        if (orderId) {
+            if (shouldPrint) {
+                printKitchenTicket(items, tableNumber ?? resumedHoldRef ?? null, orderId, new Date().toISOString())
+            }
             reset()
         }
     }

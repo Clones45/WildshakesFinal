@@ -32,7 +32,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
     persist(
-        (set) => ({
+        (set, get) => ({
             user:         null,
             branch:       null,
             sessionToken: null,
@@ -159,10 +159,12 @@ export const useAuthStore = create<AuthState>()(
                                 id: c.id,
                                 name: c.name,
                                 email: '', // not strictly needed for UI
-                                role: c.role,
-                                franchise_id: null,
+                                role: c.role as 'cashier' | 'manager' | 'investor',
                                 branch_id: c.branch_id,
+                                created_at: new Date().toISOString(),
                                 is_active: c.is_active,
+                                auth_id: null,
+                                pin_code: null,
                             }
                             
                             // Re-use current branch state if we are offline

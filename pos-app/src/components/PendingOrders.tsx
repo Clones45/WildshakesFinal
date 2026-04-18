@@ -4,8 +4,9 @@ import { useHoldStore, type HeldOrder } from '../store/holdStore'
 import { useCartStore } from '../store/cartStore'
 import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
+import { printKitchenTicket } from '../lib/printer'
 import { ManagerPinModal } from './ManagerPinModal'
-import { AlertTriangle, Clock, Loader2, MapPin, RotateCcw, ShieldAlert, X } from 'lucide-react'
+import { AlertTriangle, Clock, Loader2, MapPin, RotateCcw, ShieldAlert, X, Printer } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
 interface PendingOrdersProps {
@@ -307,6 +308,14 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                                                         >
                                                             <RotateCcw size={14} />
                                                             Resume
+                                                        </button>
+                                                        <button
+                                                            onClick={() => printKitchenTicket(order.items, order.table_number ?? order.local_ref, order.id, order.created_at)}
+                                                            className="w-16 flex items-center justify-center gap-1 bg-surface-600 hover:bg-surface-500 text-gray-300 rounded-xl transition-all active:scale-95 text-xs font-semibold"
+                                                            title="Print Kitchen Ticket"
+                                                        >
+                                                            <Printer size={13} />
+                                                            Print
                                                         </button>
                                                         <button
                                                             onClick={() => handleVoidClick(order)}
