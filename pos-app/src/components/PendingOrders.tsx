@@ -6,7 +6,7 @@ import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
 import { printKitchenTicket } from '../lib/printer'
 import { ManagerPinModal } from './ManagerPinModal'
-import { AlertTriangle, Clock, Loader2, MapPin, RotateCcw, ShieldAlert, X, Printer } from 'lucide-react'
+import { AlertTriangle, Clock, Loader2, MapPin, RotateCcw, ShieldAlert, X, Printer, Trash2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
 interface PendingOrdersProps {
@@ -244,13 +244,13 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                                                     >
                                                         <div className="flex items-center gap-2 text-red-400 text-xs font-semibold">
                                                             <ShieldAlert size={13} />
-                                                            Manager authorisation required to void
+                                                            Manager PIN required to delete
                                                         </div>
                                                         <input
                                                             type="text"
                                                             value={voidReason}
                                                             onChange={(e) => setVoidReason(e.target.value)}
-                                                            placeholder="Reason for void (optional)"
+                                                            placeholder="Reason for deletion (optional)"
                                                             className="input-field text-xs w-full"
                                                         />
                                                         <div className="flex gap-2">
@@ -301,10 +301,10 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
 
                                                 {/* Actions — hidden when any inline form is open for this card */}
                                                 {voidingOrderId !== order.id && confirmResumeId !== order.id && (
-                                                    <div className="flex gap-2 pt-1">
+                                                    <div className="flex gap-2 pt-2">
                                                         <button
                                                             onClick={() => handleResumeRequest(order)}
-                                                            className="flex-1 flex items-center justify-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-semibold text-sm rounded-xl py-2.5 transition-all active:scale-95"
+                                                            className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-white font-semibold text-sm rounded-xl py-2.5 transition-all active:scale-95 shadow-sm"
                                                         >
                                                             <RotateCcw size={14} />
                                                             Resume
@@ -315,15 +315,13 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                                                             title="Print Kitchen Ticket"
                                                         >
                                                             <Printer size={13} />
-                                                            Print
                                                         </button>
                                                         <button
                                                             onClick={() => handleVoidClick(order)}
-                                                            className="w-16 flex items-center justify-center gap-1 bg-surface-600 hover:bg-red-500/20 hover:text-red-400 text-gray-500 rounded-xl transition-all active:scale-95 text-xs font-semibold"
-                                                            title="Void held order (requires manager PIN)"
+                                                            className="w-16 flex items-center justify-center gap-1 bg-surface-600 hover:bg-red-500/20 hover:text-red-400 text-gray-400 rounded-xl transition-all active:scale-95 text-xs font-semibold"
+                                                            title="Delete held order (requires manager PIN)"
                                                         >
-                                                            <ShieldAlert size={13} />
-                                                            Void
+                                                            <Trash2 size={15} />
                                                         </button>
                                                     </div>
                                                 )}
