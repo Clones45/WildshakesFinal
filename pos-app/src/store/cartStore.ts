@@ -4,6 +4,7 @@ import type { Product } from '../lib/supabase'
 export interface CartItem {
     product: Product
     quantity: number
+    notes?: string  // e.g. "no sugar", "extra ice"
 }
 
 export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'custom'
@@ -40,12 +41,14 @@ interface CartState {
     addItem: (product: Product) => void
     removeItem: (productId: string) => void
     updateQty: (productId: string, qty: number) => void
+    updateNotes: (productId: string, notes: string) => void
     setDiscount: (type: DiscountType, customAmount?: number) => void
     setPaymentMethod: (method: PaymentMethod) => void
     setCashTendered: (amount: number) => void
     setReferenceNumber: (ref: string) => void
     setResumedHold: (id: string | null, ref: string | null, tableNumber?: string | null) => void
     reset: () => void
+    clearCart: () => void  // Clear items only (keep discount/payment settings)
 }
 
 const initialState = {
@@ -82,7 +85,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
             if (existing) {
                 return { items: state.items.map((i) => i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i) }
             }
-            return { items: [...state.items, { product, quantity: 1 }] }
+            return { items: [...state.items, { product, quantity: 1, notes: '' }] }
         }),
 
     removeItem: (productId) =>
@@ -93,6 +96,11 @@ export const useCartStore = create<CartState>()((set, get) => ({
             if (qty <= 0) return { items: state.items.filter((i) => i.product.id !== productId) }
             return { items: state.items.map((i) => i.product.id === productId ? { ...i, quantity: qty } : i) }
         }),
+
+    updateNotes: (productId, notes) =>
+        set((state) => ({
+            items: state.items.map((i) => i.product.id === productId ? { ...i, notes } : i),
+        })),
 
     setDiscount: (type, customAmount = 0) =>
         set({ discountType: type, customDiscountAmount: customAmount }),
@@ -106,4 +114,6 @@ export const useCartStore = create<CartState>()((set, get) => ({
     setResumedHold: (id, ref, tableNumber = null) => set({ resumedHoldId: id, resumedHoldRef: ref, resumedTableNumber: tableNumber }),
 
     reset: () => set({ ...initialState }),
+
+    clearCart: () => set({ items: [], resumedHoldId: null, resumedHoldRef: null, resumedTableNumber: null }),
 }))

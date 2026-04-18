@@ -31,8 +31,11 @@ export function POSScreen() {
     const { syncPending, refreshPendingCount } = useSyncStore()
     const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder } = useHoldStore()
 
-    const { products, categories, isLoading, error: menuError } = useMenuItems()
+    const { products, categories, isLoading, error: menuError, reload: reloadMenu } = useMenuItems()
     useOnlineStatus()
+
+    // Track session start for duration display
+    const [sessionStart] = useState(() => Date.now())
 
     const [showCheckout, setShowCheckout] = useState(false)
     const [showDiscount, setShowDiscount] = useState(false)
@@ -46,11 +49,21 @@ export function POSScreen() {
     const [isProcessing, setIsProcessing] = useState(false)
     const [now, setNow] = useState(new Date())
 
-    // Clock
+    // Clock (updates every second, also used for session duration)
     useEffect(() => {
         const interval = setInterval(() => setNow(new Date()), 1000)
         return () => clearInterval(interval)
     }, [])
+
+    // Compute session duration string (e.g. "1h 23m" or "45m")
+    const sessionDuration = (() => {
+        const diffMs = now.getTime() - sessionStart
+        const totalMins = Math.floor(diffMs / 60_000)
+        const hours = Math.floor(totalMins / 60)
+        const mins = totalMins % 60
+        if (hours > 0) return `${hours}h ${mins}m`
+        return `${mins}m`
+    })()
 
     // Background sync every 30s
     useEffect(() => {
@@ -232,7 +245,11 @@ export function POSScreen() {
 
                     <div className="hidden md:block text-right">
                         <p className="text-surface-800 text-sm font-bold leading-tight">{user?.name}</p>
-                        <p className="text-brand-500 text-xs font-bold uppercase tracking-wider leading-tight">{user?.role}</p>
+                        <div className="flex items-center justify-end gap-1.5">
+                            <p className="text-brand-500 text-xs font-bold uppercase tracking-wider leading-tight">{user?.role}</p>
+                            <span className="text-surface-400 text-[10px]">·</span>
+                            <p className="text-surface-500 text-[11px] font-semibold">{sessionDuration}</p>
+                        </div>
                     </div>
                     <button
                         onClick={() => {
@@ -261,7 +278,7 @@ export function POSScreen() {
             <div className="flex flex-1 overflow-hidden p-4 gap-4">
                 {/* Product panel (70%) */}
                 <div className="flex-1 overflow-hidden bg-white rounded-3xl shadow-sm border border-brand-200">
-                    <ProductGrid products={products} categories={categories} isLoading={isLoading} menuError={menuError} />
+                    <ProductGrid products={products} categories={categories} isLoading={isLoading} menuError={menuError} onReload={reloadMenu} />
                 </div>
 
                 {/* Cart panel (30%) */}

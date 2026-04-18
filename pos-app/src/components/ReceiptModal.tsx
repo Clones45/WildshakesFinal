@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, RotateCcw, AlertTriangle } from 'lucide-react'
+import { CheckCircle, RotateCcw, AlertTriangle, Printer } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import type { LocalTransaction } from '../lib/db'
 
@@ -11,13 +11,68 @@ interface ReceiptModalProps {
     onNewOrder: () => void
 }
 
+function printReceipt(transaction: LocalTransaction, branchName: string, cashierName: string) {
+    const printWindow = window.open('', '_blank', 'width=400,height=600')
+    if (!printWindow) return
+
+    const now = new Date(transaction.createdAt)
+    const dateStr = now.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+    const itemRows = transaction.items.map(item =>
+        `<tr>
+            <td style="padding:2px 0">${item.productName} x${item.quantity}</td>
+            <td style="text-align:right;padding:2px 0">₱${item.subtotal.toFixed(2)}</td>
+        </tr>`
+    ).join('')
+
+    printWindow.document.write(`
+        <html><head><title>Wildshakes Receipt</title>
+        <style>
+            body { font-family: 'Courier New', monospace; font-size: 12px; padding: 10px; width: 280px; margin: auto; }
+            h2 { text-align: center; margin: 0; font-size: 15px; }
+            .center { text-align: center; }
+            .divider { border-top: 1px dashed #ccc; margin: 6px 0; }
+            table { width: 100%; border-collapse: collapse; }
+            .total-row td { font-weight: bold; font-size: 14px; }
+            .note { font-style: italic; color: #555; font-size: 10px; padding-left: 10px; }
+        </style>
+        </head><body>
+            <h2>WILDSHAKES CAFE</h2>
+            <p class="center">${branchName}</p>
+            <p class="center">${dateStr}</p>
+            <p class="center">${timeStr}</p>
+            <div class="divider"></div>
+            <p>Cashier: ${cashierName}</p>
+            <p>Ref: ${transaction.localRef.slice(0, 12).toUpperCase()}</p>
+            ${transaction.tableNumber ? `<p>Table: #${transaction.tableNumber}</p>` : ''}
+            <div class="divider"></div>
+            <table>${itemRows}</table>
+            <div class="divider"></div>
+            <table>
+                <tr><td>Subtotal</td><td style="text-align:right">₱${(transaction.totalAmount + transaction.discountAmount).toFixed(2)}</td></tr>
+                ${transaction.discountAmount > 0 ? `<tr><td>${transaction.discountType} disc.</td><td style="text-align:right">-₱${transaction.discountAmount.toFixed(2)}</td></tr>` : ''}
+                <tr class="total-row"><td>TOTAL</td><td style="text-align:right">₱${transaction.totalAmount.toFixed(2)}</td></tr>
+                <tr><td>Payment</td><td style="text-align:right; text-transform: capitalize">${transaction.paymentMethod.replace('_', ' ')}</td></tr>
+                ${transaction.referenceNumber ? `<tr><td>Ref#</td><td style="text-align:right">${transaction.referenceNumber}</td></tr>` : ''}
+            </table>
+            <div class="divider"></div>
+            <p class="center">— Thank you! Come again! —</p>
+        </body></html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+}
+
 export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: ReceiptModalProps) {
     const { user, branch } = useAuthStore()
     if (!transaction) return null
 
     const now = new Date(transaction.createdAt)
-    const dateStr = now.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    const dateStr = now.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
     const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    const paymentLabel = transaction.paymentMethod.replace('_', ' ')
 
     return (
         <AnimatePresence>
@@ -45,64 +100,103 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                 <CheckCircle size={32} className="text-teal-400" />
                             </motion.div>
                             <h2 className="text-xl font-bold text-white">Payment Complete!</h2>
-                            <p className="text-gray-400 text-sm mt-1">{branch?.name} — {timeStr}</p>
+                            <p className="text-gray-400 text-sm mt-1">{branch?.name} · {timeStr}</p>
                         </div>
 
                         {/* Receipt body */}
-                        <div className="px-6 py-5 space-y-1 font-mono text-sm max-h-64 overflow-y-auto">
-                            <div className="text-center text-xs text-gray-500 pb-2 border-b border-dashed border-surface-500">
-                                <p className="font-bold text-white text-base">WILDSHAKES CAFE</p>
-                                <p>{branch?.location}</p>
-                                <p>{dateStr}</p>
-                                <p className="mt-1">Cashier: {user?.name}</p>
-                                <p className="text-xs text-gray-600">Ref: {transaction.localRef.slice(0, 12).toUpperCase()}</p>
+                        <div className="px-6 py-4 font-mono text-xs max-h-72 overflow-y-auto space-y-1">
+                            {/* Header */}
+                            <div className="text-center pb-2 border-b border-dashed border-surface-600">
+                                <p className="font-bold text-white text-sm">WILDSHAKES CAFE</p>
+                                <p className="text-gray-400">{branch?.location}</p>
+                                <p className="text-gray-500">{dateStr}</p>
                             </div>
 
+                            {/* Meta */}
+                            <div className="py-1.5 border-b border-dashed border-surface-600 space-y-0.5 text-gray-400">
+                                <div className="flex justify-between">
+                                    <span>Cashier</span>
+                                    <span className="text-white">{user?.name ?? '—'}</span>
+                                </div>
+                                {transaction.tableNumber && (
+                                    <div className="flex justify-between">
+                                        <span>Table</span>
+                                        <span className="text-white">#{transaction.tableNumber}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between">
+                                    <span>Ref#</span>
+                                    <span className="text-white">{transaction.localRef.slice(0, 12).toUpperCase()}</span>
+                                </div>
+                            </div>
+
+                            {/* Items */}
                             <div className="py-2 space-y-1.5">
                                 {transaction.items.map((item, i) => (
-                                    <div key={i} className="flex justify-between text-xs">
-                                        <span className="text-gray-300 flex-1">{item.productName} × {item.quantity}</span>
-                                        <span className="text-white ml-2">₱{item.subtotal.toFixed(2)}</span>
+                                    <div key={i}>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-gray-300 flex-1">{item.productName} ×{item.quantity}</span>
+                                            <span className="text-white ml-2">₱{item.subtotal.toFixed(2)}</span>
+                                        </div>
+                                        {(item as any).notes && (
+                                            <p className="text-gray-500 text-[10px] italic pl-2">↳ {(item as any).notes}</p>
+                                        )}
                                     </div>
                                 ))}
                             </div>
 
-                            <div className="border-t border-dashed border-surface-500 pt-2 space-y-1">
-                                <div className="flex justify-between text-xs text-gray-400">
+                            {/* Totals */}
+                            <div className="border-t border-dashed border-surface-600 pt-2 space-y-1">
+                                <div className="flex justify-between text-gray-400">
                                     <span>Subtotal</span>
                                     <span>₱{(transaction.totalAmount + transaction.discountAmount).toFixed(2)}</span>
                                 </div>
                                 {transaction.discountAmount > 0 && (
-                                    <div className="flex justify-between text-xs text-amber-400">
-                                        <span>{transaction.discountType} disc.</span>
+                                    <div className="flex justify-between text-amber-400">
+                                        <span className="capitalize">{transaction.discountType} disc.</span>
                                         <span>-₱{transaction.discountAmount.toFixed(2)}</span>
                                     </div>
                                 )}
-                                <div className="flex justify-between font-bold border-t border-dashed border-surface-500 pt-1">
+                                <div className="flex justify-between font-bold border-t border-dashed border-surface-600 pt-1">
                                     <span className="text-white">TOTAL</span>
-                                    <span className="text-teal-400 text-base">₱{transaction.totalAmount.toFixed(2)}</span>
+                                    <span className="text-teal-400 text-sm">₱{transaction.totalAmount.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between text-xs text-gray-400">
+                                <div className="flex justify-between text-gray-400">
                                     <span>Payment</span>
-                                    <span className="capitalize">{transaction.paymentMethod}</span>
+                                    <span className="capitalize text-white">{paymentLabel}</span>
                                 </div>
-                                <div className="text-center text-xs text-gray-600 pt-2">— Thank you! Come again! —</div>
+                                {transaction.referenceNumber && (
+                                    <div className="flex justify-between text-gray-400">
+                                        <span>Ref#</span>
+                                        <span className="text-white">{transaction.referenceNumber}</span>
+                                    </div>
+                                )}
+                                <div className="text-center text-gray-600 pt-2">— Thank you! Come again! —</div>
                             </div>
                         </div>
 
                         {/* Actions */}
-                        <div className="px-5 pb-5 pt-2 flex gap-2">
+                        <div className="px-5 pb-5 pt-3 space-y-2">
                             <button
-                                onClick={() => onVoid(transaction.localRef)}
-                                className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-colors"
+                                onClick={() => printReceipt(transaction, branch?.name ?? 'Wildshakes', user?.name ?? 'Staff')}
+                                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 text-sm font-semibold hover:bg-brand-500/20 transition-colors"
                             >
-                                <AlertTriangle size={14} />
-                                Void
+                                <Printer size={15} />
+                                Print Receipt
                             </button>
-                            <button onClick={onNewOrder} className="btn-teal flex-1 flex items-center justify-center gap-2">
-                                <RotateCcw size={16} />
-                                New Order
-                            </button>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => onVoid(transaction.localRef)}
+                                    className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-colors"
+                                >
+                                    <AlertTriangle size={14} />
+                                    Void
+                                </button>
+                                <button onClick={onNewOrder} className="btn-teal flex-1 flex items-center justify-center gap-2">
+                                    <RotateCcw size={16} />
+                                    New Order
+                                </button>
+                            </div>
                         </div>
                     </motion.div>
                 </motion.div>

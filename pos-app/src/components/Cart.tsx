@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCartStore } from '../store/cartStore'
-import { Minus, Plus, Trash2, Tag, ShoppingCart, PauseCircle, Clock, MapPin } from 'lucide-react'
+import { Minus, Plus, Trash2, Tag, ShoppingCart, PauseCircle, Clock, MapPin, X, Pencil } from 'lucide-react'
 
 interface CartProps {
     onCheckout: () => void
@@ -12,15 +13,36 @@ interface CartProps {
 
 export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending }: CartProps) {
     const {
-        items, discountType, updateQty, removeItem,
+        items, discountType, updateQty, removeItem, updateNotes, clearCart,
         subtotal, discountAmount, total,
         resumedHoldId, resumedTableNumber,
     } = useCartStore()
+
+    const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+    const [noteInput, setNoteInput] = useState('')
 
     const sub = subtotal()
     const disc = discountAmount()
     const tot = total()
     const hasItems = items.length > 0
+
+    const handleNoteEdit = (productId: string, currentNote: string) => {
+        setEditingNoteId(productId)
+        setNoteInput(currentNote || '')
+    }
+
+    const handleNoteConfirm = (productId: string) => {
+        updateNotes(productId, noteInput.trim())
+        setEditingNoteId(null)
+        setNoteInput('')
+    }
+
+    const handleClearCart = () => {
+        if (items.length === 0) return
+        if (confirm('Clear all items from the cart?')) {
+            clearCart()
+        }
+    }
 
     return (
         <div className="flex flex-col h-full bg-white border-l border-brand-200">
@@ -36,23 +58,36 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                     </div>
                 </div>
 
-                {/* Held orders badge button */}
-                <button
-                    onClick={onShowPending}
-                    className="relative flex items-center gap-1.5 px-4 py-2 rounded-full bg-white border border-brand-200 hover:bg-amber-50 text-surface-600 hover:text-amber-600 transition-all text-xs font-bold shadow-sm"
-                    title="View held orders"
-                >
-                    <Clock size={14} />
-                    <span>Held</span>
-                    {heldCount > 0 && (
-                        <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center shadow-sm border-2 border-white">
-                            {heldCount}
-                        </span>
+                <div className="flex items-center gap-2">
+                    {/* Clear cart */}
+                    {hasItems && (
+                        <button
+                            onClick={handleClearCart}
+                            title="Clear cart"
+                            className="w-8 h-8 rounded-full bg-white border border-brand-200 flex items-center justify-center hover:bg-red-50 hover:border-red-300 hover:text-red-500 text-brand-400 transition-all"
+                        >
+                            <X size={14} />
+                        </button>
                     )}
-                </button>
+
+                    {/* Held orders badge button */}
+                    <button
+                        onClick={onShowPending}
+                        className="relative flex items-center gap-1.5 px-4 py-2 rounded-full bg-white border border-brand-200 hover:bg-amber-50 text-surface-600 hover:text-amber-600 transition-all text-xs font-bold shadow-sm"
+                        title="View held orders"
+                    >
+                        <Clock size={14} />
+                        <span>Held</span>
+                        {heldCount > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center shadow-sm border-2 border-white">
+                                {heldCount}
+                            </span>
+                        )}
+                    </button>
+                </div>
             </div>
 
-            {/* Active resumed-order banner — table number always visible */}
+            {/* Active resumed-order banner */}
             {resumedHoldId && (
                 <div className="px-5 py-2.5 flex items-center gap-2 bg-teal-50 border-b border-teal-200">
                     <MapPin size={14} className="text-teal-600 flex-shrink-0" />
@@ -70,11 +105,11 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            className="flex flex-col items-center justify-center h-40 gap-3 text-gray-600"
+                            className="flex flex-col items-center justify-center h-40 gap-3 text-gray-500"
                         >
-                            <ShoppingCart size={36} className="opacity-30" />
-                            <p className="text-sm">Cart is empty</p>
-                            <p className="text-xs">Tap a product to add</p>
+                            <ShoppingCart size={36} className="opacity-25" />
+                            <p className="text-sm font-semibold">Cart is empty</p>
+                            <p className="text-xs text-gray-400">Tap a product to add</p>
                         </motion.div>
                     ) : (
                         items.map((item) => (
@@ -84,38 +119,70 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 exit={{ opacity: 0, x: -20, height: 0 }}
-                                className="card px-4 py-3 flex items-center gap-3"
+                                className="card px-4 py-3"
                             >
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-surface-800 font-bold text-sm leading-tight truncate">{item.product.name}</p>
-                                    <p className="text-surface-500 font-medium text-xs">₱{item.product.price.toFixed(2)} each</p>
+                                {/* Main row */}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-surface-800 font-bold text-sm leading-tight truncate">{item.product.name}</p>
+                                        <p className="text-surface-500 font-medium text-xs">₱{item.product.price.toFixed(2)} each</p>
+                                    </div>
+
+                                    {/* Qty controls */}
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => updateQty(item.product.id, item.quantity - 1)}
+                                            className="w-8 h-8 rounded-full bg-surface-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-surface-200 border border-surface-200"
+                                        >
+                                            {item.quantity === 1 ? <Trash2 size={13} className="text-red-500" /> : <Minus size={13} className="text-surface-600" />}
+                                        </button>
+                                        <span className="w-7 text-center font-bold text-surface-800">{item.quantity}</span>
+                                        <button
+                                            onClick={() => updateQty(item.product.id, item.quantity + 1)}
+                                            className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-brand-200 border border-brand-200"
+                                        >
+                                            <Plus size={13} className="text-brand-600" />
+                                        </button>
+                                    </div>
+
+                                    <div className="text-right w-16">
+                                        <p className="text-brand-600 font-bold text-sm">₱{(item.product.price * item.quantity).toFixed(2)}</p>
+                                    </div>
                                 </div>
 
-                                {/* Qty controls */}
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => updateQty(item.product.id, item.quantity - 1)}
-                                        className="w-8 h-8 rounded-full bg-surface-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-surface-200 border border-surface-200"
-                                    >
-                                        {item.quantity === 1 ? <Trash2 size={13} className="text-red-500" /> : <Minus size={13} className="text-surface-600" />}
-                                    </button>
-                                    <span className="w-7 text-center font-bold text-surface-800">{item.quantity}</span>
-                                    <button
-                                        onClick={() => updateQty(item.product.id, item.quantity + 1)}
-                                        className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-brand-200 border border-brand-200"
-                                    >
-                                        <Plus size={13} className="text-brand-600" />
-                                    </button>
-                                </div>
-
-                                <div className="text-right w-20">
-                                    <p className="text-brand-600 font-bold text-sm">₱{(item.product.price * item.quantity).toFixed(2)}</p>
-                                    <button
-                                        onClick={() => removeItem(item.product.id)}
-                                        className="text-surface-400 font-medium text-[11px] hover:text-red-500 transition-colors uppercase tracking-widest mt-1"
-                                    >
-                                        Remove
-                                    </button>
+                                {/* Notes row */}
+                                <div className="mt-1.5">
+                                    {editingNoteId === item.product.id ? (
+                                        <div className="flex gap-1.5 items-center">
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={noteInput}
+                                                onChange={e => setNoteInput(e.target.value)}
+                                                onKeyDown={e => { if (e.key === 'Enter') handleNoteConfirm(item.product.id) }}
+                                                placeholder="e.g. no sugar, extra ice…"
+                                                maxLength={60}
+                                                className="flex-1 text-xs bg-brand-50 border border-brand-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-400 text-surface-700 placeholder-surface-400"
+                                            />
+                                            <button
+                                                onClick={() => handleNoteConfirm(item.product.id)}
+                                                className="text-xs font-bold text-brand-600 hover:text-brand-800 transition-colors px-1"
+                                            >
+                                                OK
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => handleNoteEdit(item.product.id, item.notes || '')}
+                                            className="flex items-center gap-1 text-[11px] text-surface-400 hover:text-brand-500 transition-colors"
+                                        >
+                                            <Pencil size={10} />
+                                            {item.notes
+                                                ? <span className="text-brand-600 font-semibold italic">{item.notes}</span>
+                                                : <span>Add note</span>
+                                            }
+                                        </button>
+                                    )}
                                 </div>
                             </motion.div>
                         ))

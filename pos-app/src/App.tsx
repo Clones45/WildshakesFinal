@@ -28,14 +28,15 @@ export default function App() {
         position="top-right"
         toastOptions={{
           style: {
-            background: '#1a1a28',
-            color: '#f4f4f8',
-            border: '1px solid #333355',
+            background: '#1a2118',
+            color: '#f0f5f0',
+            border: '1px solid #2e3d2b',
             borderRadius: '12px',
             fontSize: '14px',
+            fontWeight: '600',
           },
-          success: { iconTheme: { primary: '#14b8a6', secondary: '#0a0a0f' } },
-          error: { iconTheme: { primary: '#ef4444', secondary: '#0a0a0f' } },
+          success: { iconTheme: { primary: '#c9a227', secondary: '#1a2118' } },
+          error: { iconTheme: { primary: '#ef4444', secondary: '#1a2118' } },
         }}
       />
       {!isClaimed && <DeviceSetupScreen />}
