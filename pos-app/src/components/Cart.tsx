@@ -13,7 +13,7 @@ interface CartProps {
 
 export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending }: CartProps) {
     const {
-        items, discountType, updateQty, removeItem, updateNotes, clearCart,
+        items, discountType, updateQty, updateNotes, clearCart,
         subtotal, discountAmount, total,
         resumedHoldId, resumedTableNumber,
     } = useCartStore()
@@ -223,28 +223,33 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                     <button
                         onClick={onDiscount}
                         disabled={!hasItems}
-                        className="flex-1 btn-ghost flex items-center justify-center gap-2 text-sm disabled:opacity-30"
+                        className="flex-1 btn-ghost flex items-center justify-center gap-2 text-sm disabled:opacity-30 relative group"
+                        title="Discount (Shift + D)"
                     >
                         <Tag size={16} />
                         {discountType === 'none' ? 'Discount' : 'Discount ✓'}
+                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap hidden md:block">Shift + D</span>
                     </button>
                     <button
                         onClick={onHold}
                         disabled={!hasItems}
-                        className="flex-1 flex items-center justify-center gap-2 bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-200 font-bold text-sm rounded-full py-4 transition-all active:scale-95 disabled:opacity-30 shadow-sm"
-                        title="Save this order and start a new one"
+                        className="flex-1 flex items-center justify-center gap-2 bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-200 font-bold text-sm rounded-full py-4 transition-all active:scale-95 disabled:opacity-30 shadow-sm relative group"
+                        title="Save this order and start a new one (Shift + H)"
                     >
                         <PauseCircle size={16} />
                         Hold
+                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap hidden md:block">Shift + H</span>
                     </button>
                 </div>
                 <button
                     onClick={onCheckout}
                     disabled={!hasItems}
-                    className="w-full btn-teal text-base py-4 flex items-center justify-center gap-2 disabled:opacity-30"
+                    className="w-full btn-teal text-base py-4 flex items-center justify-center gap-2 disabled:opacity-30 relative group"
+                    title="Checkout (Shift + C)"
                 >
                     <span className="text-xl">₱</span>
                     Checkout — ₱{tot.toFixed(2)}
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap hidden md:block">Shift + C</span>
                 </button>
             </div>
         </div>

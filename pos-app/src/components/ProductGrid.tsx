@@ -71,8 +71,9 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                 <div className="relative flex-1">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                     <input
+                        id="product-search-input"
                         type="text"
-                        placeholder="Search menu…"
+                        placeholder="Search menu (Shift + F)…"
                         value={search}
                         onChange={(e) => { setSearch(e.target.value); setActiveCategory('All') }}
                         className="input-field pl-9 text-sm"

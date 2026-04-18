@@ -16,8 +16,33 @@ const PAYMENT_METHODS = [
     { id: 'bank_transfer', label: 'Bank Transfer', icon: Landmark,    color: 'text-amber-400',  bg: 'bg-amber-500/10 border-amber-500/30' },
 ]
 
-const QUICK_AMOUNTS = [20, 50, 100, 200, 500, 1000]
 const DIGITAL_METHODS = ['gcash', 'maya', 'bank_transfer']
+
+const getSmartQuickAmounts = (total: number) => {
+    if (total <= 0) return [50, 100, 200, 500, 1000]
+    const amounts = new Set<number>()
+    
+    const roundUp10 = Math.ceil(total / 10) * 10
+    if (roundUp10 > total) amounts.add(roundUp10)
+    
+    const roundUp50 = Math.ceil(total / 50) * 50
+    if (roundUp50 > total) amounts.add(roundUp50)
+    
+    const roundUp100 = Math.ceil(total / 100) * 100
+    if (roundUp100 > total) amounts.add(roundUp100)
+    
+    const roundUp500 = Math.ceil(total / 500) * 500
+    if (roundUp500 > total) amounts.add(roundUp500)
+    
+    const roundUp1000 = Math.ceil(total / 1000) * 1000
+    if (roundUp1000 > total) amounts.add(roundUp1000)
+    
+    ;[50, 100, 200, 500, 1000].forEach(b => {
+        if (b > total) amounts.add(b)
+    })
+
+    return Array.from(amounts).sort((a, b) => a - b).slice(0, 6)
+}
 
 export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: CheckoutModalProps) {
     const {
@@ -110,6 +135,7 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                             <div className="flex gap-2">
                                                 <input
                                                     type="number"
+                                                    autoFocus
                                                     value={cashTendered || ''}
                                                     onChange={(e) => setCashTendered(parseFloat(e.target.value) || 0)}
                                                     placeholder="Enter amount"
@@ -120,7 +146,7 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                         </div>
 
                                         <div className="grid grid-cols-3 gap-2">
-                                            {QUICK_AMOUNTS.map((a) => (
+                                            {getSmartQuickAmounts(tot).map((a) => (
                                                 <button
                                                     key={a}
                                                     onClick={() => handleQuickAmount(a)}
@@ -160,6 +186,7 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                         <div className="relative">
                                             <input
                                                 type="text"
+                                                autoFocus
                                                 inputMode="numeric"
                                                 maxLength={5}
                                                 value={referenceNumber}

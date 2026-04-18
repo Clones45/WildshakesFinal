@@ -85,6 +85,47 @@ export function POSScreen() {
         setShowManagerPin(true)
     }
 
+    // ─── Global Keyboard Shortcuts ──────────────────────────────────────────────
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Only trigger if no modals are open (except for Escape which is handled inside modals usually, but we can do general ones here)
+            const isModalOpen = showCheckout || showDiscount || showReceipt || showManagerPin || showPending || showHoldModal || showTransactions;
+            
+            // Ignore if typing in an input
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+                return;
+            }
+
+            if (!isModalOpen) {
+                if (e.shiftKey && e.key.toLowerCase() === 'c') {
+                    e.preventDefault()
+                    if (items.length > 0) setShowCheckout(true)
+                }
+                if (e.shiftKey && e.key.toLowerCase() === 'h') {
+                    e.preventDefault()
+                    if (items.length > 0) setShowHoldModal(true)
+                }
+                if (e.shiftKey && e.key.toLowerCase() === 'd') {
+                    e.preventDefault()
+                    if (items.length > 0) setShowDiscount(true)
+                }
+                if (e.shiftKey && e.key.toLowerCase() === 'x') {
+                    e.preventDefault()
+                    if (items.length > 0 && confirm('Clear all items from the cart?')) {
+                        reset()
+                    }
+                }
+                if (e.shiftKey && e.key.toLowerCase() === 'f') {
+                    e.preventDefault()
+                    document.getElementById('product-search-input')?.focus()
+                }
+            }
+        }
+        
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [showCheckout, showDiscount, showReceipt, showManagerPin, showPending, showHoldModal, showTransactions, items.length, reset])
+
     // ─── Hold logic ─────────────────────────────────────────────────────────────
     const handleHoldConfirm = async (tableNumber: string | null, shouldPrint: boolean) => {
         let orderId: string | null
