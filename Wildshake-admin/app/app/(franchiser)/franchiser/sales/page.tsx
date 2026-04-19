@@ -13,6 +13,7 @@ export default async function FranchiserSalesPage() {
     .limit(1)
     .single()
 
+  // eslint-disable-next-line react-hooks/purity
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
   const [{ data: transactions }, { data: topItems }] = await Promise.all([

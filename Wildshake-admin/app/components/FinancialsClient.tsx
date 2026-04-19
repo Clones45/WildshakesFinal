@@ -30,6 +30,7 @@ export default function FinancialsClient({ transactions, branches }: FinancialsC
   const [filter, setFilter] = useState('all') // 'all' | branch id
   const [dateRange, setDateRange] = useState('30') // days
 
+  // eslint-disable-next-line react-hooks/purity
   const cutoff = new Date(Date.now() - parseInt(dateRange) * 24 * 60 * 60 * 1000)
 
   const filtered = transactions.filter(t => {

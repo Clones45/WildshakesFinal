@@ -167,7 +167,7 @@ export default async function FranchiserDashboard() {
       <div className="stat-grid">
         <div className="stat-card card-glow">
           <div className="stat-card-icon green">💵</div>
-          <p className="stat-card-label">Today's Revenue</p>
+          <p className="stat-card-label">Today&apos;s Revenue</p>
           <p className="stat-card-value">₱{todayRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
           <p className="stat-card-trend neutral">From {todayOrders} order{todayOrders !== 1 ? 's' : ''}</p>
         </div>
@@ -231,7 +231,7 @@ export default async function FranchiserDashboard() {
 
         {/* Payment breakdown */}
         <div className="chart-card">
-          <p className="chart-title">Today's Payment Breakdown</p>
+          <p className="chart-title">Today&apos;s Payment Breakdown</p>
           {Object.keys(payBreakdown).length === 0 ? (
             <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
               <p style={{ fontSize: '2rem' }}>💳</p>
