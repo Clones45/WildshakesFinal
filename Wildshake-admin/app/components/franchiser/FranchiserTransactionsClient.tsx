@@ -1,55 +1,249 @@
 'use client'
 
+import React, { useState } from 'react'
+
+interface TxItem {
+  quantity: number
+  unit_price: number
+  subtotal: number
+  notes?: string | null
+  products: { name: string; category: string } | null
+}
+
+interface Tx {
+  id: string
+  local_ref: string | null
+  reference_number: string | null
+  total_amount: number
+  discount_type: string | null
+  discount_amount: number
+  payment_method: string
+  status: string
+  created_at: string
+  void_reason: string | null
+  table_number: string | null
+  users: { name: string } | null
+  transaction_items: TxItem[]
+}
+
 interface Props {
   branchName: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  transactions: any[]
+  transactions: Tx[]
 }
 
 export default function FranchiserTransactionsClient({ branchName, transactions }: Props) {
+  const [search, setSearch]     = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [dateFilter, setDateFilter]     = useState('30')
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  const cutoff = new Date(Date.now() - parseInt(dateFilter) * 24 * 60 * 60 * 1000)
+
+  const filtered = transactions.filter(tx => {
+    const dateOk   = new Date(tx.created_at) >= cutoff
+    const statusOk = statusFilter === 'all' || tx.status === statusFilter
+    const ref      = (tx.local_ref || tx.reference_number || tx.id).toLowerCase()
+    const cashier  = (tx.users?.name || '').toLowerCase()
+    const searchOk = !search || ref.includes(search.toLowerCase()) || cashier.includes(search.toLowerCase())
+    return dateOk && statusOk && searchOk
+  })
+
+  const totalRevenue = filtered.filter(t => t.status === 'completed').reduce((s, t) => s + Number(t.total_amount), 0)
+  const totalVoided  = filtered.filter(t => t.status === 'voided').length
+
+  function exportCSV() {
+    const header = 'Ref,Date,Cashier,Amount,Discount,Payment,Status\n'
+    const rows = filtered.map(tx =>
+      `${tx.local_ref || tx.id.slice(0, 8)},${new Date(tx.created_at).toLocaleString()},${tx.users?.name || ''},${tx.total_amount},${tx.discount_amount},${tx.payment_method},${tx.status}`
+    ).join('\n')
+    const blob = new Blob([header + rows], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${branchName}-transactions-${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const payLabels: Record<string, string> = {
+    cash: '💵', gcash: '📱', maya: '🟣', bank_transfer: '🏦', card: '💳', other: '📎'
+  }
+
   return (
     <div>
+      {/* Header */}
       <div className="page-header">
         <div>
           <h1>Transaction History</h1>
-          <p className="page-header-subtitle">Recent transactions for {branchName}</p>
+          <p className="page-header-subtitle">All transactions for {branchName}</p>
+        </div>
+        <button className="btn btn-ghost" onClick={exportCSV}>📥 Export CSV</button>
+      </div>
+
+      {/* Summary KPIs */}
+      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '1.25rem' }}>
+        <div className="stat-card">
+          <div className="stat-card-icon green">✅</div>
+          <p className="stat-card-label">Completed Revenue</p>
+          <p className="stat-card-value">₱{totalRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+          <p className="stat-card-trend neutral">{filtered.filter(t => t.status === 'completed').length} transactions</p>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-icon red">🔴</div>
+          <p className="stat-card-label">Voided</p>
+          <p className="stat-card-value">{totalVoided}</p>
+          <p className={`stat-card-trend ${totalVoided > 0 ? 'down' : 'up'}`}>
+            {totalVoided > 0 ? 'Requires review' : 'No voids'}
+          </p>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-icon gold">🧾</div>
+          <p className="stat-card-label">Total Shown</p>
+          <p className="stat-card-value">{filtered.length}</p>
+          <p className="stat-card-trend neutral">of {transactions.length} loaded</p>
         </div>
       </div>
 
+      {/* Filters */}
       <div className="table-wrapper">
-        <div className="table-header">
-          <p className="table-title">All Transactions</p>
+        <div className="table-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+          <p className="table-title">Transactions</p>
+          <div className="flex gap-1" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="table-search">
+              🔍
+              <input
+                type="text"
+                placeholder="Search ref or cashier…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+            <select className="form-select" style={{ width: 'auto' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+              <option value="all">All Status</option>
+              <option value="completed">Completed</option>
+              <option value="voided">Voided</option>
+              <option value="pending">Pending</option>
+            </select>
+            <select className="form-select" style={{ width: 'auto' }} value={dateFilter} onChange={e => setDateFilter(e.target.value)}>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+          </div>
         </div>
+
         <table>
           <thead>
             <tr>
               <th>Ref #</th>
-              <th>Date</th>
-              <th>Total</th>
-              <th>Status</th>
-              <th>Method</th>
+              <th>Date &amp; Time</th>
               <th>Cashier</th>
+              <th>Amount</th>
+              <th>Payment</th>
+              <th>Status</th>
+              <th>Details</th>
             </tr>
           </thead>
           <tbody>
-            {transactions.map((tx) => (
-              <tr key={tx.id}>
-                <td style={{ fontFamily: 'monospace' }}>{tx.local_ref || tx.reference_number || tx.id.slice(0, 8)}</td>
-                <td>{new Date(tx.created_at).toLocaleString()}</td>
-                <td>₱{Number(tx.total_amount).toFixed(2)}</td>
-                <td>
-                  <span className={`badge ${tx.status === 'completed' ? 'badge-success' : tx.status === 'voided' ? 'badge-danger' : 'badge-warning'}`}>
-                    {tx.status}
-                  </span>
-                </td>
-                <td>{tx.payment_method}</td>
-                <td>{tx.users?.name || 'Unknown'}</td>
-              </tr>
-            ))}
-            {transactions.length === 0 && (
+            {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>No transactions found</td>
+                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '3rem' }}>
+                  No transactions match your filters
+                </td>
               </tr>
+            ) : (
+              filtered.map(tx => (
+                <React.Fragment key={tx.id}>
+                  <tr
+                    style={{ opacity: tx.status === 'voided' ? 0.65 : 1, cursor: 'pointer' }}
+                    onClick={() => setExpanded(expanded === tx.id ? null : tx.id)}
+                  >
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.73rem', color: 'var(--color-text-muted)' }}>
+                      {(tx.local_ref || tx.reference_number || tx.id).slice(0, 12).toUpperCase()}
+                    </td>
+                    <td style={{ fontSize: '0.8rem' }}>
+                      <div>{new Date(tx.created_at).toLocaleDateString('en-PH')}</div>
+                      <div style={{ color: 'var(--color-text-muted)', fontSize: '0.72rem' }}>
+                        {new Date(tx.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </td>
+                    <td style={{ fontSize: '0.82rem' }}>{tx.users?.name || '—'}</td>
+                    <td>
+                      <span style={{ fontWeight: 700, color: tx.status === 'voided' ? 'var(--color-danger-light)' : 'var(--color-accent)' }}>
+                        ₱{Number(tx.total_amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                      </span>
+                      {Number(tx.discount_amount) > 0 && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                          -{tx.discount_type} ₱{Number(tx.discount_amount).toFixed(2)}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ fontSize: '0.85rem' }}>
+                      {payLabels[tx.payment_method] || '📎'} {tx.payment_method.replace('_', ' ')}
+                    </td>
+                    <td>
+                      <span className={`badge badge-${tx.status === 'completed' ? 'success' : tx.status === 'voided' ? 'danger' : 'warning'}`}>
+                        {tx.status}
+                      </span>
+                    </td>
+                    <td>
+                      <button className="btn btn-ghost btn-sm">
+                        {expanded === tx.id ? '▲' : '▼'}
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* Expandable items row */}
+                  {expanded === tx.id && (
+                    <tr key={`${tx.id}-items`} style={{ background: 'rgba(74,124,89,0.04)' }}>
+                      <td colSpan={7} style={{ padding: '0.75rem 1.25rem' }}>
+                        {tx.void_reason && (
+                          <div style={{
+                            marginBottom: '0.5rem', padding: '0.5rem 0.75rem',
+                            background: 'rgba(220,53,69,0.08)', borderRadius: '6px',
+                            fontSize: '0.8rem', color: 'var(--color-danger-light)',
+                            border: '1px solid rgba(220,53,69,0.2)',
+                          }}>
+                            🚫 Void Reason: {tx.void_reason}
+                          </div>
+                        )}
+                        {tx.table_number && (
+                          <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                            🪑 Table: {tx.table_number}
+                          </div>
+                        )}
+                        <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                              <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Item</th>
+                              <th style={{ textAlign: 'center', padding: '0.3rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Qty</th>
+                              <th style={{ textAlign: 'right', padding: '0.3rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Price</th>
+                              <th style={{ textAlign: 'right', padding: '0.3rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Subtotal</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(tx.transaction_items || []).map((item, idx) => (
+                              <tr key={idx}>
+                                <td style={{ padding: '0.3rem 0.5rem' }}>
+                                  {item.products?.name || 'Unknown'}
+                                  {item.notes && <span style={{ color: 'var(--color-text-muted)', fontSize: '0.72rem' }}> — {item.notes}</span>}
+                                </td>
+                                <td style={{ textAlign: 'center', padding: '0.3rem' }}>×{item.quantity}</td>
+                                <td style={{ textAlign: 'right', padding: '0.3rem', color: 'var(--color-text-muted)' }}>
+                                  ₱{Number(item.unit_price).toFixed(2)}
+                                </td>
+                                <td style={{ textAlign: 'right', padding: '0.3rem', fontWeight: 600 }}>
+                                  ₱{Number(item.subtotal).toFixed(2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))
             )}
           </tbody>
         </table>

@@ -13,8 +13,7 @@ export default async function FranchiserSalesPage() {
     .limit(1)
     .single()
 
-  // eslint-disable-next-line react-hooks/purity
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
   const [{ data: transactions }, { data: topItems }] = await Promise.all([
     supabase
@@ -22,7 +21,7 @@ export default async function FranchiserSalesPage() {
       .select('total_amount, discount_amount, payment_method, status, created_at')
       .eq('branch_id', branch?.id || '')
       .eq('status', 'completed')
-      .gte('created_at', thirtyDaysAgo)
+      .gte('created_at', ninetyDaysAgo)
       .order('created_at', { ascending: true }),
 
     supabase
@@ -30,14 +29,14 @@ export default async function FranchiserSalesPage() {
       .select('quantity, subtotal, products(name, category), transactions!inner(branch_id, status, created_at)')
       .eq('transactions.branch_id', branch?.id || '')
       .eq('transactions.status', 'completed')
-      .gte('transactions.created_at', thirtyDaysAgo),
+      .gte('transactions.created_at', ninetyDaysAgo),
   ])
 
   return (
     <FranchiserSalesClient
-      branchName={branch?.name || ''}
-      transactions={(transactions || []) as Parameters<typeof FranchiserSalesClient>[0]['transactions']}
-      topItems={(topItems || []) as Parameters<typeof FranchiserSalesClient>[0]['topItems']}
+      branchName={branch?.name || 'My Branch'}
+      transactions={(transactions || []) as unknown as Parameters<typeof FranchiserSalesClient>[0]['transactions']}
+      topItems={(topItems || []) as unknown as Parameters<typeof FranchiserSalesClient>[0]['topItems']}
     />
   )
 }

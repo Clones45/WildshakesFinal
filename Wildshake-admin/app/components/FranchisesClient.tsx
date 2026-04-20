@@ -3,6 +3,14 @@
 import { useState, useTransition } from 'react'
 import { createFranchise, updateFranchiseStatus } from '@/lib/actions/franchises'
 
+interface Branch {
+  id: string
+  name: string
+  location: string | null
+  status: string
+  active_device_id: string | null
+}
+
 interface Franchise {
   id: string
   name: string
@@ -11,14 +19,17 @@ interface Franchise {
   region: string | null
   status: string
   created_at: string
+  branches?: Branch[]
 }
 
 export default function FranchisesClient({ franchises }: { franchises: Franchise[] }) {
-  const [showModal, setShowModal]   = useState(false)
-  const [search, setSearch]         = useState('')
-  const [formError, setFormError]   = useState('')
+  const [showModal, setShowModal]     = useState(false)
+  const [search, setSearch]           = useState('')
+  const [formError, setFormError]     = useState('')
   const [formSuccess, setFormSuccess] = useState('')
-  const [newCredentials, setNewCredentials] = useState<{ email: string; password: string } | null>(null)
+  const [newCredentials, setNewCredentials] = useState<{
+    email: string; password: string; branchName?: string
+  } | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const filtered = franchises.filter(f =>
@@ -36,8 +47,8 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
     startTransition(async () => {
       const result = await createFranchise(fd)
       if (result.error) { setFormError(result.error); return }
-      setFormSuccess('Franchise registered! Login credentials generated:')
-      if (result.credentials) setNewCredentials(result.credentials)
+      setFormSuccess('Franchise registered successfully!')
+      if (result.credentials) setNewCredentials({ ...result.credentials, branchName: result.branchName })
     })
   }
 
@@ -46,6 +57,9 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
       await updateFranchiseStatus(id, status)
     })
   }
+
+  const totalBranches  = franchises.reduce((s, f) => s + (f.branches?.length || 0), 0)
+  const activePOS      = franchises.reduce((s, f) => s + (f.branches || []).filter(b => b.active_device_id).length, 0)
 
   return (
     <>
@@ -60,7 +74,7 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
       </div>
 
       {/* Stats Row */}
-      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '1.5rem' }}>
+      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.5rem' }}>
         <div className="stat-card">
           <div className="stat-card-icon green">🏪</div>
           <p className="stat-card-label">Total Franchises</p>
@@ -72,9 +86,14 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
           <p className="stat-card-value">{franchises.filter(f => f.status === 'active').length}</p>
         </div>
         <div className="stat-card">
-          <div className="stat-card-icon gold">⏳</div>
-          <p className="stat-card-label">Pending</p>
-          <p className="stat-card-value">{franchises.filter(f => f.status === 'pending').length}</p>
+          <div className="stat-card-icon gold">🏬</div>
+          <p className="stat-card-label">Total Branches</p>
+          <p className="stat-card-value">{totalBranches}</p>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-icon green">🖥️</div>
+          <p className="stat-card-label">POS Online</p>
+          <p className="stat-card-value">{activePOS}</p>
         </div>
       </div>
 
@@ -95,10 +114,11 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
         <table>
           <thead>
             <tr>
-              <th>Franchise Name</th>
+              <th>Franchise</th>
               <th>Owner</th>
-              <th>Email</th>
               <th>Region</th>
+              <th>Branch</th>
+              <th>POS</th>
               <th>Status</th>
               <th>Registered</th>
               <th>Actions</th>
@@ -107,55 +127,75 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2.5rem' }}>
-                  {franchises.length === 0 ? 'No franchises registered yet. Add your first one!' : 'No results found.'}
+                <td colSpan={8} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2.5rem' }}>
+                  {franchises.length === 0
+                    ? 'No franchises registered yet. Add your first one!'
+                    : 'No results found.'}
                 </td>
               </tr>
             ) : (
-              filtered.map(f => (
-                <tr key={f.id}>
-                  <td style={{ fontWeight: 600 }}>{f.name}</td>
-                  <td>{f.owner_name}</td>
-                  <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>{f.owner_email}</td>
-                  <td>{f.region || '—'}</td>
-                  <td>
-                    <span className={`badge badge-${f.status === 'active' ? 'success' : f.status === 'suspended' ? 'danger' : 'warning'}`}>
-                      {f.status}
-                    </span>
-                  </td>
-                  <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
-                    {new Date(f.created_at).toLocaleDateString('en-PH')}
-                  </td>
-                  <td>
-                    <div className="flex gap-1">
-                      {f.status !== 'active' && (
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => handleStatusChange(f.id, 'active')}
-                          disabled={isPending}
-                        >
-                          Activate
-                        </button>
+              filtered.map(f => {
+                const mainBranch   = f.branches?.[0]
+                const hasActivePOS = f.branches?.some(b => b.active_device_id)
+                return (
+                  <tr key={f.id}>
+                    <td>
+                      <div style={{ fontWeight: 700 }}>{f.name}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{f.owner_email}</div>
+                    </td>
+                    <td>{f.owner_name}</td>
+                    <td>{f.region || '—'}</td>
+                    <td>
+                      {mainBranch ? (
+                        <span style={{ fontSize: '0.82rem' }}>{mainBranch.name}</span>
+                      ) : (
+                        <span className="badge badge-danger">⚠ No Branch</span>
                       )}
-                      {f.status === 'active' && (
-                        <button
-                          className="btn btn-danger btn-sm"
-                          onClick={() => handleStatusChange(f.id, 'suspended')}
-                          disabled={isPending}
-                        >
-                          Suspend
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td>
+                      <span className={`badge ${hasActivePOS ? 'badge-success' : 'badge-warning'}`}>
+                        {hasActivePOS ? '● Online' : '○ Offline'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge badge-${f.status === 'active' ? 'success' : f.status === 'suspended' ? 'danger' : 'warning'}`}>
+                        {f.status}
+                      </span>
+                    </td>
+                    <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+                      {new Date(f.created_at).toLocaleDateString('en-PH')}
+                    </td>
+                    <td>
+                      <div className="flex gap-1">
+                        {f.status !== 'active' && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleStatusChange(f.id, 'active')}
+                            disabled={isPending}
+                          >
+                            Activate
+                          </button>
+                        )}
+                        {f.status === 'active' && (
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={() => handleStatusChange(f.id, 'suspended')}
+                            disabled={isPending}
+                          >
+                            Suspend
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>
       </div>
 
-      {/* Modal */}
+      {/* Create Franchise Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -167,52 +207,85 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
             {formError   && <div className="alert alert-danger">{formError}</div>}
             {formSuccess && (
               <div className="alert alert-success">
-                ✅ {formSuccess}
+                <p style={{ fontWeight: 700, marginBottom: '0.5rem' }}>✅ {formSuccess}</p>
                 {newCredentials && (
-                  <div style={{ marginTop: '0.75rem', background: 'var(--color-bg-card)', borderRadius: '8px', padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                    <div>📧 <strong>Email:</strong> {newCredentials.email}</div>
-                    <div>🔑 <strong>Password:</strong> {newCredentials.password}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.4rem' }}>Share these with the franchisee. They can log in via the POS Owner Login tab.</div>
-                  </div>
-                )}
-                {!newCredentials && (
-                  <button className="btn btn-ghost btn-sm" style={{ marginTop: '0.5rem' }} onClick={() => { setShowModal(false); setFormSuccess(''); setNewCredentials(null) }}>Close</button>
+                  <>
+                    <div style={{
+                      background: 'var(--color-bg-card)', borderRadius: '8px',
+                      padding: '0.875rem', fontFamily: 'monospace', fontSize: '0.85rem',
+                      border: '1px solid var(--color-border)', marginBottom: '0.75rem',
+                    }}>
+                      <div>📧 <strong>Email:</strong> {newCredentials.email}</div>
+                      <div>🔑 <strong>Password:</strong> {newCredentials.password}</div>
+                      {newCredentials.branchName && (
+                        <div>🏪 <strong>Branch created:</strong> {newCredentials.branchName}</div>
+                      )}
+                      <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
+                        Share these with the franchisee. They can log in at the Franchiser Portal.
+                        <br />The POS device can be set up using the same email/password.
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        const text = `Wildshakes Franchiser Login\nEmail: ${newCredentials.email}\nPassword: ${newCredentials.password}\nBranch: ${newCredentials.branchName || '—'}`
+                        navigator.clipboard?.writeText(text)
+                      }}
+                    >
+                      📋 Copy Credentials
+                    </button>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      style={{ marginLeft: '0.5rem' }}
+                      onClick={() => { setShowModal(false); setFormSuccess(''); setNewCredentials(null) }}
+                    >
+                      Done
+                    </button>
+                  </>
                 )}
               </div>
             )}
 
-            <form onSubmit={handleCreate}>
-              <div className="modal-body">
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="form-label">Franchise Name *</label>
-                    <input name="name" className="form-input" placeholder="e.g. Wildshakes BGC" required />
+            {!formSuccess && (
+              <form onSubmit={handleCreate}>
+                <div className="modal-body">
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label className="form-label">Franchise Name *</label>
+                      <input name="name" className="form-input" placeholder="e.g. Wildshakes BGC" required />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Region / Location *</label>
+                      <input name="region" className="form-input" placeholder="e.g. Metro Manila" required />
+                      <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                        This is also used as the first branch location
+                      </p>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Owner Name *</label>
+                      <input name="owner_name" className="form-input" placeholder="Full name" required />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Owner Email *</label>
+                      <input name="owner_email" type="email" className="form-input" placeholder="owner@email.com" required />
+                    </div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Region</label>
-                    <input name="region" className="form-input" placeholder="e.g. Metro Manila" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Owner Name *</label>
-                    <input name="owner_name" className="form-input" placeholder="Full name" required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Owner Email *</label>
-                    <input name="owner_email" type="email" className="form-input" placeholder="owner@email.com" required />
+                    <label className="form-label">Portal Password *</label>
+                    <input name="password" type="password" className="form-input" placeholder="Min. 8 characters" minLength={8} required />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                      This password is used for both the Franchiser Portal and POS device setup.
+                    </p>
                   </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Initial Portal Password *</label>
-                  <input name="password" type="password" className="form-input" placeholder="Min. 8 characters" minLength={8} required />
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={isPending}>
+                    {isPending ? <><span className="loading-spinner" /> Creating…</> : '✅ Register Franchise'}
+                  </button>
                 </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={isPending}>
-                  {isPending ? <><span className="loading-spinner" /> Creating…</> : '✅ Register Franchise'}
-                </button>
-              </div>
-            </form>
+              </form>
+            )}
           </div>
         </div>
       )}

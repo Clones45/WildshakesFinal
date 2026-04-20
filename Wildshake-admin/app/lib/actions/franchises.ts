@@ -1,7 +1,6 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export async function createFranchise(formData: FormData) {
@@ -16,10 +15,9 @@ export async function createFranchise(formData: FormData) {
   }
 
   const admin   = createAdminClient()
-  const supabase = await createClient()
 
   // ── Step 1: Create the franchise record ──────────────────────────────────
-  const { data: franchise, error: franchiseError } = await supabase
+  const { data: franchise, error: franchiseError } = await admin
     .from('franchises')
     .insert({ name, owner_name: ownerName, owner_email: ownerEmail, region, status: 'active' })
     .select()
@@ -44,22 +42,25 @@ export async function createFranchise(formData: FormData) {
 
   if (authError) {
     // Roll back the franchise record if auth creation fails
-    await supabase.from('franchises').delete().eq('id', franchise.id)
+    await admin.from('franchises').delete().eq('id', franchise.id)
     return { error: `Auth error: ${authError.message}` }
   }
 
+  // Update franchise with the creator's auth_id
+  await admin.from('franchises').update({ auth_id: authData.user.id }).eq('id', franchise.id)
+
   // ── Step 3: Auto-create the first branch for this franchise ────────────
-  const { data: branch, error: branchError } = await supabase.from('branches').insert({
+  const { data: branch, error: branchError } = await admin.from('branches').insert({
     name: `${name} - Main`,
-    location: region,
+    location: region || 'Philippines',
     franchise_id: franchise.id,
-    status: 'active'
+    status: 'active',
   }).select().single()
 
   if (branchError) console.error('[createFranchise] initial branch insert failed:', branchError.message)
 
   // ── Step 4: Insert a public.users profile row linking auth → franchise ───
-  const { error: profileError } = await supabase.from('users').insert({
+  const { error: profileError } = await admin.from('users').insert({
     auth_id:     authData.user.id,
     name:        ownerName,
     email:       ownerEmail,
@@ -77,14 +78,16 @@ export async function createFranchise(formData: FormData) {
   return {
     success: true,
     franchise,
+    branchName: branch?.name,
     credentials: { email: ownerEmail, password },
   }
 }
 
 export async function updateFranchiseStatus(franchiseId: string, status: string) {
-  const supabase = await createClient()
+  // Use admin client so master_admin RLS isn't needed — this runs server-side
+  const admin = createAdminClient()
 
-  const { error } = await supabase
+  const { error } = await admin
     .from('franchises')
     .update({ status })
     .eq('id', franchiseId)

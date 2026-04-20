@@ -30,7 +30,7 @@ export default async function FranchiserTransactionsPage() {
   return (
     <FranchiserTransactionsClient
       branchName={branch?.name || ''}
-      transactions={(transactions || []) as Parameters<typeof FranchiserTransactionsClient>[0]['transactions']}
+      transactions={(transactions || []) as unknown as Parameters<typeof FranchiserTransactionsClient>[0]['transactions']}
     />
   )
 }
