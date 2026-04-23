@@ -29,7 +29,7 @@ export function POSScreen() {
         resumedHoldId, resumedHoldRef, resumedTableNumber,
     } = useCartStore()
     const { syncPending, refreshPendingCount } = useSyncStore()
-    const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder } = useHoldStore()
+    const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder, deleteHeldOrder } = useHoldStore()
 
     const { products, categories, isLoading, error: menuError, reload: reloadMenu } = useMenuItems()
     useOnlineStatus()
@@ -210,6 +210,11 @@ export function POSScreen() {
                     notes: `${discountType} discount of ₱${disc.toFixed(2)} on order ${localRef}`,
                     metadata: { discount_type: discountType, discount_amount: disc, total: tot },
                 }).catch(console.error)
+            }
+
+            // ── If this was a resumed held order, remove it from the hold queue ──
+            if (resumedHoldId) {
+                await deleteHeldOrder(resumedHoldId)
             }
 
             reset()
