@@ -54,7 +54,6 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
     const isGcashMaya = paymentMethod === 'gcash' || paymentMethod === 'maya'
     // Bank Transfer → needs 5 digits + bank selection
     const isBank = paymentMethod === 'bank_transfer'
-    const isDigital = isGcashMaya || isBank
 
     const requiredDigits = isGcashMaya ? 6 : 5
     const refValid = referenceNumber.length === requiredDigits

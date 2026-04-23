@@ -86,7 +86,7 @@ function formatDateTime(iso: string) {
 }
 
 export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
-    const { branch, user } = useAuthStore()
+    const { branch } = useAuthStore()
     const [transactions, setTransactions] = useState<TxRow[]>([])
     const [loading, setLoading] = useState(false)
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all')

@@ -26,7 +26,7 @@ export function POSScreen() {
     const { user, branch, logoutCashier, releaseDevice } = useAuthStore()
     const {
         items, discountType, discountAmount, total, reset,
-        resumedHoldId, resumedHoldRef, resumedTableNumber, bankName,
+        resumedHoldId, resumedHoldRef, resumedTableNumber,
     } = useCartStore()
     const { syncPending, refreshPendingCount } = useSyncStore()
     const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder } = useHoldStore()
