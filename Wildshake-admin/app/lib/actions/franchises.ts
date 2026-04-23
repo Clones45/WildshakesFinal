@@ -59,20 +59,9 @@ export async function createFranchise(formData: FormData) {
 
   if (branchError) console.error('[createFranchise] initial branch insert failed:', branchError.message)
 
-  // ── Step 4: Insert a public.users profile row linking auth → franchise ───
-  const { error: profileError } = await admin.from('users').insert({
-    auth_id:     authData.user.id,
-    name:        ownerName,
-    email:       ownerEmail,
-    role:        'manager',         // let them log in as manager on the POS
-    franchise_id: franchise.id,
-    branch_id:   branch?.id,        // link to their initial branch
-    pin_code:    '123456',          // default PIN for testing/initial login
-    is_active:   true,
-  })
-
-  // Non-fatal — profile row is a convenience link
-  if (profileError) console.error('[createFranchise] profile insert failed:', profileError.message)
+  // NOTE: We do NOT create a public.users profile row for the franchiser owner.
+  // The franchiser logs into the web portal via Supabase Auth (email/password).
+  // Managers and cashiers are separate staff the franchiser adds via Staff Management.
 
   revalidatePath('/franchises')
   return {
