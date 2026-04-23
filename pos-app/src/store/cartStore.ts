@@ -24,7 +24,8 @@ interface CartState {
     customDiscountAmount: number
     paymentMethod: PaymentMethod
     cashTendered: number
-    referenceNumber: string        // Last 5 digits for GCash / Maya / Bank Transfer
+    referenceNumber: string        // Last 6 digits for GCash/Maya, 5 for Bank Transfer
+    bankName: string               // Selected bank for bank_transfer (e.g. BDO, BPI)
 
     // Computed getters
     subtotal: () => number
@@ -46,6 +47,7 @@ interface CartState {
     setPaymentMethod: (method: PaymentMethod) => void
     setCashTendered: (amount: number) => void
     setReferenceNumber: (ref: string) => void
+    setBankName: (bank: string) => void
     setResumedHold: (id: string | null, ref: string | null, tableNumber?: string | null) => void
     reset: () => void
     clearCart: () => void  // Clear items only (keep discount/payment settings)
@@ -58,6 +60,7 @@ const initialState = {
     paymentMethod: 'cash' as PaymentMethod,
     cashTendered: 0,
     referenceNumber: '',
+    bankName: '',
     resumedHoldId: null as string | null,
     resumedHoldRef: null as string | null,
     resumedTableNumber: null as string | null,
@@ -105,11 +108,13 @@ export const useCartStore = create<CartState>()((set, get) => ({
     setDiscount: (type, customAmount = 0) =>
         set({ discountType: type, customDiscountAmount: customAmount }),
 
-    setPaymentMethod: (method) => set({ paymentMethod: method, referenceNumber: '' }),
+    setPaymentMethod: (method) => set({ paymentMethod: method, referenceNumber: '', bankName: '' }),
 
     setCashTendered: (amount) => set({ cashTendered: amount }),
 
     setReferenceNumber: (ref) => set({ referenceNumber: ref }),
+
+    setBankName: (bank) => set({ bankName: bank }),
 
     setResumedHold: (id, ref, tableNumber = null) => set({ resumedHoldId: id, resumedHoldRef: ref, resumedTableNumber: tableNumber }),
 

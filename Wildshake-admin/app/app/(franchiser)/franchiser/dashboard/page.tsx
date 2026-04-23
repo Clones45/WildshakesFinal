@@ -8,17 +8,17 @@ async function getFranchiserDashboardData(franchiseId: string) {
 
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
-  // Get the branch for this franchise
-  const { data: branch } = await supabase
+  // Get ALL branches for this franchise
+  const { data: branches } = await supabase
     .from('branches')
     .select('id, name, location, active_device_id')
     .eq('franchise_id', franchiseId)
-    .limit(1)
-    .single()
+    .order('name')
 
-  if (!branch) return null
+  if (!branches || branches.length === 0) return null
 
-  const branchId = branch.id
+  const branchIds = branches.map(b => b.id)
+  const branch = branches[0]  // primary branch for display purposes
 
   const [
     { data: todayTx },
@@ -27,44 +27,44 @@ async function getFranchiserDashboardData(franchiseId: string) {
     { data: topItems },
     { data: staffCount },
   ] = await Promise.all([
-    // Today's completed transactions
+    // Today's completed transactions (all branches)
     supabase
       .from('transactions')
       .select('total_amount, status, payment_method')
-      .eq('branch_id', branchId)
+      .in('branch_id', branchIds)
       .eq('status', 'completed')
       .gte('created_at', today.toISOString()),
 
-    // Last 7 days for chart
+    // Last 7 days for chart (all branches)
     supabase
       .from('transactions')
       .select('total_amount, created_at, status')
-      .eq('branch_id', branchId)
+      .in('branch_id', branchIds)
       .eq('status', 'completed')
       .gte('created_at', weekAgo.toISOString())
       .order('created_at', { ascending: true }),
 
-    // Recent transactions with cashier info
+    // Recent transactions with cashier info (all branches)
     supabase
       .from('transactions')
-      .select('id, total_amount, status, payment_method, created_at, local_ref, users(name)')
-      .eq('branch_id', branchId)
+      .select('id, total_amount, status, payment_method, created_at, local_ref, users(name), branches(name)')
+      .in('branch_id', branchIds)
       .order('created_at', { ascending: false })
-      .limit(10),
+      .limit(15),
 
-    // Top selling items via transaction_items
+    // Top selling items via transaction_items (all branches)
     supabase
       .from('transaction_items')
       .select('quantity, unit_price, subtotal, products(name, category), transactions!inner(branch_id, status, created_at)')
-      .eq('transactions.branch_id', branchId)
+      .in('transactions.branch_id', branchIds)
       .eq('transactions.status', 'completed')
       .gte('transactions.created_at', today.toISOString()),
 
-    // Active staff count
+    // Active staff count (all branches)
     supabase
       .from('users')
       .select('id', { count: 'exact' })
-      .eq('branch_id', branchId)
+      .in('branch_id', branchIds)
       .eq('is_active', true),
   ])
 
@@ -107,6 +107,7 @@ async function getFranchiserDashboardData(franchiseId: string) {
 
   return {
     branch,
+    branches,
     todayRevenue, todayOrders, weekRevenue, voidedToday,
     chartData,
     payBreakdown,
@@ -132,7 +133,7 @@ export default async function FranchiserDashboard() {
     )
   }
 
-  const { branch, todayRevenue, todayOrders, weekRevenue, voidedToday,
+  const { branch, branches, todayRevenue, todayOrders, weekRevenue, voidedToday,
           chartData, payBreakdown, topItemsList, recentTx, activeStaff } = data
 
   const maxRevenue = Math.max(...chartData.map(d => d.revenue), 1)
@@ -151,15 +152,16 @@ export default async function FranchiserDashboard() {
       {/* Page header */}
       <div className="page-header">
         <div>
-          <h1>{branch.name} — Dashboard</h1>
+          <h1>{branches.length === 1 ? branch.name : `My Franchise (${branches.length} Branches)`} — Dashboard</h1>
           <p className="page-header-subtitle">{dateNow} · {timeNow}</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          {branch.active_device_id ? (
-            <span className="badge badge-success">● POS Online</span>
-          ) : (
-            <span className="badge badge-warning">○ POS Unclaimed</span>
-          )}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {branches.map(b => (
+            <span key={b.id} className={`badge ${b.active_device_id ? 'badge-success' : 'badge-warning'}`}
+              style={{ fontSize: '0.72rem' }}>
+              {b.active_device_id ? '●' : '○'} {b.name}
+            </span>
+          ))}
         </div>
       </div>
 

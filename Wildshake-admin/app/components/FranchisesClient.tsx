@@ -117,8 +117,7 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
               <th>Franchise</th>
               <th>Owner</th>
               <th>Region</th>
-              <th>Branch</th>
-              <th>POS</th>
+              <th>Branches</th>
               <th>Status</th>
               <th>Registered</th>
               <th>Actions</th>
@@ -127,7 +126,7 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2.5rem' }}>
+                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2.5rem' }}>
                   {franchises.length === 0
                     ? 'No franchises registered yet. Add your first one!'
                     : 'No results found.'}
@@ -135,8 +134,7 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
               </tr>
             ) : (
               filtered.map(f => {
-                const mainBranch   = f.branches?.[0]
-                const hasActivePOS = f.branches?.some(b => b.active_device_id)
+                const branches = f.branches || []
                 return (
                   <tr key={f.id}>
                     <td>
@@ -146,16 +144,25 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
                     <td>{f.owner_name}</td>
                     <td>{f.region || '—'}</td>
                     <td>
-                      {mainBranch ? (
-                        <span style={{ fontSize: '0.82rem' }}>{mainBranch.name}</span>
-                      ) : (
+                      {branches.length === 0 ? (
                         <span className="badge badge-danger">⚠ No Branch</span>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          {branches.map(b => (
+                            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}>
+                              <span style={{
+                                width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                                background: b.active_device_id ? 'var(--color-success)' : '#555',
+                                display: 'inline-block',
+                              }} />
+                              <span>{b.name}</span>
+                              {b.active_device_id && (
+                                <span className="badge badge-success" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem' }}>POS</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       )}
-                    </td>
-                    <td>
-                      <span className={`badge ${hasActivePOS ? 'badge-success' : 'badge-warning'}`}>
-                        {hasActivePOS ? '● Online' : '○ Offline'}
-                      </span>
                     </td>
                     <td>
                       <span className={`badge badge-${f.status === 'active' ? 'success' : f.status === 'suspended' ? 'danger' : 'warning'}`}>

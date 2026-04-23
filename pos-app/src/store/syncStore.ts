@@ -108,6 +108,7 @@ async function pushTransaction(local: LocalTransaction) {
                 discount_amount: local.discountAmount,
                 payment_method: local.paymentMethod,
                 reference_number: local.referenceNumber ?? null,
+                bank_name: local.bankName ?? null,
                 status: local.status,
                 source: local.source,
                 local_ref: local.localRef,

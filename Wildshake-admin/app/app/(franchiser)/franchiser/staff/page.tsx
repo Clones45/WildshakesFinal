@@ -6,12 +6,15 @@ export default async function FranchiserStaffPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
 
-  const { data: branch } = await supabase
+  // Get all branches (show first branch for POS setup context)
+  const { data: branches } = await supabase
     .from('branches')
     .select('id, name')
     .eq('franchise_id', franchiseId)
-    .limit(1)
-    .single()
+    .order('name')
+
+  // Use primary branch for context; staff management is per-branch
+  const branch = branches?.[0]
 
   const { data: staff } = await supabase
     .from('users')
@@ -23,7 +26,7 @@ export default async function FranchiserStaffPage() {
   return (
     <FranchiserStaffClient
       branchId={branch?.id || ''}
-      branchName={branch?.name || ''}
+      branchName={branch?.name || 'My Branch'}
       staff={(staff || []) as Parameters<typeof FranchiserStaffClient>[0]['staff']}
     />
   )

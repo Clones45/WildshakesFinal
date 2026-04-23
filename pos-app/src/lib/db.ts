@@ -9,7 +9,8 @@ export interface LocalTransaction {
     discountType: string
     discountAmount: number
     paymentMethod: string
-    referenceNumber?: string  // Last 5 digits for GCash / Maya / Bank Transfer
+    referenceNumber?: string  // Last 6 digits for GCash/Maya, 5 for Bank Transfer
+    bankName?: string         // For bank_transfer: BDO, BPI, Metrobank, etc.
     status: string
     source: string
     tableNumber?: string      // Table number if order came from a held order

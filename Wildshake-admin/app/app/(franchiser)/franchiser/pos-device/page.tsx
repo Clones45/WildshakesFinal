@@ -6,12 +6,14 @@ export default async function FranchiserPosDevicePage() {
   const { data: { user } } = await supabase.auth.getUser()
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
 
-  const { data: branch } = await supabase
+  // Get all branches; show primary branch's POS status
+  const { data: branches } = await supabase
     .from('branches')
     .select('id, name, location, active_device_id, status')
     .eq('franchise_id', franchiseId)
-    .limit(1)
-    .single()
+    .order('name')
+
+  const branch = branches?.[0]
 
   // Get last transaction to infer last POS activity
   const { data: lastTx } = await supabase

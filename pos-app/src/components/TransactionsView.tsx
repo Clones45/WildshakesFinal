@@ -16,12 +16,14 @@ interface TransactionsViewProps {
 
 type PaymentFilter = 'all' | 'cash' | 'gcash' | 'maya' | 'bank_transfer'
 type StatusFilter = 'all' | 'completed' | 'voided' | 'discounted'
+type DateFilter = 'today' | 'yesterday' | '7days' | '30days'
 
 interface TxRow {
     id: string
     total_amount: number
     payment_method: string
     reference_number: string | null
+    bank_name: string | null
     status: string
     discount_type: string
     discount_amount: number
@@ -61,6 +63,13 @@ const STATUS_FILTER_OPTIONS: { id: StatusFilter; label: string }[] = [
     { id: 'discounted', label: 'Discounted' },
 ]
 
+const DATE_FILTER_OPTIONS: { id: DateFilter; label: string }[] = [
+    { id: 'today', label: 'Today' },
+    { id: 'yesterday', label: 'Yesterday' },
+    { id: '7days', label: 'Last 7 Days' },
+    { id: '30days', label: 'Last 30 Days' },
+]
+
 const PAYMENT_FILTER_OPTIONS: { id: PaymentFilter; label: string }[] = [
     { id: 'all', label: 'All Methods' },
     { id: 'cash', label: 'Cash' },
@@ -77,24 +86,39 @@ function formatDateTime(iso: string) {
 }
 
 export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
-    const { branch } = useAuthStore()
+    const { branch, user } = useAuthStore()
     const [transactions, setTransactions] = useState<TxRow[]>([])
     const [loading, setLoading] = useState(false)
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+    const [dateFilter, setDateFilter] = useState<DateFilter>('today')
     const [totals, setTotals] = useState({ count: 0, revenue: 0 })
 
     const fetchTransactions = useCallback(async () => {
         if (!branch?.id) return
         setLoading(true)
         try {
+            // Calculate date range from filter
+            const now = new Date()
+            let fromDate: Date
+            if (dateFilter === 'today') {
+                fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+            } else if (dateFilter === 'yesterday') {
+                fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+            } else if (dateFilter === '7days') {
+                fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+            } else {
+                fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+            }
+
             let query = supabase
                 .from('transactions')
-                .select('id, total_amount, payment_method, reference_number, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, created_at')
+                .select('id, total_amount, payment_method, reference_number, bank_name, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, created_at')
                 .eq('branch_id', branch.id)
                 .neq('status', 'pending')         // exclude held orders
+                .gte('created_at', fromDate.toISOString())
                 .order('created_at', { ascending: false })
-                .limit(200)
+                .limit(500)
 
             if (paymentFilter !== 'all') {
                 query = query.eq('payment_method', paymentFilter)
@@ -157,7 +181,7 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
         } finally {
             setLoading(false)
         }
-    }, [branch?.id, paymentFilter, statusFilter])
+    }, [branch?.id, paymentFilter, statusFilter, dateFilter])
 
     useEffect(() => {
         if (isOpen) fetchTransactions()
@@ -226,24 +250,44 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                         </div>
 
                         {/* Filters */}
-                        <div className="px-4 py-3 border-b border-surface-700 space-y-2 flex-shrink-0">
-                            <div className="flex items-center gap-2">
-                                <Filter size={12} className="text-gray-500" />
-                                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Payment Method</p>
+                        <div className="px-4 py-3 border-b border-surface-700 space-y-2.5 flex-shrink-0">
+                            {/* Date filter */}
+                            <div>
+                                <div className="flex items-center gap-2 mb-1.5">
+                                    <Filter size={12} className="text-gray-500" />
+                                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Date Range</p>
+                                </div>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    {DATE_FILTER_OPTIONS.map((opt) => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => setDateFilter(opt.id)}
+                                            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${dateFilter === opt.id
+                                                ? 'bg-teal-500 border-teal-500 text-white'
+                                                : 'border-surface-500 text-gray-400 hover:border-surface-400'
+                                                }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                            <div className="flex gap-1.5 flex-wrap">
-                                {PAYMENT_FILTER_OPTIONS.map((opt) => (
-                                    <button
-                                        key={opt.id}
-                                        onClick={() => setPaymentFilter(opt.id)}
-                                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${paymentFilter === opt.id
-                                            ? 'bg-brand-500 border-brand-500 text-white'
-                                            : 'border-surface-500 text-gray-400 hover:border-surface-400'
-                                            }`}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
+                            <div>
+                                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1.5">Payment Method</p>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    {PAYMENT_FILTER_OPTIONS.map((opt) => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => setPaymentFilter(opt.id)}
+                                            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${paymentFilter === opt.id
+                                                ? 'bg-brand-500 border-brand-500 text-white'
+                                                : 'border-surface-500 text-gray-400 hover:border-surface-400'
+                                                }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                             <div className="flex gap-1.5 flex-wrap">
                                 {STATUS_FILTER_OPTIONS.map((opt) => (

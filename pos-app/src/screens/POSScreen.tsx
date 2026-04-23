@@ -26,7 +26,7 @@ export function POSScreen() {
     const { user, branch, logoutCashier, releaseDevice } = useAuthStore()
     const {
         items, discountType, discountAmount, total, reset,
-        resumedHoldId, resumedHoldRef, resumedTableNumber,
+        resumedHoldId, resumedHoldRef, resumedTableNumber, bankName,
     } = useCartStore()
     const { syncPending, refreshPendingCount } = useSyncStore()
     const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder } = useHoldStore()
@@ -147,20 +147,20 @@ export function POSScreen() {
     }
 
     // ─── Checkout logic ──────────────────────────────────────────────────────────
-    const handleCheckout = async (method: string, tendered: number, refNumber: string) => {
+    const handleCheckout = async (method: string, tendered: number, refNumber: string, bank: string) => {
         if (items.length === 0) return
         setIsProcessing(true)
 
         if (discountType === 'manager' && user?.role === 'cashier') {
             setIsProcessing(false)
-            requireManager(() => processCheckout(method, tendered, refNumber))
+            requireManager(() => processCheckout(method, tendered, refNumber, bank))
             return
         }
 
-        await processCheckout(method, tendered, refNumber)
+        await processCheckout(method, tendered, refNumber, bank)
     }
 
-    const processCheckout = async (method: string, _tendered: number, refNumber: string) => {
+    const processCheckout = async (method: string, _tendered: number, refNumber: string, bank: string) => {
         setIsProcessing(true)
         try {
             const localRef = uuidv4()
@@ -177,6 +177,7 @@ export function POSScreen() {
                 discountAmount: disc,
                 paymentMethod: method,
                 referenceNumber: refNumber || undefined,
+                bankName: bank || undefined,
                 status: 'completed',
                 source: 'pos',
                 tableNumber: resumedTableNumber ?? undefined,

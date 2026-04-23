@@ -14,6 +14,7 @@ interface Tx {
   id: string
   local_ref: string | null
   reference_number: string | null
+  bank_name: string | null
   total_amount: number
   discount_type: string | null
   discount_amount: number
@@ -23,6 +24,7 @@ interface Tx {
   void_reason: string | null
   table_number: string | null
   users: { name: string } | null
+  branches: { name: string } | null
   transaction_items: TxItem[]
 }
 
@@ -167,7 +169,12 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                         {new Date(tx.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </td>
-                    <td style={{ fontSize: '0.82rem' }}>{tx.users?.name || '—'}</td>
+                    <td style={{ fontSize: '0.82rem' }}>
+                      {tx.users?.name || '—'}
+                      {tx.branches && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{tx.branches.name}</div>
+                      )}
+                    </td>
                     <td>
                       <span style={{ fontWeight: 700, color: tx.status === 'voided' ? 'var(--color-danger-light)' : 'var(--color-accent)' }}>
                         ₱{Number(tx.total_amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
@@ -210,6 +217,16 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                         {tx.table_number && (
                           <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
                             🪑 Table: {tx.table_number}
+                          </div>
+                        )}
+                        {tx.bank_name && (
+                          <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                            🏦 Bank: {tx.bank_name} {tx.reference_number && `· Ref …${tx.reference_number}`}
+                          </div>
+                        )}
+                        {!tx.bank_name && tx.reference_number && (
+                          <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                            🔢 Ref …{tx.reference_number}
                           </div>
                         )}
                         <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>

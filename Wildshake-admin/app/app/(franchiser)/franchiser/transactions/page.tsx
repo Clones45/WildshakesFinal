@@ -6,30 +6,38 @@ export default async function FranchiserTransactionsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
 
-  const { data: branch } = await supabase
+  // Get ALL branches for this franchise
+  const { data: branches } = await supabase
     .from('branches')
     .select('id, name')
     .eq('franchise_id', franchiseId)
-    .limit(1)
-    .single()
+    .order('name')
 
-  // Last 100 transactions with items
+  const branchIds = (branches || []).map(b => b.id)
+  const branchName = branches && branches.length === 1
+    ? branches[0].name
+    : branches && branches.length > 1
+      ? `${branches.length} branches`
+      : 'Branch'
+
+  // Last 200 transactions across all branches
   const { data: transactions } = await supabase
     .from('transactions')
     .select(`
       id, local_ref, total_amount, discount_type, discount_amount,
-      payment_method, status, reference_number, table_number,
+      payment_method, status, reference_number, bank_name, table_number,
       created_at, void_reason,
       users(name),
+      branches(name),
       transaction_items(quantity, unit_price, subtotal, notes, products(name, category))
     `)
-    .eq('branch_id', branch?.id || '')
+    .in('branch_id', branchIds.length > 0 ? branchIds : ['00000000-0000-0000-0000-000000000000'])
     .order('created_at', { ascending: false })
-    .limit(100)
+    .limit(200)
 
   return (
     <FranchiserTransactionsClient
-      branchName={branch?.name || ''}
+      branchName={branchName}
       transactions={(transactions || []) as unknown as Parameters<typeof FranchiserTransactionsClient>[0]['transactions']}
     />
   )

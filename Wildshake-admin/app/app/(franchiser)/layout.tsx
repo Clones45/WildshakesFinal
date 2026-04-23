@@ -20,12 +20,14 @@ export default async function FranchiserLayout({ children }: { children: React.R
     .eq('id', franchiseId)
     .single()
 
-  const { data: branch } = await supabase
+  const { data: branchRows } = await supabase
     .from('branches')
     .select('id, name, location, active_device_id, status')
     .eq('franchise_id', franchiseId)
-    .limit(1)
-    .single()
+    .order('name')
+    .limit(5)
+
+  const branch = branchRows?.[0] ?? null
 
   return (
     <div className="dashboard-layout">

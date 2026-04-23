@@ -1,11 +1,11 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCartStore } from '../store/cartStore'
-import { X, Banknote, Smartphone, QrCode, Landmark, Check, AlertCircle } from 'lucide-react'
+import { X, Banknote, Smartphone, QrCode, Landmark, Check, AlertCircle, ChevronDown } from 'lucide-react'
 
 interface CheckoutModalProps {
     isOpen: boolean
     onClose: () => void
-    onConfirm: (method: string, tendered: number, referenceNumber: string) => Promise<void>
+    onConfirm: (method: string, tendered: number, referenceNumber: string, bankName: string) => Promise<void>
     isProcessing: boolean
 }
 
@@ -16,31 +16,25 @@ const PAYMENT_METHODS = [
     { id: 'bank_transfer', label: 'Bank Transfer', icon: Landmark,    color: 'text-amber-400',  bg: 'bg-amber-500/10 border-amber-500/30' },
 ]
 
-const DIGITAL_METHODS = ['gcash', 'maya', 'bank_transfer']
+const BANK_OPTIONS = [
+    'BDO', 'BPI', 'Metrobank', 'Landbank', 'UnionBank',
+    'Security Bank', 'PNB', 'RCBC', 'Other',
+]
 
 const getSmartQuickAmounts = (total: number) => {
     if (total <= 0) return [50, 100, 200, 500, 1000]
     const amounts = new Set<number>()
-    
     const roundUp10 = Math.ceil(total / 10) * 10
     if (roundUp10 > total) amounts.add(roundUp10)
-    
     const roundUp50 = Math.ceil(total / 50) * 50
     if (roundUp50 > total) amounts.add(roundUp50)
-    
     const roundUp100 = Math.ceil(total / 100) * 100
     if (roundUp100 > total) amounts.add(roundUp100)
-    
     const roundUp500 = Math.ceil(total / 500) * 500
     if (roundUp500 > total) amounts.add(roundUp500)
-    
     const roundUp1000 = Math.ceil(total / 1000) * 1000
     if (roundUp1000 > total) amounts.add(roundUp1000)
-    
-    ;[50, 100, 200, 500, 1000].forEach(b => {
-        if (b > total) amounts.add(b)
-    })
-
+    ;[50, 100, 200, 500, 1000].forEach(b => { if (b > total) amounts.add(b) })
     return Array.from(amounts).sort((a, b) => a - b).slice(0, 6)
 }
 
@@ -49,22 +43,33 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
         paymentMethod, setPaymentMethod,
         cashTendered, setCashTendered,
         referenceNumber, setReferenceNumber,
+        bankName, setBankName,
         total, change, items,
     } = useCartStore()
 
     const tot = total()
     const chg = change()
-    const isDigital = DIGITAL_METHODS.includes(paymentMethod)
-    const refValid = referenceNumber.length === 5
+
+    // GCash / Maya → need 6 digits
+    const isGcashMaya = paymentMethod === 'gcash' || paymentMethod === 'maya'
+    // Bank Transfer → needs 5 digits + bank selection
+    const isBank = paymentMethod === 'bank_transfer'
+    const isDigital = isGcashMaya || isBank
+
+    const requiredDigits = isGcashMaya ? 6 : 5
+    const refValid = referenceNumber.length === requiredDigits
+    const bankValid = isBank ? bankName.length > 0 : true
 
     const handleQuickAmount = (amount: number) => {
         setCashTendered(Math.ceil(tot / amount) * amount)
     }
-
     const handleExactAmount = () => setCashTendered(tot)
 
-    const canConfirm = !isProcessing &&
-        (paymentMethod === 'cash' ? cashTendered >= tot : refValid)
+    const canConfirm = !isProcessing && (
+        paymentMethod === 'cash'
+            ? cashTendered >= tot
+            : refValid && bankValid
+    )
 
     return (
         <AnimatePresence>
@@ -100,7 +105,7 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                 <p className="text-5xl font-extrabold text-teal-400">₱{tot.toFixed(2)}</p>
                             </div>
 
-                            {/* Payment method — 2×2 grid */}
+                            {/* Payment method */}
                             <div>
                                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Payment Method</p>
                                 <div className="grid grid-cols-2 gap-2">
@@ -170,10 +175,10 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                     </motion.div>
                                 )}
 
-                                {/* Reference Number — shown for GCash / Maya / Bank Transfer */}
-                                {isDigital && (
+                                {/* GCash / Maya — 6 last digits */}
+                                {isGcashMaya && (
                                     <motion.div
-                                        key="digital"
+                                        key="gcash-maya"
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}
                                         exit={{ opacity: 0, height: 0 }}
@@ -182,24 +187,22 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
                                             Reference Number <span className="text-red-400">*</span>
                                         </p>
-                                        <p className="text-xs text-gray-500">Enter the last 5 digits of the transaction reference</p>
+                                        <p className="text-xs text-gray-500">
+                                            Enter the <span className="text-white font-bold">last 6 digits</span> of the {paymentMethod === 'gcash' ? 'GCash' : 'Maya'} reference number
+                                        </p>
                                         <div className="relative">
                                             <input
                                                 type="text"
                                                 autoFocus
                                                 inputMode="numeric"
-                                                maxLength={5}
+                                                maxLength={6}
                                                 value={referenceNumber}
-                                                onChange={(e) => setReferenceNumber(e.target.value.replace(/\D/g, '').slice(0, 5))}
-                                                placeholder="e.g. 12345"
+                                                onChange={(e) => setReferenceNumber(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                placeholder="e.g. 123456"
                                                 className={`input-field text-2xl font-bold tracking-[0.35em] w-full text-center transition-all ${refValid ? 'border-green-500/50 bg-green-500/5' : ''}`}
                                             />
                                             {refValid && (
-                                                <motion.div
-                                                    initial={{ scale: 0 }}
-                                                    animate={{ scale: 1 }}
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2"
-                                                >
+                                                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute right-3 top-1/2 -translate-y-1/2">
                                                     <Check size={18} className="text-green-400" />
                                                 </motion.div>
                                             )}
@@ -207,11 +210,83 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                         {!refValid && referenceNumber.length > 0 && (
                                             <div className="flex items-center gap-1.5 text-amber-400 text-xs">
                                                 <AlertCircle size={12} />
-                                                <span>{5 - referenceNumber.length} more digit{5 - referenceNumber.length !== 1 ? 's' : ''} required</span>
+                                                <span>{6 - referenceNumber.length} more digit{6 - referenceNumber.length !== 1 ? 's' : ''} required</span>
                                             </div>
                                         )}
-                                        {!refValid && referenceNumber.length === 0 && (
-                                            <p className="text-xs text-gray-600">Required for {PAYMENT_METHODS.find(m => m.id === paymentMethod)?.label} payments</p>
+                                    </motion.div>
+                                )}
+
+                                {/* Bank Transfer — bank name dropdown + 5 last digits */}
+                                {isBank && (
+                                    <motion.div
+                                        key="bank"
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        className="space-y-3 overflow-hidden"
+                                    >
+                                        {/* Bank selector */}
+                                        <div>
+                                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
+                                                Select Bank <span className="text-red-400">*</span>
+                                            </p>
+                                            <div className="relative">
+                                                <select
+                                                    value={bankName}
+                                                    onChange={(e) => setBankName(e.target.value)}
+                                                    className={`input-field w-full appearance-none pr-8 transition-all ${bankName ? 'border-amber-500/40 bg-amber-500/5 text-white' : 'text-gray-500'}`}
+                                                >
+                                                    <option value="">— Select bank —</option>
+                                                    {BANK_OPTIONS.map(b => (
+                                                        <option key={b} value={b}>{b}</option>
+                                                    ))}
+                                                </select>
+                                                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                                            </div>
+                                        </div>
+
+                                        {/* Reference number */}
+                                        <div>
+                                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                                                Reference Number <span className="text-red-400">*</span>
+                                            </p>
+                                            <p className="text-xs text-gray-500 mb-2">
+                                                Enter the <span className="text-white font-bold">last 5 digits</span> of the bank transfer reference
+                                            </p>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    maxLength={5}
+                                                    value={referenceNumber}
+                                                    onChange={(e) => setReferenceNumber(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                                                    placeholder="e.g. 12345"
+                                                    className={`input-field text-2xl font-bold tracking-[0.35em] w-full text-center transition-all ${refValid ? 'border-green-500/50 bg-green-500/5' : ''}`}
+                                                />
+                                                {refValid && (
+                                                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                        <Check size={18} className="text-green-400" />
+                                                    </motion.div>
+                                                )}
+                                            </div>
+                                            {!refValid && referenceNumber.length > 0 && (
+                                                <div className="flex items-center gap-1.5 text-amber-400 text-xs mt-1">
+                                                    <AlertCircle size={12} />
+                                                    <span>{5 - referenceNumber.length} more digit{5 - referenceNumber.length !== 1 ? 's' : ''} required</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Summary pill when both valid */}
+                                        {refValid && bankName && (
+                                            <motion.div
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                className="flex items-center gap-2 py-2 px-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm font-semibold"
+                                            >
+                                                <Check size={14} />
+                                                {bankName} — Ref …{referenceNumber}
+                                            </motion.div>
                                         )}
                                     </motion.div>
                                 )}
@@ -221,7 +296,7 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                         {/* Confirm button */}
                         <div className="px-6 pb-6">
                             <button
-                                onClick={() => onConfirm(paymentMethod, cashTendered, referenceNumber)}
+                                onClick={() => onConfirm(paymentMethod, cashTendered, referenceNumber, bankName)}
                                 disabled={!canConfirm}
                                 className="w-full btn-teal py-4 text-lg flex items-center justify-center gap-2 disabled:opacity-40"
                             >
