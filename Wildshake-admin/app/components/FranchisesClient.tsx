@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import Link from 'next/link'
 import { createFranchise, updateFranchiseStatus } from '@/lib/actions/franchises'
 
 interface Branch {
@@ -138,8 +139,10 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
                 return (
                   <tr key={f.id}>
                     <td>
-                      <div style={{ fontWeight: 700 }}>{f.name}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{f.owner_email}</div>
+                      <Link href={`/dashboard/franchises/${f.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--color-accent)', cursor: 'pointer' }}>{f.name}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{f.owner_email}</div>
+                      </Link>
                     </td>
                     <td>{f.owner_name}</td>
                     <td>{f.region || '—'}</td>
