@@ -14,6 +14,7 @@ export function LoginScreen() {
     const [tab, setTab] = useState<LoginTab>('qr')
     const [pin, setPin] = useState<string>('')
     const [shake, setShake] = useState(false)
+    const [loginFailed, setLoginFailed] = useState(false)
 
     useEffect(() => {
         syncPending()
@@ -47,6 +48,9 @@ export function LoginScreen() {
         if (!ok) {
             setShake(true)
             setTimeout(() => setShake(false), 600)
+            // Signal scanner to restart (loginFailed pulses true→false)
+            setLoginFailed(true)
+            setTimeout(() => setLoginFailed(false), 100)
         }
     }
 
@@ -156,7 +160,7 @@ export function LoginScreen() {
                             transition={{ duration: 0.2 }}
                         >
                             <motion.div animate={shake ? { x: [-8, 8, -6, 6, -3, 3, 0] } : {}} transition={{ duration: 0.4 }}>
-                                <QRScanner onScan={handleQRScan} isLoading={isLoading} />
+                                <QRScanner onScan={handleQRScan} isLoading={isLoading} loginFailed={loginFailed} />
                             </motion.div>
                         </motion.div>
                     )}
