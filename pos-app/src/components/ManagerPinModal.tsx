@@ -15,7 +15,7 @@ interface ManagerPinModalProps {
 }
 
 export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPinModalProps) {
-    const { branch: _branch } = useAuthStore() // kept for potential future branch-scoped lookups
+    const { branch } = useAuthStore() // used to scope manager lookup to this branch
     const [tab, setTab] = useState<AuthTab>('pin')
     const [pin, setPin] = useState('')
     const [error, setError] = useState('')
@@ -83,6 +83,7 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
                 .select('id')
                 .in('role', ['manager', 'investor'])
                 .eq('is_active', true)
+                .eq('branch_id', branch?.id ?? '')  // ✅ Only accept managers from THIS branch
                 .limit(1)
 
             if (filter.pin_code)        q = q.eq('pin_code', filter.pin_code)
@@ -98,7 +99,7 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
         try {
             const { db } = await import('../lib/db')
             const all = await db.users
-                .filter(u => u.is_active && (u.role === 'manager' || u.role === 'investor'))
+                .filter(u => u.is_active && (u.role === 'manager' || u.role === 'investor') && u.branch_id === (branch?.id ?? ''))
                 .toArray()
 
             const match = all.find(u =>

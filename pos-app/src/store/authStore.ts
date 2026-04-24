@@ -197,7 +197,7 @@ export const useAuthStore = create<AuthState>()(
             },
 
             // ── Phase 2b: QR login ──────────────────────────────────────────
-            loginWithQR: async (token: string, _branchId: string) => {
+            loginWithQR: async (token: string, branchId: string) => {
                 set({ isLoading: true, error: null })
                 try {
                     let userProfile: UserProfile | null = null
@@ -208,7 +208,8 @@ export const useAuthStore = create<AuthState>()(
                         const { data: users, error } = await supabase
                             .from('users')
                             .select('*')
-                            .eq('qr_access_token', token)  // globally unique — no branch_id filter needed
+                            .eq('qr_access_token', token)
+                            .eq('branch_id', branchId)  // ✅ Only accept QR from THIS branch
                             .eq('is_active', true)
                             .limit(1)
 
@@ -225,7 +226,7 @@ export const useAuthStore = create<AuthState>()(
                     if (!userProfile) {
                         const { db } = await import('../lib/db')
                         const cachedUsers = await db.users
-                            .filter(u => u.qr_access_token === token && u.is_active)
+                            .filter(u => u.qr_access_token === token && u.is_active && u.branch_id === branchId)
                             .toArray()
                         console.log('[QR] Dexie fallback result:', cachedUsers.length)
 
