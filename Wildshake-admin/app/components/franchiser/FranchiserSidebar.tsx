@@ -42,7 +42,10 @@ export default function FranchiserSidebar({
     <aside className="sidebar">
       {/* Logo */}
       <div className="sidebar-logo">
-        <span className="sidebar-logo-text">🌿 Wildshakes</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+          <img src="/logo.png" alt="Wildshakes" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
+          <span className="sidebar-logo-text">Wildshakes</span>
+        </div>
         <span className="sidebar-logo-sub">Franchiser Portal</span>
         <div className="sidebar-badge" style={{
           background: 'rgba(74, 124, 89, 0.15)',

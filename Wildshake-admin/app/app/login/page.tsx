@@ -36,10 +36,10 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <div className="login-card">
-        <div className="login-logo">
-          <div className="login-logo-icon">🌿</div>
-          <h1>Wildshakes</h1>
-          <p>Master Admin Portal — Restricted Access</p>
+        <div className="login-logo" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+          <img src="/logo.png" alt="Wildshakes Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Wildshakes</h1>
+          <p style={{ color: 'var(--color-text-dim)', fontSize: '0.875rem' }}>Master Admin Portal — Restricted Access</p>
         </div>
 
         {error && (
