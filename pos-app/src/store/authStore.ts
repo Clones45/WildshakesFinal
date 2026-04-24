@@ -197,7 +197,7 @@ export const useAuthStore = create<AuthState>()(
             },
 
             // ── Phase 2b: QR login ──────────────────────────────────────────
-            loginWithQR: async (token: string, branchId: string) => {
+            loginWithQR: async (token: string, _branchId: string) => {
                 set({ isLoading: true, error: null })
                 try {
                     let userProfile: UserProfile | null = null
