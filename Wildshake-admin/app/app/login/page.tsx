@@ -36,7 +36,9 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <div className="login-split">
-
+        <div className="login-image-side">
+          <img src="/CompanyProfile.jpg" alt="Wildshakes Profile" className="login-cover-image" />
+        </div>
         <div className="login-form-side">
           <div className="login-card">
             <div className="login-logo" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
