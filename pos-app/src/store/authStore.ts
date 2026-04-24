@@ -202,30 +202,31 @@ export const useAuthStore = create<AuthState>()(
                 try {
                     let userProfile: UserProfile | null = null
 
-                    if (navigator.onLine) {
-                        try {
-                            const { data: users, error } = await supabase
-                                .from('users')
-                                .select('*')
-                                .eq('branch_id', branchId)
-                                .eq('qr_access_token', token)
-                                .eq('is_active', true)
-                                .limit(1)
+                    // Always try Supabase first — navigator.onLine is unreliable on POS tablets
+                    try {
+                        const { data: users, error } = await supabase
+                            .from('users')
+                            .select('*')
+                            .eq('branch_id', branchId)
+                            .eq('qr_access_token', token)
+                            .eq('is_active', true)
+                            .limit(1)
 
-                            if (!error && users && users.length > 0) {
-                                userProfile = users[0] as UserProfile
-                            }
-                        } catch {
-                            // fallback to offline
+                        if (!error && users && users.length > 0) {
+                            userProfile = users[0] as UserProfile
                         }
+                    } catch {
+                        // Network failure — fall through to Dexie cache
                     }
 
-                    // Offline fallback via Dexie
+                    // Offline fallback via Dexie (only if Supabase unreachable)
                     if (!userProfile) {
                         const { db } = await import('../lib/db')
                         const cachedUsers = await db.users
-                            .where({ branch_id: branchId, qr_access_token: token })
+                            .where('branch_id').equals(branchId)
+                            .filter(u => u.qr_access_token === token && u.is_active)
                             .toArray()
+
                         if (cachedUsers.length > 0) {
                             const c = cachedUsers[0]
                             userProfile = {
