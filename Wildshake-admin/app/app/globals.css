@@ -824,13 +824,14 @@ tbody td {
   display: flex;
   background: var(--color-bg);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .login-split {
   display: flex;
   width: 100%;
-  height: 100vh;
+  min-height: 100vh;
 }
 
 .login-image-side {
