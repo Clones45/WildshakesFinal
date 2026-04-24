@@ -168,6 +168,7 @@ export const useAuthStore = create<AuthState>()(
                                 is_active: c.is_active,
                                 auth_id: null,
                                 pin_code: null,
+                                qr_access_token: null,
                             }
                             
                             // Re-use current branch state if we are offline
