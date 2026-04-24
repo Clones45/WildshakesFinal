@@ -8,9 +8,13 @@ import { useAuthStore } from '../store/authStore'
  * Applies per-branch availability overrides from `branch_menu_availability`.
  * Falls back to Dexie offline cache if Supabase is unreachable.
  *
+ * Realtime: automatically refreshes when:
+ *  - Franchiser marks items out of stock (branch_menu_availability changes)
+ *  - Master admin updates the products table
+ *
  * Rules:
  *  - Global `products.is_available = false`  → hidden everywhere (master admin only)
- *  - `branch_menu_availability.is_available = false` → hidden at this branch only (franchisee control)
+ *  - `branch_menu_availability.is_available = false` → hidden at this branch only
  *  - No row in branch_menu_availability → product is available at this branch
  */
 export function useMenuItems() {
@@ -22,6 +26,36 @@ export function useMenuItems() {
 
     useEffect(() => {
         loadItems()
+
+        // ── Realtime: auto-refresh on any availability change ────────────────
+        const channel = supabase
+            .channel(`menu-updates-${branch?.id ?? 'global'}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'branch_menu_availability',
+                    filter: branch?.id ? `branch_id=eq.${branch.id}` : undefined,
+                },
+                () => {
+                    console.log('[useMenuItems] Branch availability changed — refreshing menu')
+                    loadItems()
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'products' },
+                () => {
+                    console.log('[useMenuItems] Products table changed — refreshing menu')
+                    loadItems()
+                }
+            )
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
     }, [branch?.id])
 
     async function loadItems() {
