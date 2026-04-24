@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import FranchiseDetailClient from '@/components/admin/FranchiseDetailClient'
@@ -12,7 +12,7 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
   const { id } = await params
   const { tab = 'dashboard' } = await searchParams
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   // Fetch franchise info
   const { data: franchise } = await supabase
