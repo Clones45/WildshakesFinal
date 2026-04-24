@@ -31,7 +31,6 @@ export function QRScanner({ onScan, isLoading }: QRScannerProps) {
                     qrbox: { width: 250, height: 250 },
                     aspectRatio: 1.0,
                     disableFlip: false,
-                    experimentalFeatures: { useBarCodeDetectorIfSupported: false },
                 },
                 (decodedText) => {
                     if (hasScanned.current || isLoading) return
