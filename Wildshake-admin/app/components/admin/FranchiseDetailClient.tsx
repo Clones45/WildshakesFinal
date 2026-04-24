@@ -18,11 +18,13 @@ interface Transaction {
 }
 interface ChartPoint { label: string; revenue: number; isToday: boolean }
 interface TopItem { name: string; category: string; qty: number; revenue: number }
+interface StockProduct { id: string; name: string; category: string; price: number; image_url: string | null }
+interface StockOverride { product_id: string; is_available: boolean; branch_id: string }
 
 interface Props {
   franchise: { id: string; name: string; owner_name: string; owner_email: string; region: string | null; status: string; created_at: string }
   branches: Branch[]
-  activeTab: 'dashboard' | 'sales' | 'transactions' | 'staff'
+  activeTab: 'dashboard' | 'sales' | 'transactions' | 'staff' | 'stock'
   todayRevenue: number; todayOrders: number
   chartData: ChartPoint[]
   payBreakdown: Record<string, number>
@@ -30,13 +32,16 @@ interface Props {
   salesTransactions: SalesTx[]
   transactions: Transaction[]
   staff: StaffMember[]
+  allProducts: StockProduct[]
+  stockOverrides: StockOverride[]
 }
 
 const TABS = [
-  { id: 'dashboard', label: '📊 Dashboard' },
-  { id: 'sales',     label: '📈 Sales' },
+  { id: 'dashboard',    label: '📊 Dashboard' },
+  { id: 'sales',        label: '📈 Sales' },
   { id: 'transactions', label: '🧾 Transactions' },
-  { id: 'staff',     label: '👥 Staff' },
+  { id: 'staff',        label: '👥 Staff' },
+  { id: 'stock',        label: '🍹 Stock' },
 ] as const
 
 const PAY_LABELS: Record<string, string> = { cash: '💵 Cash', gcash: '📱 GCash', maya: '🟣 Maya', bank_transfer: '🏦 Bank', other: '📎 Other' }
@@ -45,12 +50,15 @@ export default function FranchiseDetailClient({
   franchise, branches, activeTab,
   todayRevenue, todayOrders, chartData, payBreakdown, topItemsList,
   salesTransactions, transactions, staff,
+  allProducts, stockOverrides,
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const [tab, setTab] = useState(activeTab)
   const [txExpanded, setTxExpanded] = useState<string | null>(null)
   const [salesPeriod, setSalesPeriod] = useState('30')
+  const [stockSearch, setStockSearch] = useState('')
+  const [stockFilter, setStockFilter] = useState<'all' | 'available' | 'out'>('all')
 
   const changeTab = (t: typeof tab) => {
     setTab(t)
@@ -307,6 +315,103 @@ export default function FranchiseDetailClient({
           </table>
         </div>
       )}
+      {/* ── STOCK TAB ── */}
+      {tab === 'stock' && (() => {
+        const outOfStockIds = new Set(stockOverrides.map(o => o.product_id))
+        const filtered = allProducts.filter(p => {
+          const matchSearch = p.name.toLowerCase().includes(stockSearch.toLowerCase()) ||
+                              p.category.toLowerCase().includes(stockSearch.toLowerCase())
+          const isOut = outOfStockIds.has(p.id)
+          const matchFilter = stockFilter === 'all' ? true : stockFilter === 'out' ? isOut : !isOut
+          return matchSearch && matchFilter
+        })
+        const outCount = allProducts.filter(p => outOfStockIds.has(p.id)).length
+
+        return (
+          <div>
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+              {[
+                { label: 'Total Items', value: allProducts.length, color: 'var(--color-text)' },
+                { label: 'Available', value: allProducts.length - outCount, color: '#22c55e' },
+                { label: 'Out of Stock', value: outCount, color: '#ef4444' },
+              ].map(s => (
+                <div key={s.label} className="stat-card" style={{ minWidth: 120, padding: '0.75rem 1.25rem' }}>
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</p>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color }}>{s.value}</p>
+                </div>
+              ))}
+              <div style={{ marginLeft: 'auto', alignSelf: 'center', padding: '0.4rem 0.75rem', background: 'rgba(74,124,89,0.08)', borderRadius: 8, fontSize: '0.75rem', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
+                🔒 View only — franchisee controls stock
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                placeholder="Search items…"
+                value={stockSearch}
+                onChange={e => setStockSearch(e.target.value)}
+                style={{ flex: '1 1 200px', padding: '0.5rem 0.875rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem' }}
+              />
+              <div style={{ display: 'flex', gap: '0.375rem' }}>
+                {(['all', 'available', 'out'] as const).map(f => (
+                  <button key={f} onClick={() => setStockFilter(f)} style={{
+                    padding: '0.5rem 0.875rem', borderRadius: 'var(--radius-md)', border: '1px solid',
+                    borderColor: stockFilter === f ? 'var(--color-primary)' : 'var(--color-border)',
+                    background: stockFilter === f ? 'rgba(74,124,89,0.12)' : 'var(--color-surface)',
+                    color: stockFilter === f ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
+                    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                  }}>
+                    {f === 'all' ? 'All' : f === 'available' ? '✓ Available' : '✗ Out of Stock'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Product table */}
+            <div className="table-wrapper">
+              <div className="table-header">
+                <p className="table-title">Menu Items</p>
+                <span className="badge badge-muted">{filtered.length} of {allProducts.length} shown</span>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Category</th>
+                    <th>Price</th>
+                    <th>Status at Branch</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 ? (
+                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2rem' }}>No items match your filters.</td></tr>
+                  ) : filtered.map(p => {
+                    const isOut = outOfStockIds.has(p.id)
+                    return (
+                      <tr key={p.id} style={{ opacity: isOut ? 0.65 : 1 }}>
+                        <td>
+                          <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</div>
+                        </td>
+                        <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{p.category}</td>
+                        <td style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-accent)' }}>₱{Number(p.price).toFixed(0)}</td>
+                        <td>
+                          {isOut
+                            ? <span className="badge badge-danger">✗ Out of Stock</span>
+                            : <span className="badge badge-success">✓ Available</span>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

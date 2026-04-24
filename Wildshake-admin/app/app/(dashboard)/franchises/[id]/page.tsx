@@ -93,6 +93,18 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
       .gte('transactions.created_at', thirtyDaysAgo),
   ])
 
+  // Stock: all globally available products + this franchise's branch overrides
+  const [{ data: allProducts }, { data: stockOverrides }] = await Promise.all([
+    supabase.from('products')
+      .select('id, name, category, price, image_url')
+      .eq('is_available', true)
+      .order('category').order('name'),
+    supabase.from('branch_menu_availability')
+      .select('product_id, is_available, branch_id')
+      .in('branch_id', safeBranchIds)
+      .eq('is_available', false),
+  ])
+
   const todayRevenue = (todayTx || []).reduce((s, t) => s + Number(t.total_amount), 0)
   const todayOrders  = (todayTx || []).length
 
@@ -136,7 +148,7 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
       <FranchiseDetailClient
         franchise={franchise}
         branches={(branches || []) as Parameters<typeof FranchiseDetailClient>[0]['branches']}
-        activeTab={tab as 'dashboard' | 'sales' | 'transactions' | 'staff'}
+        activeTab={tab as 'dashboard' | 'sales' | 'transactions' | 'staff' | 'stock'}
         // Dashboard data
         todayRevenue={todayRevenue}
         todayOrders={todayOrders}
@@ -149,6 +161,9 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
         transactions={(recentTx || []) as unknown as Parameters<typeof FranchiseDetailClient>[0]['transactions']}
         // Staff data
         staff={(staff || []) as Parameters<typeof FranchiseDetailClient>[0]['staff']}
+        // Stock data (read-only view of franchisee's menu overrides)
+        allProducts={(allProducts || []) as Parameters<typeof FranchiseDetailClient>[0]['allProducts']}
+        stockOverrides={(stockOverrides || []) as Parameters<typeof FranchiseDetailClient>[0]['stockOverrides']}
       />
     </div>
   )
