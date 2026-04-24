@@ -119,7 +119,8 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
   }
 
   async function handleSavePin() {
-    const pinError = validatePin(editPin?.pin ?? '')
+    if (!editPin) return
+    const pinError = validatePin(editPin.pin)
     if (pinError) { flash(pinError, true); return }
     startTransition(async () => {
       const res = await updateStaffPin(editPin.id, editPin.pin)
