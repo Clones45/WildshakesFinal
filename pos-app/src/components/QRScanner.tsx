@@ -26,7 +26,13 @@ export function QRScanner({ onScan, isLoading }: QRScannerProps) {
 
             await html5Qr.start(
                 { facingMode: 'environment' },
-                { fps: 10, qrbox: { width: 220, height: 220 } },
+                {
+                    fps: 15,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0,
+                    disableFlip: false,
+                    experimentalFeatures: { useBarCodeDetectorIfSupported: false },
+                },
                 (decodedText) => {
                     if (hasScanned.current || isLoading) return
                     hasScanned.current = true

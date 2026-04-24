@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { QRCodeSVG } from 'qrcode.react'
-import { X, RefreshCw, Download, AlertCircle } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { QRCodeCanvas } from 'qrcode.react'
+import { X, RefreshCw, Download, AlertCircle, Printer } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 interface StaffMember {
@@ -19,8 +19,7 @@ interface StaffQRModalProps {
 }
 
 function generateToken(): string {
-    // Generate a URL-safe random token (no UUID dependency needed)
-    const arr = new Uint8Array(32)
+    const arr = new Uint8Array(24) // 24 bytes = 48 hex chars — shorter = simpler QR
     crypto.getRandomValues(arr)
     return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')
 }
@@ -29,8 +28,8 @@ export default function StaffQRModal({ staff, onClose, onTokenUpdated }: StaffQR
     const [token, setToken] = useState(staff.qr_access_token)
     const [isRegenerating, setIsRegenerating] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const canvasRef = useRef<HTMLDivElement>(null)
 
-    // If no token yet, auto-generate on mount via regenerate flow
     const handleRegenerate = async () => {
         setIsRegenerating(true)
         setError(null)
@@ -53,17 +52,36 @@ export default function StaffQRModal({ staff, onClose, onTokenUpdated }: StaffQR
         setIsRegenerating(false)
     }
 
+    // Download via canvas.toDataURL() — always matches exactly what's displayed
     const handleDownload = () => {
-        const svg = document.getElementById('staff-qr-svg')
-        if (!svg) return
-        const svgData = new XMLSerializer().serializeToString(svg)
-        const blob = new Blob([svgData], { type: 'image/svg+xml' })
-        const url = URL.createObjectURL(blob)
+        const canvas = canvasRef.current?.querySelector('canvas')
+        if (!canvas) return
+        const url = canvas.toDataURL('image/png')
         const a = document.createElement('a')
         a.href = url
-        a.download = `${staff.name.replace(/\s+/g, '_')}_QR.svg`
+        a.download = `${staff.name.replace(/\s+/g, '_')}_AccessQR.png`
         a.click()
-        URL.revokeObjectURL(url)
+    }
+
+    const handlePrint = () => {
+        const canvas = canvasRef.current?.querySelector('canvas')
+        if (!canvas) return
+        const url = canvas.toDataURL('image/png')
+        const win = window.open('', '_blank')
+        if (!win) return
+        win.document.write(`
+            <html><head><title>${staff.name} — Access QR</title>
+            <style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;gap:12px;}
+            img{width:260px;height:260px;} h2{margin:0;font-size:1rem;} p{margin:0;font-size:0.75rem;color:#666;}</style></head>
+            <body>
+              <h2>${staff.name}</h2>
+              <p>${staff.role.charAt(0).toUpperCase() + staff.role.slice(1)} — Wildshakes Nexus POS</p>
+              <img src="${url}" />
+              <p style="margin-top:8px;font-size:0.65rem;color:#999;">Scan at POS login screen</p>
+              <script>window.onload=()=>window.print()</script>
+            </body></html>
+        `)
+        win.document.close()
     }
 
     const roleLabel = staff.role.charAt(0).toUpperCase() + staff.role.slice(1)
@@ -72,12 +90,15 @@ export default function StaffQRModal({ staff, onClose, onTokenUpdated }: StaffQR
     return (
         <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
             onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
         >
-            <div className="relative w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+            <div className="relative w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl"
+                style={{ background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
+                <div className="flex items-center justify-between px-5 py-4"
+                    style={{ borderBottom: '1px solid var(--border)' }}>
                     <div>
                         <h3 className="font-semibold text-base" style={{ color: 'var(--text-primary)' }}>
                             Access QR — {staff.name}
@@ -92,41 +113,33 @@ export default function StaffQRModal({ staff, onClose, onTokenUpdated }: StaffQR
                 </div>
 
                 {/* QR Body */}
-                <div className="flex flex-col items-center gap-5 px-6 py-6">
+                <div className="flex flex-col items-center gap-4 px-6 py-6">
                     {token ? (
                         <>
-                            {/* QR code */}
-                            <div className="p-4 rounded-2xl bg-white shadow-lg">
-                                <QRCodeSVG
-                                    id="staff-qr-svg"
+                            {/* Canvas-based QR — level M is simpler and scans better screen-to-screen */}
+                            <div ref={canvasRef} className="p-4 rounded-2xl bg-white shadow-lg">
+                                <QRCodeCanvas
                                     value={token}
-                                    size={200}
-                                    level="H"
-                                    includeMargin={false}
-                                    imageSettings={{
-                                        src: '/logo.png',
-                                        x: undefined,
-                                        y: undefined,
-                                        height: 36,
-                                        width: 36,
-                                        excavate: true,
-                                    }}
+                                    size={220}
+                                    level="M"
+                                    marginSize={1}
                                 />
                             </div>
 
                             <p className="text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-                                Staff scans this code at the POS to log in instantly.
+                                Staff scans this at the POS to log in instantly.
                                 <br />
                                 Keep this private — it grants full {staff.role} access.
                             </p>
                         </>
                     ) : (
                         <div className="flex flex-col items-center gap-3 py-6 text-center">
-                            <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'var(--bg-secondary)' }}>
+                            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                                style={{ background: 'var(--bg-secondary)' }}>
                                 <AlertCircle size={28} style={{ color: 'var(--text-muted)' }} />
                             </div>
                             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                                No QR code generated yet.
+                                No QR code yet.
                                 <br />
                                 Click <strong>Generate QR</strong> to create one.
                             </p>
@@ -147,18 +160,30 @@ export default function StaffQRModal({ staff, onClose, onTokenUpdated }: StaffQR
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
                     >
                         <RefreshCw size={14} className={isRegenerating ? 'animate-spin' : ''} />
-                        {token ? (isRegenerating ? 'Regenerating…' : 'Regenerate') : (isRegenerating ? 'Generating…' : 'Generate QR')}
+                        {token
+                            ? (isRegenerating ? 'Regenerating…' : 'Regenerate')
+                            : (isRegenerating ? 'Generating…' : 'Generate QR')}
                     </button>
 
                     {token && (
-                        <button
-                            onClick={handleDownload}
-                            className="btn btn-ghost"
-                            title="Download QR as SVG"
-                            style={{ padding: '0.5rem 0.75rem' }}
-                        >
-                            <Download size={16} />
-                        </button>
+                        <>
+                            <button
+                                onClick={handleDownload}
+                                className="btn btn-ghost"
+                                title="Download PNG"
+                                style={{ padding: '0.5rem 0.75rem' }}
+                            >
+                                <Download size={16} />
+                            </button>
+                            <button
+                                onClick={handlePrint}
+                                className="btn btn-ghost"
+                                title="Print QR"
+                                style={{ padding: '0.5rem 0.75rem' }}
+                            >
+                                <Printer size={16} />
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
