@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Shield, X, Delete, Loader2, KeyRound, QrCode } from 'lucide-react'
+import { Shield, X, Delete, KeyRound, QrCode } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import { QRScanner } from './QRScanner'
@@ -200,18 +200,12 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
                                     <p className="text-gray-500 text-xs text-center mb-3">
                                         Scan manager's QR card
                                     </p>
-                                    {checking ? (
-                                        <div className="flex flex-col items-center justify-center h-36 gap-3">
-                                            <Loader2 size={28} className="animate-spin text-brand-400" />
-                                            <p className="text-gray-400 text-xs">Verifying…</p>
-                                        </div>
-                                    ) : (
-                                        <QRScanner
-                                            onScan={handleQRScan}
-                                            isLoading={checking}
-                                            loginFailed={qrFailed}
-                                        />
-                                    )}
+                                    {/* Keep QRScanner always mounted — unmounting mid-play causes AbortError */}
+                                    <QRScanner
+                                        onScan={handleQRScan}
+                                        isLoading={checking}
+                                        loginFailed={qrFailed}
+                                    />
                                     {error && <p className="text-red-400 text-xs text-center mt-3">{error}</p>}
                                 </>
                             )}
