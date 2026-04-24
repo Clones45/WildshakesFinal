@@ -1,0 +1,26 @@
+Act as a Senior Full-Stack Developer. I want to replace the current PIN-based login in my Nexus POS app with a QR Code Scanner system. 
+
+### Objective:
+1. Managers and Cashiers will login by scanning a QR code instead of entering a PIN.
+2. The "Franchiser Panel" must have a UI to generate and display these QR codes for each staff member.
+
+### Technical Requirements:
+1. Database (Supabase): 
+   - Add a 'qr_access_token' column (UUID or random string) to the 'staff' or 'users' table.
+   - Ensure the 'role' column (manager/cashier) is used to redirect users after a successful scan.
+2. QR Generation (Franchiser Panel):
+   - In the Franchiser staff management view, add a "Generate Access QR" button.
+   - Use 'qrcode.react' to render the QR code based on the 'qr_access_token'.
+   - Add a "Regenerate" function to revoke old codes and create new ones.
+3. QR Scanner (POS Login):
+   - Replace the PIN pad on the login screen with a camera scanner using 'html5-qrcode'.
+   - When a code is scanned, query Supabase to find a matching 'qr_access_token'.
+   - If valid, authenticate the session and route to the correct dashboard based on their role.
+4. Offline Support:
+   - Ensure the 'qr_access_token' is synced to the local PouchDB/IndexedDB so the scanner works offline, consistent with Nexus's architecture.
+
+### Tasks:
+- Provide the Supabase migration SQL to add the new column.
+- Create the React component for the QR Scanner.
+- Create the QR Generation logic for the Franchiser Panel.
+- Update the login logic to handle the scan result.

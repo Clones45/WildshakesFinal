@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { createFranchiserStaff, updateStaffStatus, updateStaffPin } from '@/lib/actions/franchiser'
+import StaffQRModal from '@/components/franchiser/StaffQRModal'
 
 export interface StaffMember {
   id: string
@@ -9,6 +10,7 @@ export interface StaffMember {
   email: string | null
   role: string
   pin_code: string | null
+  qr_access_token: string | null
   is_active: boolean
   created_at: string
 }
@@ -39,6 +41,7 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
   const [staff, setStaff] = useState(initialStaff)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editPin, setEditPin]   = useState<{ id: string; name: string; pin: string } | null>(null)
+  const [qrTarget, setQrTarget] = useState<StaffMember | null>(null)
   const [error, setError]       = useState('')
   const [success, setSuccess]   = useState('')
   const [isPending, startTransition] = useTransition()
@@ -105,6 +108,13 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
     })
   }
 
+  function handleQRTokenUpdated(staffId: string, newToken: string) {
+    setStaff(prev => prev.map(s => s.id === staffId ? { ...s, qr_access_token: newToken } : s))
+    // Update the modal target's token in-place so the QR re-renders immediately
+    setQrTarget(prev => prev && prev.id === staffId ? { ...prev, qr_access_token: newToken } : prev)
+    flash('Access QR updated successfully.')
+  }
+
   const activeCount   = staff.filter(s => s.is_active).length
   const managerCount  = staff.filter(s => s.role === 'manager').length
   const cashierCount  = staff.filter(s => s.role === 'cashier').length
@@ -144,6 +154,7 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
               <th>Name</th>
               <th>Role</th>
               <th>PIN</th>
+              <th>Access QR</th>
               <th>Status</th>
               <th>Joined</th>
               <th>Actions</th>
@@ -152,7 +163,7 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
           <tbody>
             {staff.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--color-text-muted)' }}>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--color-text-muted)' }}>
                   No staff members yet — add your first cashier!
                 </td>
               </tr>
@@ -197,6 +208,31 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                   )}
                 </td>
                 <td>
+                  {PIN_REQUIRED_ROLES.has(member.role) ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span
+                        onClick={() => setQrTarget(member)}
+                        title="View / Generate Access QR"
+                        style={{
+                          cursor: 'pointer',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '8px',
+                          background: member.qr_access_token ? 'rgba(74,222,128,0.12)' : 'rgba(250,204,21,0.12)',
+                          color: member.qr_access_token ? 'var(--color-success, #4ade80)' : 'var(--color-warning, #facc15)',
+                          border: `1px solid ${member.qr_access_token ? 'rgba(74,222,128,0.3)' : 'rgba(250,204,21,0.3)'}`,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {member.qr_access_token ? '📲 Active' : '⚠️ None'}
+                      </span>
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>N/A</span>
+                  )}
+                </td>
+                <td>
                   <span className={`badge ${member.is_active ? 'badge-success' : 'badge-danger'}`}>
                     {member.is_active ? '● Active' : '○ Inactive'}
                   </span>
@@ -205,13 +241,25 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                   {new Date(member.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </td>
                 <td>
-                  <button
-                    onClick={() => handleToggleActive(member)}
-                    disabled={isPending}
-                    className={`btn btn-sm ${member.is_active ? 'btn-ghost' : 'btn-primary'}`}
-                  >
-                    {member.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    {PIN_REQUIRED_ROLES.has(member.role) && (
+                      <button
+                        onClick={() => setQrTarget(member)}
+                        disabled={isPending}
+                        className="btn btn-sm btn-ghost"
+                        title="View / Generate Access QR"
+                      >
+                        📲 QR
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleToggleActive(member)}
+                      disabled={isPending}
+                      className={`btn btn-sm ${member.is_active ? 'btn-ghost' : 'btn-primary'}`}
+                    >
+                      {member.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -320,6 +368,14 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
             </div>
           </div>
         </div>
+      )}
+      {/* QR Code Modal */}
+      {qrTarget && (
+        <StaffQRModal
+          staff={qrTarget}
+          onClose={() => setQrTarget(null)}
+          onTokenUpdated={handleQRTokenUpdated}
+        />
       )}
     </div>
   )

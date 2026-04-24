@@ -18,7 +18,7 @@ export default async function FranchiserStaffPage() {
 
   const { data: staff } = await supabase
     .from('users')
-    .select('id, name, email, role, pin_code, is_active, created_at')
+    .select('id, name, email, role, pin_code, qr_access_token, is_active, created_at')
     .eq('branch_id', branch?.id || '')
     .order('role')
     .order('name')

@@ -68,7 +68,7 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
             if (currentBranch) {
                 const { data: users } = await supabase
                     .from('users')
-                    .select('*')
+                    .select('id, name, role, branch_id, pin_code, qr_access_token, is_active')
                     .eq('branch_id', currentBranch.id)
                     .eq('is_active', true)
                 

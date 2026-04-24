@@ -18,8 +18,11 @@ interface AuthState {
         branchId: string
     ) => Promise<{ success: boolean; error?: string }>
 
-    // ── Phase 2: cashier PIN login (branch already known by device) ─────────
+    // ── Phase 2a: cashier PIN login (branch already known by device) ──────────
     loginWithPin: (pin: string, branchId: string) => Promise<boolean>
+
+    // ── Phase 2b: cashier QR login (scanned token) ───────────────────────────
+    loginWithQR: (token: string, branchId: string) => Promise<boolean>
 
     // ── Cashier logout → returns to PIN screen (keeps branch claim) ─────────
     logoutCashier: () => void
@@ -192,7 +195,84 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            // ── Cashier logout (keeps branch, back to PIN screen) ───────────
+            // ── Phase 2b: QR login ──────────────────────────────────────────
+            loginWithQR: async (token: string, branchId: string) => {
+                set({ isLoading: true, error: null })
+                try {
+                    let userProfile: UserProfile | null = null
+                    let branchData: Branch | null = null
+
+                    if (navigator.onLine) {
+                        try {
+                            const { data: users, error } = await supabase
+                                .from('users')
+                                .select('*')
+                                .eq('branch_id', branchId)
+                                .eq('qr_access_token', token)
+                                .eq('is_active', true)
+                                .limit(1)
+
+                            if (!error && users && users.length > 0) {
+                                userProfile = users[0] as UserProfile
+                            }
+
+                            const { data: branch } = await supabase
+                                .from('branches')
+                                .select('*')
+                                .eq('id', branchId)
+                                .single()
+
+                            if (branch) branchData = branch as Branch
+                        } catch {
+                            // fallback to offline
+                        }
+                    }
+
+                    // Offline fallback via Dexie
+                    if (!userProfile) {
+                        const { db } = await import('../lib/db')
+                        const cachedUsers = await db.users
+                            .where({ branch_id: branchId, qr_access_token: token })
+                            .toArray()
+                        if (cachedUsers.length > 0) {
+                            const c = cachedUsers[0]
+                            userProfile = {
+                                id: c.id,
+                                name: c.name,
+                                email: '',
+                                role: c.role as 'cashier' | 'manager' | 'investor',
+                                branch_id: c.branch_id,
+                                pin_code: null,
+                                qr_access_token: null,
+                                created_at: new Date().toISOString(),
+                                is_active: c.is_active,
+                                auth_id: null,
+                            }
+                            branchData = get().branch
+                        }
+                    }
+
+                    if (!userProfile) {
+                        set({ isLoading: false, error: 'Invalid or expired QR code.' })
+                        return false
+                    }
+
+                    set({
+                        user:         userProfile,
+                        branch:       branchData ?? get().branch,
+                        sessionToken: `${userProfile.id}:${Date.now()}`,
+                        isLoading:    false,
+                        error:        null,
+                    })
+                    return true
+                } catch (err: unknown) {
+                    const message = err instanceof Error ? err.message : 'QR login failed'
+                    set({ isLoading: false, error: message })
+                    return false
+                }
+            },
+
+            // ── Cashier logout (keeps branch, back to login screen) ───────────
             logoutCashier: () => {
                 set({ user: null, sessionToken: null, error: null })
             },

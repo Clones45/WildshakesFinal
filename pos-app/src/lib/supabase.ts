@@ -32,6 +32,7 @@ export type UserProfile = {
     role: 'cashier' | 'manager' | 'investor'
     branch_id: string | null
     pin_code: string | null
+    qr_access_token: string | null
     is_active: boolean
     created_at: string
 }

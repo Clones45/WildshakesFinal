@@ -63,6 +63,7 @@ export interface CachedUser {
     role: string
     branch_id: string
     pin_code: string
+    qr_access_token: string | null
     is_active: boolean
     cachedAt: string
 }
@@ -132,6 +133,16 @@ export class WildshakesDB extends Dexie {
             products: 'id, category, name',
             branches: 'id',
             users: 'id, branch_id, pin_code, role',
+        })
+
+        // Version 5 — adds qr_access_token index for offline QR login
+        this.version(5).stores({
+            transactions: 'localRef, syncStatus, branchId, createdAt',
+            localHeldOrders: 'localId, syncStatus, branchId, createdAt',
+            localAuditLogs: 'localId, syncStatus, createdAt',
+            products: 'id, category, name',
+            branches: 'id',
+            users: 'id, branch_id, pin_code, qr_access_token, role',
         })
     }
 }
