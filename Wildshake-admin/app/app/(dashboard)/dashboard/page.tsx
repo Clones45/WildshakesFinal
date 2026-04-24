@@ -3,8 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 async function getDashboardData() {
   const supabase = await createClient()
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // Philippine Standard Time = UTC+8. Use PHT midnight as "today" cutoff
+  // so transactions made after 12:00 AM Manila time are counted as today.
+  const PHT_OFFSET_MS = 8 * 60 * 60 * 1000
+  const nowPHT = new Date(Date.now() + PHT_OFFSET_MS)
+  const todayPHT = new Date(nowPHT)
+  todayPHT.setUTCHours(0, 0, 0, 0)                     // midnight PHT → in UTC
+  const todayUTC = new Date(todayPHT.getTime() - PHT_OFFSET_MS)  // back to UTC
+
   const weekAgo  = new Date(Date.now() - 7  * 24 * 60 * 60 * 1000)
   const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
@@ -20,7 +26,7 @@ async function getDashboardData() {
     supabase
       .from('transactions')
       .select('total_amount, status, payment_method, branch_id')
-      .gte('created_at', today.toISOString())
+      .gte('created_at', todayUTC.toISOString())
       .eq('status', 'completed'),
 
     supabase.from('franchises').select('id, name, status, region'),
@@ -68,12 +74,16 @@ async function getDashboardData() {
 
   // 7-day chart
   const chartData = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (6 - i))
-    const label   = d.toLocaleDateString('en-US', { weekday: 'short' })
-    const dateStr = d.toISOString().split('T')[0]
+    const d = new Date(Date.now() + PHT_OFFSET_MS)    // shift to PHT
+    d.setUTCDate(d.getUTCDate() - (6 - i))
+    const label   = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Manila' })
+    const dateStr = d.toISOString().split('T')[0]      // YYYY-MM-DD in PHT
     const revenue = (revenueByDay || [])
-      .filter(t => t.created_at.startsWith(dateStr))
+      .filter(t => {
+        // Convert stored UTC timestamp to PHT date string for comparison
+        const txPHT = new Date(new Date(t.created_at).getTime() + PHT_OFFSET_MS)
+        return txPHT.toISOString().split('T')[0] === dateStr
+      })
       .reduce((sum, t) => sum + Number(t.total_amount), 0)
     return { label, revenue, isToday: i === 6 }
   })
