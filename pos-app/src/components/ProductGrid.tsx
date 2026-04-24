@@ -6,24 +6,24 @@ import { Search, Coffee, Loader2, AlertTriangle, Plus, RefreshCw } from 'lucide-
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     // Exact category values from Wildshakes products table
-    'Fruitshakes Grande':        '🥤',
-    'Fruitshakes Petite':        '🍹',
-    'Fruitshakes Regular':       '🍹',
-    'Milkshakes Grande':         '🍦',
-    'Milkshakes Petite':         '🍨',
-    'Milkshakes':                '🍦',
-    'Coffee Hot':                '☕',
-    'Coffee Iced':               '🧋',
-    'Coffee':                    '☕',
-    'Pasta':                     '🍝',
-    'Chicken Wings':             '🍗',
-    'Chicken Wings Rice Meals':  '🍚',
-    'Rice Meals':                '🍛',
-    'Pica Pica':                 '🍟',
-    'Burger and Fries':          '🍔',
-    'Tortilla Pizza':            '🍕',
-    'Snacks':                    '🧆',
-    'Add-ons':                   '➕',
+    'Fruitshakes Grande': '🥤',
+    'Fruitshakes Petite': '🍹',
+    'Fruitshakes Regular': '🍹',
+    'Milkshakes Grande': '🍦',
+    'Milkshakes Petite': '🍨',
+    'Milkshakes': '🍦',
+    'Coffee Hot': '☕',
+    'Coffee Iced': '🧋',
+    'Coffee': '☕',
+    'Pasta': '🍝',
+    'Chicken Wings': '🍗',
+    'Chicken Wings Rice Meals': '🍚',
+    'Rice Meals': '🍛',
+    'Pica Pica': '🍟',
+    'Burger and Fries': '🍔',
+    'Tortilla Pizza': '🍕',
+    'Snacks': '🧆',
+    'Add-ons': '➕',
 }
 
 interface ProductGridProps {
@@ -69,14 +69,14 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             {/* Search bar */}
             <div className="px-4 pt-4 pb-3 flex items-center gap-2">
                 <div className="relative flex-1">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-400" />
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                     <input
                         id="product-search-input"
                         type="text"
                         placeholder="Search menu (Shift + F)…"
                         value={search}
                         onChange={(e) => { setSearch(e.target.value); setActiveCategory('All') }}
-                        className="w-full bg-brand-900 border-2 border-brand-700 rounded-full px-6 py-3 pl-9 text-sm text-brand-100 placeholder-brand-500 focus:outline-none focus:border-brand-500 transition-colors"
+                        className="input-field pl-9 text-sm"
                     />
                 </div>
                 {onReload && (
@@ -84,7 +84,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                         onClick={onReload}
                         disabled={isLoading}
                         title="Reload menu"
-                        className="w-10 h-10 flex items-center justify-center rounded-xl bg-brand-900 border border-brand-700 text-brand-400 hover:bg-brand-800 transition-all disabled:opacity-40"
+                        className="w-10 h-10 flex items-center justify-center rounded-xl bg-brand-50 border border-brand-200 text-brand-500 hover:bg-brand-100 transition-all disabled:opacity-40"
                     >
                         <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
                     </button>
@@ -100,19 +100,14 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                         <button
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
-                            className={`category-tab flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${
-                                isActive
-                                    ? 'bg-brand-500 text-white border-2 border-brand-500 scale-105'
-                                    : 'bg-brand-900 text-brand-300 border-2 border-brand-700 hover:border-brand-500 hover:bg-brand-800'
-                            }`}
+                            className={`category-tab flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${isActive ? 'category-tab-active' : 'category-tab-inactive'}`}
                         >
                             <span>{cat === 'All' ? '🍽️' : CATEGORY_EMOJIS[cat] ?? '📋'}</span>
                             <span>{cat}</span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                isActive
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive
                                     ? 'bg-white/30 text-white'
-                                    : 'bg-brand-700 text-brand-300'
-                            }`}>
+                                    : 'bg-brand-100 text-brand-500'
+                                }`}>
                                 {count}
                             </span>
                         </button>
@@ -123,7 +118,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             {/* Product grid */}
             <div className="flex-1 overflow-y-auto px-4 pb-4">
                 {isLoading ? (
-                    <div className="flex flex-col items-center justify-center h-full gap-3 text-brand-400">
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-600">
                         <Loader2 size={32} className="animate-spin text-brand-500" />
                         <p className="text-sm font-semibold">Loading menu…</p>
                     </div>
@@ -131,7 +126,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                     <div className="flex flex-col items-center justify-center h-full gap-4">
                         <AlertTriangle size={40} className="text-red-400" />
                         <p className="text-red-400 text-sm font-semibold">Menu failed to load</p>
-                        <p className="text-brand-400 text-xs text-center max-w-xs">{menuError}</p>
+                        <p className="text-gray-500 text-xs text-center max-w-xs">{menuError}</p>
                         {onReload && (
                             <button
                                 onClick={onReload}
@@ -142,13 +137,13 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                         )}
                     </div>
                 ) : filtered.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full gap-3 text-brand-500">
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-500">
                         <Coffee size={40} className="opacity-40" />
                         <p className="text-sm font-semibold">No items found</p>
                         {search && (
                             <button
                                 onClick={() => setSearch('')}
-                                className="text-brand-400 text-xs font-bold underline"
+                                className="text-brand-500 text-xs font-bold underline"
                             >
                                 Clear search
                             </button>
@@ -206,11 +201,10 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                             </span>
                                             <motion.div
                                                 whileTap={{ scale: 0.85 }}
-                                                className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all ${
-                                                    inCart
+                                                className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all ${inCart
                                                         ? 'bg-brand-500 border-brand-500 text-white'
                                                         : 'bg-brand-50 border-brand-200 text-brand-500'
-                                                }`}
+                                                    }`}
                                             >
                                                 <Plus size={15} />
                                             </motion.div>
