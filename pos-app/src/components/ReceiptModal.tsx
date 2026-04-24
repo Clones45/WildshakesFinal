@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, RotateCcw, AlertTriangle, Printer } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
@@ -7,7 +8,7 @@ interface ReceiptModalProps {
     isOpen: boolean
     transaction: LocalTransaction | null
     onClose: () => void
-    onVoid: (localRef: string) => void
+    onVoid: (localRef: string, reason: string) => void
     onNewOrder: () => void
 }
 
@@ -67,6 +68,17 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
 
 export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: ReceiptModalProps) {
     const { user, branch } = useAuthStore()
+    const [showVoidPrompt, setShowVoidPrompt] = useState(false)
+    const [voidReason, setVoidReason] = useState('')
+
+    // Reset state when modal opens/closes
+    useEffect(() => {
+        if (!isOpen) {
+            setShowVoidPrompt(false)
+            setVoidReason('')
+        }
+    }, [isOpen])
+
     if (!transaction) return null
 
     const now = new Date(transaction.createdAt)
@@ -177,26 +189,57 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
 
                         {/* Actions */}
                         <div className="px-5 pb-5 pt-3 space-y-2">
-                            <button
-                                onClick={() => printReceipt(transaction, branch?.name ?? 'Wildshakes', user?.name ?? 'Staff')}
-                                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 text-sm font-semibold hover:bg-brand-500/20 transition-colors"
-                            >
-                                <Printer size={15} />
-                                Print Receipt
-                            </button>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => onVoid(transaction.localRef)}
-                                    className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-colors"
-                                >
-                                    <AlertTriangle size={14} />
-                                    Void
-                                </button>
-                                <button onClick={onNewOrder} className="btn-teal flex-1 flex items-center justify-center gap-2">
-                                    <RotateCcw size={16} />
-                                    New Order
-                                </button>
-                            </div>
+                            {showVoidPrompt ? (
+                                <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        placeholder="Reason for voiding (required)"
+                                        value={voidReason}
+                                        onChange={e => setVoidReason(e.target.value)}
+                                        className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm outline-none focus:border-red-500 transition-colors"
+                                    />
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setShowVoidPrompt(false)}
+                                            className="flex-1 py-2 rounded-xl bg-surface-700 text-gray-300 text-sm font-medium hover:bg-surface-600 transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            disabled={!voidReason.trim()}
+                                            onClick={() => onVoid(transaction.localRef, voidReason.trim())}
+                                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors"
+                                        >
+                                            <AlertTriangle size={14} />
+                                            Confirm Void
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => printReceipt(transaction, branch?.name ?? 'Wildshakes', user?.name ?? 'Staff')}
+                                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 text-sm font-semibold hover:bg-brand-500/20 transition-colors"
+                                    >
+                                        <Printer size={15} />
+                                        Print Receipt
+                                    </button>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setShowVoidPrompt(true)}
+                                            className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-colors"
+                                        >
+                                            <AlertTriangle size={14} />
+                                            Void
+                                        </button>
+                                        <button onClick={onNewOrder} className="btn-teal flex-1 flex items-center justify-center gap-2">
+                                            <RotateCcw size={16} />
+                                            New Order
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </motion.div>
                 </motion.div>

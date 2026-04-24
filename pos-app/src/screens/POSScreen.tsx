@@ -229,17 +229,17 @@ export function POSScreen() {
         }
     }
 
-    const handleVoid = (localRef: string) => {
+    const handleVoid = (localRef: string, reason: string) => {
         requireManager(async () => {
-            await db.transactions.update(localRef, { status: 'voided', syncStatus: 'pending' })
+            await db.transactions.update(localRef, { status: 'voided', syncStatus: 'pending', voidReason: reason })
 
             logAudit({
                 actionType: 'void',
                 performedBy: user?.id,
                 branchId: branch?.id,
                 referenceTable: 'transactions',
-                notes: `Transaction ${localRef} voided`,
-                metadata: { local_ref: localRef },
+                notes: `Transaction ${localRef} voided: ${reason}`,
+                metadata: { local_ref: localRef, reason },
             }).catch(console.error)
 
             toast.success('Transaction voided')
