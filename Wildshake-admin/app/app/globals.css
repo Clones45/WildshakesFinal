@@ -873,7 +873,11 @@ tbody td {
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: var(--color-bg);
+  background-color: var(--color-bg);
+  background-image: linear-gradient(rgba(15, 26, 20, 0.85), rgba(15, 26, 20, 0.85)), url('/logo-bg.png');
+  background-size: cover;
+  background-position: center right;
+  background-blend-mode: overlay;
   position: relative;
   z-index: 2;
   box-shadow: -10px 0 30px rgba(0,0,0,0.5);
