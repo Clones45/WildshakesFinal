@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCartStore } from '../store/cartStore'
-import { X, Banknote, Smartphone, QrCode, Landmark, Check, AlertCircle, ChevronDown } from 'lucide-react'
+import { X, Banknote, Landmark, Check, AlertCircle, ChevronDown } from 'lucide-react'
 
 interface CheckoutModalProps {
     isOpen: boolean

@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore'
 import { ManagerPinModal } from './ManagerPinModal'
 import {
     X, ReceiptText, Loader2, Filter, RefreshCw,
-    Banknote, Smartphone, QrCode, Landmark,
+    Banknote, Landmark,
     CheckCircle2, XCircle, Tag, MapPin, Clock,
 } from 'lucide-react'
 
@@ -37,8 +37,6 @@ interface TxRow {
 
 const PAYMENT_ICONS: Record<string, React.ElementType> = {
     cash: Banknote,
-    gcash: Smartphone,
-    maya: QrCode,
     bank_transfer: Landmark,
 }
 
