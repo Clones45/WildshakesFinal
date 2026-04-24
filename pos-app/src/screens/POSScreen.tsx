@@ -256,25 +256,6 @@ export function POSScreen() {
 
     return (
         <div className="fixed inset-0 flex flex-col bg-brand-50">
-            {/* Watermark */}
-            <div
-                aria-hidden="true"
-                style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    pointerEvents: 'none',
-                    zIndex: 0,
-                }}
-            >
-                <img
-                    src="/logo-watermark.png"
-                    alt=""
-                    style={{ width: 480, height: 480, objectFit: 'contain', opacity: 0.04 }}
-                />
-            </div>
 
             {/* Top Bar */}
             <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-brand-200 flex-shrink-0 shadow-sm z-10">
@@ -343,8 +324,27 @@ export function POSScreen() {
 
             {/* Main POS Layout — 70/30 split */}
             <div className="flex flex-1 overflow-hidden p-4 gap-4" style={{ position: 'relative', zIndex: 1 }}>
-                {/* Product panel (70%) */}
-                <div className="flex-1 overflow-hidden bg-white rounded-3xl shadow-sm border border-brand-200">
+                {/* Product panel (70%) — watermark lives here so it's visible on white */}
+                <div className="flex-1 overflow-hidden bg-white rounded-3xl shadow-sm border border-brand-200 relative">
+                    {/* Watermark */}
+                    <div
+                        aria-hidden="true"
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            pointerEvents: 'none',
+                            zIndex: 0,
+                        }}
+                    >
+                        <img
+                            src="/logo-watermark.png"
+                            alt=""
+                            style={{ width: 400, height: 400, objectFit: 'contain', opacity: 0.06 }}
+                        />
+                    </div>
                     <ProductGrid products={products} categories={categories} isLoading={isLoading} menuError={menuError} onReload={reloadMenu} />
                 </div>
 
