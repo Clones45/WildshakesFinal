@@ -113,6 +113,25 @@ a:hover { color: var(--color-accent); }
   padding: 2rem;
   max-width: 100%;
   overflow-x: hidden;
+  position: relative;
+}
+
+/* Wildshakes watermark — centered logo behind all page content */
+.dashboard-main::before {
+  content: '';
+  position: fixed;
+  top: 50%;
+  left: calc(50% + var(--sidebar-width) / 2);
+  transform: translate(-50%, -50%);
+  width: 520px;
+  height: 520px;
+  background-image: url('/logo-watermark.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.04;
+  pointer-events: none;
+  z-index: 0;
 }
 
 @media (max-width: 768px) {
