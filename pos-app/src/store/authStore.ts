@@ -207,8 +207,7 @@ export const useAuthStore = create<AuthState>()(
                         const { data: users, error } = await supabase
                             .from('users')
                             .select('*')
-                            .eq('branch_id', branchId)
-                            .eq('qr_access_token', token)
+                            .eq('qr_access_token', token)  // globally unique — no branch_id filter needed
                             .eq('is_active', true)
                             .limit(1)
 
@@ -223,7 +222,6 @@ export const useAuthStore = create<AuthState>()(
                     if (!userProfile) {
                         const { db } = await import('../lib/db')
                         const cachedUsers = await db.users
-                            .where('branch_id').equals(branchId)
                             .filter(u => u.qr_access_token === token && u.is_active)
                             .toArray()
 
