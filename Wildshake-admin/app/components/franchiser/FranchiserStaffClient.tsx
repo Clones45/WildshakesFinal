@@ -7,7 +7,7 @@ export interface StaffMember {
   id: string
   name: string
   email: string | null
-  role: 'cashier' | 'manager' | 'investor'
+  role: string
   pin_code: string | null
   is_active: boolean
   created_at: string
@@ -19,17 +19,21 @@ interface Props {
   staff: StaffMember[]
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  manager:  'badge-warning',
-  cashier:  'badge-info',
-  investor: 'badge-muted',
-}
+// Roles that require a PIN (they authenticate on the POS terminal)
+const PIN_REQUIRED_ROLES = new Set(['cashier', 'manager'])
 
-const ROLE_ICONS: Record<string, string> = {
-  manager: '👑',
-  cashier: '🧾',
-  investor: '📊',
-}
+const ALL_ROLES = [
+  { value: 'cashier',         label: 'Cashier',           icon: '🧾', color: 'badge-info',    description: 'Handles orders & payments' },
+  { value: 'manager',         label: 'Manager',           icon: '👑', color: 'badge-warning', description: 'Supervises operations & can void transactions' },
+  { value: 'barista',         label: 'Barista',           icon: '☕', color: 'badge-muted',   description: 'Prepares beverages' },
+  { value: 'crew',            label: 'Crew Member',       icon: '👤', color: 'badge-muted',   description: 'General branch staff' },
+  { value: 'kitchen_staff',   label: 'Kitchen Staff',     icon: '🍳', color: 'badge-muted',   description: 'Prepares food items' },
+  { value: 'delivery_rider',  label: 'Delivery Rider',    icon: '🛵', color: 'badge-muted',   description: 'Handles deliveries' },
+  { value: 'supervisor',      label: 'Supervisor',        icon: '🏷️', color: 'badge-warning', description: 'Assists manager in daily operations' },
+  { value: 'investor',        label: 'Investor',          icon: '📊', color: 'badge-success', description: 'Branch co-owner / silent investor' },
+]
+
+const ROLE_MAP = Object.fromEntries(ALL_ROLES.map(r => [r.value, r]))
 
 export default function FranchiserStaffClient({ branchId, branchName, staff: initialStaff }: Props) {
   const [staff, setStaff] = useState(initialStaff)
@@ -42,15 +46,29 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
   // Add staff form state
   const [form, setForm] = useState({ name: '', role: 'cashier', pin_code: '' })
 
+  const pinRequired = PIN_REQUIRED_ROLES.has(form.role)
+
   function flash(msg: string, isError = false) {
     if (isError) { setError(msg); setTimeout(() => setError(''), 4000) }
     else          { setSuccess(msg); setTimeout(() => setSuccess(''), 4000) }
   }
 
+  function handleRoleChange(newRole: string) {
+    // Clear PIN when switching to a role that doesn't require it
+    setForm(f => ({
+      ...f,
+      role: newRole,
+      pin_code: PIN_REQUIRED_ROLES.has(newRole) ? f.pin_code : '',
+    }))
+  }
+
   async function handleAddStaff(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.name || form.pin_code.length !== 6) {
-      flash('Name is required and PIN must be 6 digits.', true); return
+    if (!form.name.trim()) {
+      flash('Name is required.', true); return
+    }
+    if (pinRequired && form.pin_code.length !== 6) {
+      flash('PIN must be exactly 6 digits for this role.', true); return
     }
     startTransition(async () => {
       const fd = new FormData()
@@ -157,22 +175,26 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                   </div>
                 </td>
                 <td>
-                  <span className={`badge ${ROLE_COLORS[member.role] || 'badge-muted'}`}>
-                    {ROLE_ICONS[member.role]} {member.role}
+                  <span className={`badge ${ROLE_MAP[member.role]?.color || 'badge-muted'}`}>
+                    {ROLE_MAP[member.role]?.icon} {ROLE_MAP[member.role]?.label || member.role}
                   </span>
                 </td>
                 <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', letterSpacing: '0.12em' }}>
-                      {member.pin_code ? '●'.repeat(member.pin_code.length) : '—'}
-                    </span>
-                    <button
-                      onClick={() => setEditPin({ id: member.id, name: member.name, pin: member.pin_code || '' })}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary-light)', fontSize: '0.75rem', fontWeight: 600 }}
-                    >
-                      ✏️ Change
-                    </button>
-                  </div>
+                  {PIN_REQUIRED_ROLES.has(member.role) ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', letterSpacing: '0.12em' }}>
+                        {member.pin_code ? '●'.repeat(member.pin_code.length) : <span style={{ color: 'var(--color-danger)', fontFamily: 'inherit' }}>Not set</span>}
+                      </span>
+                      <button
+                        onClick={() => setEditPin({ id: member.id, name: member.name, pin: member.pin_code || '' })}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary-light)', fontSize: '0.75rem', fontWeight: 600 }}
+                      >
+                        ✏️ Change
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>N/A</span>
+                  )}
                 </td>
                 <td>
                   <span className={`badge ${member.is_active ? 'badge-success' : 'badge-danger'}`}>
@@ -218,29 +240,43 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Role</label>
-                  <select className="form-select" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                    <option value="cashier">🧾 Cashier</option>
-                    <option value="manager">👑 Manager</option>
+                  <label className="form-label">Position / Role</label>
+                  <select
+                    className="form-select"
+                    value={form.role}
+                    onChange={e => handleRoleChange(e.target.value)}
+                  >
+                    {ALL_ROLES.map(r => (
+                      <option key={r.value} value={r.value}>
+                        {r.icon} {r.label}
+                      </option>
+                    ))}
                   </select>
+                  {ROLE_MAP[form.role] && (
+                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                      {ROLE_MAP[form.role].description}
+                    </p>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">6-Digit PIN *</label>
-                  <input
-                    className="form-input"
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="e.g. 123456"
-                    value={form.pin_code}
-                    onChange={e => setForm(f => ({ ...f, pin_code: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
-                    style={{ fontFamily: 'monospace', letterSpacing: '0.25em', fontSize: '1.2rem' }}
-                    required
-                  />
-                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                    Staff uses this PIN to log in on the POS terminal.
-                  </p>
-                </div>
+
+                {pinRequired && (
+                  <div className="form-group">
+                    <label className="form-label">6-Digit PIN *</label>
+                    <input
+                      className="form-input"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="e.g. 123456"
+                      value={form.pin_code}
+                      onChange={e => setForm(f => ({ ...f, pin_code: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                      style={{ fontFamily: 'monospace', letterSpacing: '0.25em', fontSize: '1.2rem' }}
+                    />
+                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                      🔐 Required — this staff logs in on the POS terminal using this PIN.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowAddModal(false)}>Cancel</button>

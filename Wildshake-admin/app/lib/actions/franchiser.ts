@@ -9,10 +9,16 @@ export async function createFranchiserStaff(formData: FormData) {
   const branch_id = formData.get('branch_id') as string
   const name = formData.get('name') as string
   const role = formData.get('role') as string
-  const pin_code = formData.get('pin_code') as string
+  const pin_code = (formData.get('pin_code') as string) || null
 
-  if (!branch_id || !name || !role || !pin_code) {
-    return { error: 'All fields are required.' }
+  const PIN_REQUIRED_ROLES = ['cashier', 'manager']
+
+  if (!branch_id || !name || !role) {
+    return { error: 'Name and role are required.' }
+  }
+
+  if (PIN_REQUIRED_ROLES.includes(role) && (!pin_code || pin_code.length !== 6)) {
+    return { error: `A 6-digit PIN is required for ${role} role.` }
   }
 
   // Look up franchise_id from branch
@@ -31,7 +37,7 @@ export async function createFranchiserStaff(formData: FormData) {
       franchise_id: branch.franchise_id,
       name,
       role,
-      pin_code,
+      pin_code: pin_code || null,
       is_active: true
     })
     .select()
