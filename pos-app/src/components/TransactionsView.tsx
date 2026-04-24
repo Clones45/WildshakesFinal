@@ -387,7 +387,13 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                             {/* Payment method + reference */}
                                             <div className="flex items-center justify-between">
                                                 <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${payColor}`}>
-                                                    <PayIcon size={12} />
+                                                    {tx.payment_method === 'gcash' ? (
+                                                        <img src="/GCash.png" alt="GCash" className="w-3.5 h-3.5 object-contain" />
+                                                    ) : tx.payment_method === 'maya' ? (
+                                                        <img src="/Maya.png" alt="Maya" className="w-3.5 h-3.5 object-contain" />
+                                                    ) : (
+                                                        <PayIcon size={12} />
+                                                    )}
                                                     {payLabel}
                                                 </div>
                                                 {tx.reference_number && (

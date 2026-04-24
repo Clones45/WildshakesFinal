@@ -11,8 +11,8 @@ interface CheckoutModalProps {
 
 const PAYMENT_METHODS = [
     { id: 'cash',          label: 'Cash',          icon: Banknote,    color: 'text-green-400',  bg: 'bg-green-500/10 border-green-500/30' },
-    { id: 'gcash',         label: 'GCash',         icon: Smartphone,  color: 'text-blue-400',   bg: 'bg-blue-500/10 border-blue-500/30' },
-    { id: 'maya',          label: 'Maya',          icon: QrCode,      color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30' },
+    { id: 'gcash',         label: 'GCash',         image: '/GCash.png', color: 'text-blue-400',   bg: 'bg-blue-500/10 border-blue-500/30' },
+    { id: 'maya',          label: 'Maya',          image: '/Maya.png',  color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30' },
     { id: 'bank_transfer', label: 'Bank Transfer', icon: Landmark,    color: 'text-amber-400',  bg: 'bg-amber-500/10 border-amber-500/30' },
 ]
 
@@ -117,7 +117,11 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                                                 : 'border-surface-500 bg-surface-700 text-gray-500 hover:border-surface-400'
                                                 }`}
                                         >
-                                            <m.icon size={18} />
+                                            {m.image ? (
+                                                <img src={m.image} alt={m.label} className="w-5 h-5 object-contain" />
+                                            ) : (
+                                                m.icon && <m.icon size={18} />
+                                            )}
                                             <span className="text-sm font-semibold">{m.label}</span>
                                         </button>
                                     ))}

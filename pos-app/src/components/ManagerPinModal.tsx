@@ -66,7 +66,8 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
         if (managerId) {
             setPin('')
             onSuccess(managerId)
-            onClose()
+            // ✅ Do NOT call onClose() here — parent's onSuccess already hides this modal
+            // Calling onClose() here was incorrectly closing the parent panel too
         } else {
             setError('Invalid manager PIN')
             setShake(true)
