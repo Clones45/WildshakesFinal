@@ -186,7 +186,7 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
                                             )
                                             return (
                                                 <button key={idx} onClick={() => handlePad(key)} className="h-12 rounded-xl bg-surface-700 border border-surface-500 text-lg font-bold text-white active:scale-90 hover:bg-surface-600 transition-all">
-                                                    {checking ? <Loader2 size={16} className="animate-spin mx-auto text-gray-400" /> : key}
+                                                    {checking ? <span className="block w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mx-auto" /> : key}
                                                 </button>
                                             )
                                         })}
