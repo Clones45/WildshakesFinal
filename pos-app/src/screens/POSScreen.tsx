@@ -324,8 +324,8 @@ export function POSScreen() {
 
             {/* Main POS Layout — 70/30 split */}
             <div className="flex flex-1 overflow-hidden p-4 gap-4" style={{ position: 'relative', zIndex: 1 }}>
-                {/* Product panel (70%) — watermark lives here so it's visible on white */}
-                <div className="flex-1 overflow-hidden bg-white rounded-3xl shadow-sm border border-brand-200 relative">
+                {/* Product panel (70%) — dark theme matching login, watermark lives here */}
+                <div className="flex-1 overflow-hidden bg-brand-950 rounded-3xl shadow-sm border border-brand-800 relative">
                     {/* Watermark */}
                     <div
                         aria-hidden="true"
@@ -342,7 +342,7 @@ export function POSScreen() {
                         <img
                             src="/logo-watermark.png"
                             alt=""
-                            style={{ width: 400, height: 400, objectFit: 'contain', opacity: 0.06 }}
+                            style={{ width: 400, height: 400, objectFit: 'contain', opacity: 0.12 }}
                         />
                     </div>
                     <ProductGrid products={products} categories={categories} isLoading={isLoading} menuError={menuError} onReload={reloadMenu} />
