@@ -204,6 +204,7 @@ export const useAuthStore = create<AuthState>()(
 
                     // Always try Supabase first — navigator.onLine is unreliable on POS tablets
                     try {
+                        console.log('[QR Login] Querying Supabase for token:', token.slice(0, 10) + '...')
                         const { data: users, error } = await supabase
                             .from('users')
                             .select('*')
@@ -211,10 +212,12 @@ export const useAuthStore = create<AuthState>()(
                             .eq('is_active', true)
                             .limit(1)
 
+                        console.log('[QR Login] Supabase result — users:', users?.length, '| error:', error?.message)
                         if (!error && users && users.length > 0) {
                             userProfile = users[0] as UserProfile
                         }
-                    } catch {
+                    } catch (e) {
+                        console.log('[QR Login] Supabase threw:', e)
                         // Network failure — fall through to Dexie cache
                     }
 
