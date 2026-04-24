@@ -5,12 +5,13 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 const navItems = [
-  { href: '/franchiser/dashboard',     label: 'Dashboard',     icon: '📊' },
-  { href: '/franchiser/sales',         label: 'Sales Reports', icon: '📈' },
-  { href: '/franchiser/transactions',  label: 'Transactions',  icon: '🧾' },
-  { href: '/franchiser/staff',         label: 'My Staff',      icon: '👥' },
-  { href: '/franchiser/pos-device',    label: 'POS Device',    icon: '🖥️' },
-  { href: '/franchiser/announcements', label: 'Announcements', icon: '📣' },
+  { href: '/franchiser/dashboard',     label: 'Dashboard',          icon: '📊' },
+  { href: '/franchiser/sales',         label: 'Sales Reports',      icon: '📈' },
+  { href: '/franchiser/transactions',  label: 'Transactions',       icon: '🧾' },
+  { href: '/franchiser/staff',         label: 'My Staff',           icon: '👥' },
+  { href: '/franchiser/menu',          label: 'Menu Availability',  icon: '🍹' },
+  { href: '/franchiser/pos-device',    label: 'POS Device',         icon: '🖥️' },
+  { href: '/franchiser/announcements', label: 'Announcements',      icon: '📣' },
 ]
 
 interface FranchiserSidebarProps {

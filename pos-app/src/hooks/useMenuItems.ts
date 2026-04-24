@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
 import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
+import { useAuthStore } from '../store/authStore'
 
 /**
- * Loads menu items from the `products` table (133 real items synced from menu_items).
+ * Loads menu items from the `products` table.
+ * Applies per-branch availability overrides from `branch_menu_availability`.
  * Falls back to Dexie offline cache if Supabase is unreachable.
+ *
+ * Rules:
+ *  - Global `products.is_available = false`  → hidden everywhere (master admin only)
+ *  - `branch_menu_availability.is_available = false` → hidden at this branch only (franchisee control)
+ *  - No row in branch_menu_availability → product is available at this branch
  */
 export function useMenuItems() {
+    const { branch } = useAuthStore()
     const [products, setProducts] = useState<Product[]>([])
     const [categories, setCategories] = useState<string[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -14,50 +22,69 @@ export function useMenuItems() {
 
     useEffect(() => {
         loadItems()
-    }, [])
+    }, [branch?.id])
 
     async function loadItems() {
         setIsLoading(true)
         setError(null)
 
         try {
-            const { data, error: supaErr } = await supabase
+            // ── 1. Fetch all globally available products ─────────────────────
+            const { data: allProducts, error: prodErr } = await supabase
                 .from('products')
                 .select('id, name, category, price, image_url, is_available')
                 .eq('is_available', true)
                 .order('category')
                 .order('name')
 
-            if (supaErr) {
-                console.error('[useMenuItems] Supabase error:', supaErr)
-                throw supaErr
+            if (prodErr) {
+                console.error('[useMenuItems] Supabase error:', prodErr)
+                throw prodErr
             }
 
-            if (!data || data.length === 0) {
+            if (!allProducts || allProducts.length === 0) {
                 console.warn('[useMenuItems] No rows returned from products table')
                 throw new Error('Empty result from products')
             }
 
-            console.log(`[useMenuItems] Loaded ${data.length} items from Supabase products`)
-            const prods = data as Product[]
+            // ── 2. Fetch this branch's out-of-stock overrides ────────────────
+            let unavailableIds = new Set<string>()
+            if (branch?.id) {
+                const { data: overrides } = await supabase
+                    .from('branch_menu_availability')
+                    .select('product_id')
+                    .eq('branch_id', branch.id)
+                    .eq('is_available', false)
+
+                if (overrides) {
+                    unavailableIds = new Set(overrides.map((o: { product_id: string }) => o.product_id))
+                }
+            }
+
+            // ── 3. Filter out branch-level unavailable items ─────────────────
+            const prods = (allProducts as Product[]).filter(p => !unavailableIds.has(p.id))
             const cats = [...new Set(prods.map((p) => p.category))]
+
+            console.log(`[useMenuItems] Loaded ${allProducts.length} items from Supabase products`)
+            if (unavailableIds.size > 0) {
+                console.log(`[useMenuItems] ${unavailableIds.size} item(s) hidden by branch override`)
+            }
 
             setProducts(prods)
             setCategories(cats)
 
-            // Refresh offline cache
+            // ── 4. Refresh offline cache ─────────────────────────────────────
             await db.products.clear()
             await db.products.bulkPut(
                 prods.map((p) => ({ ...p, cachedAt: new Date().toISOString() }))
             )
             console.log('[useMenuItems] Offline cache refreshed from products table')
         } catch (err) {
-            // Offline fallback
+            // Offline fallback — cache already reflects branch overrides from last online session
             console.warn('[useMenuItems] Falling back to offline cache', err)
             const cached = await db.products.toArray()
             if (cached.length > 0) {
                 console.log(`[useMenuItems] Using ${cached.length} cached items`)
-                // Filter available only from cache
                 const available = cached.filter((p) => p.is_available !== false)
                 const cats = [...new Set(available.map((p) => p.category))]
                 setProducts(available as Product[])
