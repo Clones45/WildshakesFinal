@@ -97,6 +97,22 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 
 // ── Push a completed checkout transaction ────────────────────────────────────
 async function pushTransaction(local: LocalTransaction) {
+    // ── Path A: transaction already in Supabase (e.g. being voided) ─────────
+    // Just UPDATE the status fields — never re-insert items that already exist
+    if (local.supabaseId) {
+        const { error } = await supabase
+            .from('transactions')
+            .update({
+                status: local.status,
+                void_reason: local.voidReason ?? null,
+                voided_by: local.voidedBy ?? null,
+            })
+            .eq('id', local.supabaseId)
+        if (error) throw error
+        return
+    }
+
+    // ── Path B: brand-new transaction — upsert + insert items ───────────────
     const { data: txData, error: txError } = await supabase
         .from('transactions')
         .upsert(

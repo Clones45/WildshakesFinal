@@ -44,8 +44,6 @@ export function LoginScreen() {
     const handleQRScan = async (token: string) => {
         if (!branch) return
         clearError()
-        // DEBUG — remove after confirming QR scan works
-        console.log('[QR Scan] Scanned token:', JSON.stringify(token), '| length:', token.length)
         const ok = await loginWithQR(token, branch.id)
         if (!ok) {
             setShake(true)
