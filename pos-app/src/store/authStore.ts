@@ -240,7 +240,6 @@ export const useAuthStore = create<AuthState>()(
                                 is_active: c.is_active,
                                 auth_id: null,
                             }
-                            branchData = get().branch
                         }
                     }
 
