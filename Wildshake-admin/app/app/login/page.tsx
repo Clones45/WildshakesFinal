@@ -35,66 +35,77 @@ export default function LoginPage() {
 
   return (
     <main className="login-page">
-      <div className="login-card">
-        <div className="login-logo" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-          <img src="/logo.png" alt="Wildshakes Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Wildshakes</h1>
-          <p style={{ color: 'var(--color-text-dim)', fontSize: '0.875rem' }}>Master Admin Portal — Restricted Access</p>
+      <div className="login-split">
+        <div className="login-image-side">
+          <img src="/CompanyProfile.jpg" alt="Wildshakes Profile" className="login-cover-image" />
+          <div className="login-image-overlay">
+            <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: '#fff' }}>Welcome to Wildshakes</h2>
+            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem' }}>The premium standard in beverage management.</p>
+          </div>
         </div>
+        <div className="login-form-side">
+          <div className="login-card">
+            <div className="login-logo" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+              <img src="/logo.png" alt="Wildshakes Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Wildshakes</h1>
+              <p style={{ color: 'var(--color-text-dim)', fontSize: '0.875rem' }}>Master Admin Portal — Restricted Access</p>
+            </div>
 
-        {error && (
-          <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>
-            🔒 {error}
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="email">Email Address</label>
-            <input
-              id="email"
-              type="email"
-              className="form-input"
-              placeholder="admin@wildshakes.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label" htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              className="form-input"
-              placeholder="••••••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="btn btn-primary btn-lg w-full"
-            style={{ marginTop: '0.5rem', justifyContent: 'center' }}
-            disabled={loading}
-          >
-            {loading ? (
-              <><span className="loading-spinner" /> Authenticating...</>
-            ) : (
-              '🔐 Sign In to Admin Portal'
+            {error && (
+              <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>
+                🔒 {error}
+              </div>
             )}
-          </button>
-        </form>
 
-        <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-dim)' }}>
-          This portal is restricted to authorized personnel only.<br />
-          All access attempts are logged and monitored.
-        </p>
+            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label" htmlFor="email">Email Address</label>
+                <input
+                  id="email"
+                  type="email"
+                  className="form-input"
+                  placeholder="admin@wildshakes.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="password">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  className="form-input"
+                  placeholder="••••••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary btn-lg w-full"
+                style={{ marginTop: '0.5rem', justifyContent: 'center' }}
+                disabled={loading}
+              >
+                {loading ? (
+                  <><span className="loading-spinner" /> Authenticating...</>
+                ) : (
+                  '🔐 Sign In to Admin Portal'
+                )}
+              </button>
+            </form>
+
+            <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-dim)' }}>
+              This portal is restricted to authorized personnel only.<br />
+              All access attempts are logged and monitored.
+            </p>
+          </div>
+        </div>
       </div>
     </main>
   )
