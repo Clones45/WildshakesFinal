@@ -201,7 +201,6 @@ export const useAuthStore = create<AuthState>()(
                 set({ isLoading: true, error: null })
                 try {
                     let userProfile: UserProfile | null = null
-                    let branchData: Branch | null = null
 
                     if (navigator.onLine) {
                         try {
@@ -216,14 +215,6 @@ export const useAuthStore = create<AuthState>()(
                             if (!error && users && users.length > 0) {
                                 userProfile = users[0] as UserProfile
                             }
-
-                            const { data: branch } = await supabase
-                                .from('branches')
-                                .select('*')
-                                .eq('id', branchId)
-                                .single()
-
-                            if (branch) branchData = branch as Branch
                         } catch {
                             // fallback to offline
                         }
@@ -258,9 +249,10 @@ export const useAuthStore = create<AuthState>()(
                         return false
                     }
 
+                    // Branch is always known from Phase 1 device claim — no need to re-fetch
                     set({
                         user:         userProfile,
-                        branch:       branchData ?? get().branch,
+                        branch:       get().branch,
                         sessionToken: `${userProfile.id}:${Date.now()}`,
                         isLoading:    false,
                         error:        null,
