@@ -5,12 +5,12 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 const navItems = [
-  { href: '/dashboard',   label: 'Dashboard',     icon: '📊' },
-  { href: '/franchises',  label: 'Franchises',    icon: '🏪' },
-  { href: '/commissary',  label: 'Commissary',    icon: '📦' },
-  { href: '/menu',        label: 'Menu',          icon: '🍹' },
-  { href: '/financials',  label: 'Financials',    icon: '💰' },
-  { href: '/broadcast',   label: 'Broadcast',     icon: '📣' },
+  { href: '/dashboard', label: 'Dashboard', icon: '📊' },
+  { href: '/franchises', label: 'Franchises', icon: '🏪' },
+  { href: '/commissary', label: 'Commissary', icon: '📦' },
+  { href: '/menu', label: 'Menu', icon: '🍹' },
+  { href: '/financials', label: 'Financials', icon: '💰' },
+  { href: '/broadcast', label: 'Broadcast', icon: '📣' },
 ]
 
 interface SidebarProps {
@@ -20,7 +20,7 @@ interface SidebarProps {
 
 export default function Sidebar({ userEmail, lowStockCount = 0 }: SidebarProps) {
   const pathname = usePathname()
-  const router   = useRouter()
+  const router = useRouter()
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -42,9 +42,6 @@ export default function Sidebar({ userEmail, lowStockCount = 0 }: SidebarProps) 
           <span className="sidebar-logo-text">Wildshakes</span>
         </div>
         <span className="sidebar-logo-sub">Master Admin</span>
-        <div className="sidebar-badge">
-          ⚡ GOD MODE
-        </div>
       </div>
 
       {/* Navigation */}
