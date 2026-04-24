@@ -875,8 +875,9 @@ tbody td {
   padding: 2rem;
   background-color: var(--color-bg);
   background-image: linear-gradient(rgba(15, 26, 20, 0.3), rgba(15, 26, 20, 0.3)), url('/logo-bg.png');
-  background-size: cover;
-  background-position: center right;
+  background-size: auto, 50vw;
+  background-position: center, right bottom;
+  background-repeat: repeat, no-repeat;
   position: relative;
   z-index: 2;
   box-shadow: -10px 0 30px rgba(0,0,0,0.5);
@@ -896,17 +897,8 @@ tbody td {
   .login-split {
     flex-direction: column;
   }
-  .login-image-side {
-    flex: 0.4;
-    min-height: 300px;
-  }
-  .login-image-overlay {
-    padding: 2rem;
-  }
   .login-form-side {
-    flex: 1;
-    border-radius: 2rem 2rem 0 0;
-    margin-top: -2rem;
+    padding: 1.5rem;
   }
 }
 

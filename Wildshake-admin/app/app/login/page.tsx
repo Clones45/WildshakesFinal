@@ -36,13 +36,7 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <div className="login-split">
-        <div className="login-image-side">
-          <img src="/CompanyProfile.jpg" alt="Wildshakes Profile" className="login-cover-image" />
-          <div className="login-image-overlay">
-            <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: '#fff' }}>Welcome to Wildshakes</h2>
-            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem' }}>The premium standard in beverage management.</p>
-          </div>
-        </div>
+
         <div className="login-form-side">
           <div className="login-card">
             <div className="login-logo" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
