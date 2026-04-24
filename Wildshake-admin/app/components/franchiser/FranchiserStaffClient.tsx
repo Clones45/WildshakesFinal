@@ -52,8 +52,28 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
   const pinRequired = PIN_REQUIRED_ROLES.has(form.role)
 
   function flash(msg: string, isError = false) {
-    if (isError) { setError(msg); setTimeout(() => setError(''), 4000) }
+    if (isError) { setError(msg); setTimeout(() => setError(''), 5000) }
     else          { setSuccess(msg); setTimeout(() => setSuccess(''), 4000) }
+  }
+
+  // ── PIN strength validator ──────────────────────────────────────
+  function validatePin(pin: string): string | null {
+    if (pin.length !== 6) return 'PIN must be exactly 6 digits.'
+
+    // Block all same digits: 111111, 222222
+    if (/^(\d)\1{5}$/.test(pin))
+      return 'PIN cannot be all the same digit (e.g. 111111).'
+
+    // Block sequential ascending: 123456, 234567, 345678 …
+    const digits = pin.split('').map(Number)
+    const isAscending = digits.every((d, i) => i === 0 || d === digits[i - 1] + 1)
+    if (isAscending) return 'PIN cannot be a sequential number (e.g. 123456).'
+
+    // Block sequential descending: 654321, 987654 …
+    const isDescending = digits.every((d, i) => i === 0 || d === digits[i - 1] - 1)
+    if (isDescending) return 'PIN cannot be a reverse sequential number (e.g. 654321).'
+
+    return null // ✅ Valid
   }
 
   function handleRoleChange(newRole: string) {
@@ -70,8 +90,9 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
     if (!form.name.trim()) {
       flash('Name is required.', true); return
     }
-    if (pinRequired && form.pin_code.length !== 6) {
-      flash('PIN must be exactly 6 digits for this role.', true); return
+    if (pinRequired) {
+      const pinError = validatePin(form.pin_code)
+      if (pinError) { flash(pinError, true); return }
     }
     startTransition(async () => {
       const fd = new FormData()
@@ -98,7 +119,8 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
   }
 
   async function handleSavePin() {
-    if (!editPin || editPin.pin.length !== 6) { flash('PIN must be exactly 6 digits.', true); return }
+    const pinError = validatePin(editPin?.pin ?? '')
+    if (pinError) { flash(pinError, true); return }
     startTransition(async () => {
       const res = await updateStaffPin(editPin.id, editPin.pin)
       if (res.error) { flash(res.error, true); return }
