@@ -8,58 +8,118 @@ interface QRScannerProps {
     loginFailed: boolean  // true for one render when login fails → restarts scanner
 }
 
+const QR_ELEMENT_ID = 'qr-reader'
+
+const SCANNER_CONFIG = {
+    fps: 15,
+    qrbox: { width: 250, height: 250 },
+    aspectRatio: 1.0,
+    disableFlip: false,
+}
+
 export const QRScanner = forwardRef<{ restart: () => void }, QRScannerProps>(
     ({ onScan, isLoading, loginFailed }, ref) => {
         const scannerRef = useRef<Html5Qrcode | null>(null)
         const [status, setStatus] = useState<'idle' | 'starting' | 'scanning' | 'processing' | 'error'>('idle')
         const [errorMsg, setErrorMsg] = useState<string | null>(null)
+        const startingRef = useRef(false)   // prevents concurrent startScanner calls
 
+        // ── Stop & clean up ──────────────────────────────────────────────────
         const stopScanner = async () => {
             try {
                 if (scannerRef.current?.isScanning) {
                     await scannerRef.current.stop()
-                    scannerRef.current.clear()
                 }
+                scannerRef.current?.clear()
             } catch { /* ignore */ }
             scannerRef.current = null
         }
 
+        // ── Multi-strategy camera start ───────────────────────────────────────
         const startScanner = async () => {
-            if (status === 'scanning' || status === 'starting') return
+            if (startingRef.current) return
+            startingRef.current = true
             setStatus('starting')
             setErrorMsg(null)
 
+            // Always stop any previous instance first
+            await stopScanner()
+
             try {
-                const html5Qr = new Html5Qrcode('qr-reader')
+                // 1. Pre-check: does the browser support camera APIs at all?
+                if (!navigator.mediaDevices?.getUserMedia) {
+                    throw new Error('Camera API not supported on this browser.')
+                }
+
+                // 2. Request permission early so we get a clear error if denied
+                await navigator.mediaDevices.getUserMedia({ video: true })
+
+                const html5Qr = new Html5Qrcode(QR_ELEMENT_ID)
                 scannerRef.current = html5Qr
 
-                await html5Qr.start(
-                    { facingMode: 'environment' },
-                    {
-                        fps: 15,
-                        qrbox: { width: 250, height: 250 },
-                        aspectRatio: 1.0,
-                        disableFlip: false,
-                    },
-                    async (decodedText) => {
-                        // Stop camera IMMEDIATELY — prevents repeated scans
-                        await stopScanner()
-                        setStatus('processing')
-                        onScan(decodedText)
-                    },
-                    () => { /* ignore per-frame failures */ }
-                )
+                const onSuccess = async (decodedText: string) => {
+                    await stopScanner()
+                    setStatus('processing')
+                    onScan(decodedText)
+                }
+                const onFrameFailure = () => { /* per-frame miss — ignore */ }
+
+                // Strategy 1: environment (rear) camera
+                const tryEnvironment = () =>
+                    html5Qr.start(
+                        { facingMode: { ideal: 'environment' } },
+                        SCANNER_CONFIG,
+                        onSuccess,
+                        onFrameFailure,
+                    )
+
+                // Strategy 2: enumerate all video devices, try each one
+                const tryAnyDevice = async () => {
+                    const devices = await Html5Qrcode.getCameras()
+                    if (!devices || devices.length === 0) {
+                        throw new Error('No camera found on this device.')
+                    }
+                    // Prefer the last device (usually rear on Android tablets)
+                    const preferred = devices[devices.length - 1]
+                    await html5Qr.start(
+                        preferred.id,
+                        SCANNER_CONFIG,
+                        onSuccess,
+                        onFrameFailure,
+                    )
+                }
+
+                try {
+                    await tryEnvironment()
+                } catch {
+                    // Environment facing failed — fall back to device enumeration
+                    await tryAnyDevice()
+                }
+
                 setStatus('scanning')
             } catch (err) {
-                const msg = err instanceof Error ? err.message : 'Camera unavailable'
-                setErrorMsg(msg.toLowerCase().includes('permission')
-                    ? 'Camera permission denied. Please allow camera access and try again.'
-                    : msg)
+                const raw = err instanceof Error ? err.message : String(err)
+                const lower = raw.toLowerCase()
+
+                let friendly: string
+                if (lower.includes('permission') || lower.includes('denied') || lower.includes('notallowed')) {
+                    friendly = 'Camera permission denied. Please allow camera access in your browser settings and try again.'
+                } else if (lower.includes('no camera') || lower.includes('no device') || lower.includes('notfound')) {
+                    friendly = 'No camera found on this device.'
+                } else if (lower.includes('not supported') || lower.includes('api')) {
+                    friendly = 'Camera not supported on this browser. Try Chrome or Safari.'
+                } else {
+                    friendly = 'Camera unavailable. Tap "Try Again" or use PIN login.'
+                }
+
+                setErrorMsg(friendly)
                 setStatus('error')
+            } finally {
+                startingRef.current = false
             }
         }
 
-        // Expose restart() so LoginScreen can call it when login fails
+        // Expose restart() so LoginScreen can call it after failed login
         useImperativeHandle(ref, () => ({ restart: startScanner }))
 
         // Auto-start on mount
@@ -68,7 +128,7 @@ export const QRScanner = forwardRef<{ restart: () => void }, QRScannerProps>(
             return () => { stopScanner() }
         }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-        // If login failed, restart the scanner automatically
+        // Restart when login fails (loginFailed pulses true → false)
         useEffect(() => {
             if (loginFailed) startScanner()
         }, [loginFailed]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -78,7 +138,7 @@ export const QRScanner = forwardRef<{ restart: () => void }, QRScannerProps>(
                 {/* Camera viewfinder */}
                 <div className="relative w-full max-w-[300px] aspect-square rounded-2xl overflow-hidden bg-brand-950 border border-brand-800 shadow-2xl">
                     <div
-                        id="qr-reader"
+                        id={QR_ELEMENT_ID}
                         className="w-full h-full"
                         style={{ position: 'absolute', inset: 0 }}
                     />
