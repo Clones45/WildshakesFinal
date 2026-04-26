@@ -2,11 +2,12 @@ package com.wildshakes.pos.app;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.os.Bundle;
 import android.webkit.PermissionRequest;
-import android.webkit.WebChromeClient;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
 
@@ -14,23 +15,39 @@ public class MainActivity extends BridgeActivity {
     private PermissionRequest pendingWebPermission;
 
     @Override
-    public void onStart() {
-        super.onStart();
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
 
-        bridge.getWebView().setWebChromeClient(new WebChromeClient() {
+        // Extend BridgeWebChromeClient (NOT bare WebChromeClient) so Capacitor's
+        // JavaScript bridge, file pickers, and other WebView features still work.
+        bridge.getWebView().setWebChromeClient(new BridgeWebChromeClient(bridge) {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
-                    // Check if Android OS camera permission is already granted
+                    // Check if this request includes VIDEO_CAPTURE
+                    boolean needsVideo = false;
+                    for (String res : request.getResources()) {
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res)) {
+                            needsVideo = true;
+                            break;
+                        }
+                    }
+
+                    if (!needsVideo) {
+                        // Not a camera request — let Capacitor's default handle it
+                        super.onPermissionRequest(request);
+                        return;
+                    }
+
                     boolean cameraGranted = ContextCompat.checkSelfPermission(
                             MainActivity.this, Manifest.permission.CAMERA)
                             == PackageManager.PERMISSION_GRANTED;
 
                     if (cameraGranted) {
-                        // OS permission already granted — let the WebView use it
-                        request.grant(request.getResources());
+                        // OS permission already granted — grant only VIDEO_CAPTURE to WebView
+                        request.grant(new String[]{ PermissionRequest.RESOURCE_VIDEO_CAPTURE });
                     } else {
-                        // Hold the WebView request and ask the OS for permission first
+                        // Ask the OS for CAMERA permission (no audio — QR only needs video)
                         pendingWebPermission = request;
                         ActivityCompat.requestPermissions(
                                 MainActivity.this,
@@ -52,10 +69,9 @@ public class MainActivity extends BridgeActivity {
         if (requestCode == CAMERA_PERMISSION_CODE && pendingWebPermission != null) {
             if (grantResults.length > 0
                     && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // User tapped Allow — now grant the WebView access too
-                pendingWebPermission.grant(pendingWebPermission.getResources());
+                // User tapped Allow → grant VIDEO_CAPTURE to WebView
+                pendingWebPermission.grant(new String[]{ PermissionRequest.RESOURCE_VIDEO_CAPTURE });
             } else {
-                // User tapped Deny — reject the WebView request so we show an error
                 pendingWebPermission.deny();
             }
             pendingWebPermission = null;

@@ -35,25 +35,16 @@ export const QRScanner = forwardRef<{ restart: () => void }, QRScannerProps>(
             scannerRef.current = null
         }
 
-        // ── Multi-strategy camera start ───────────────────────────────────────
+        // ── Camera start (device-ID strategy, most reliable on Android) ─────────
         const startScanner = async () => {
             if (startingRef.current) return
             startingRef.current = true
             setStatus('starting')
             setErrorMsg(null)
 
-            // Always stop any previous instance first
             await stopScanner()
 
             try {
-                // 1. Pre-check: does the browser support camera APIs at all?
-                if (!navigator.mediaDevices?.getUserMedia) {
-                    throw new Error('Camera API not supported on this browser.')
-                }
-
-                // 2. Request permission early so we get a clear error if denied
-                await navigator.mediaDevices.getUserMedia({ video: true })
-
                 const html5Qr = new Html5Qrcode(QR_ELEMENT_ID)
                 scannerRef.current = html5Qr
 
@@ -62,59 +53,45 @@ export const QRScanner = forwardRef<{ restart: () => void }, QRScannerProps>(
                     setStatus('processing')
                     onScan(decodedText)
                 }
-                const onFrameFailure = () => { /* per-frame miss — ignore */ }
+                const onFrameFailure = () => { /* per-frame miss */ }
 
-                // Wrap a promise with a timeout so we never freeze on "Starting camera..."
-                const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+                const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
                     Promise.race([
-                        promise,
-                        new Promise<T>((_, reject) =>
-                            setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)
+                        p,
+                        new Promise<T>((_, rej) =>
+                            setTimeout(() => rej(new Error(`Camera timed out after ${ms / 1000}s`)), ms)
                         ),
                     ])
 
-                // Strategy 1: environment (rear) camera
-                const tryEnvironment = () =>
-                    withTimeout(
+                // Step 1: enumerate cameras (this also triggers the Android permission dialog)
+                let devices: { id: string; label: string }[] = []
+                try {
+                    devices = await withTimeout(Html5Qrcode.getCameras(), 8000)
+                } catch {
+                    // getCameras() failed — try facingMode as last resort
+                }
+
+                if (devices && devices.length > 0) {
+                    // Prefer rear camera: look for "back"/"environment" in label, else take last
+                    const rear = devices.find(d =>
+                        /back|rear|environment/i.test(d.label)
+                    ) ?? devices[devices.length - 1]
+
+                    await withTimeout(
+                        html5Qr.start(rear.id, SCANNER_CONFIG, onSuccess, onFrameFailure),
+                        10000
+                    )
+                } else {
+                    // Fallback: let browser pick via facingMode
+                    await withTimeout(
                         html5Qr.start(
                             { facingMode: { ideal: 'environment' } },
                             SCANNER_CONFIG,
                             onSuccess,
                             onFrameFailure,
                         ),
-                        10000,
-                        'Environment camera'
+                        10000
                     )
-
-                // Strategy 2: enumerate all video devices, try each one
-                const tryAnyDevice = async () => {
-                    const devices = await withTimeout(
-                        Html5Qrcode.getCameras(),
-                        5000,
-                        'Camera enumeration'
-                    )
-                    if (!devices || devices.length === 0) {
-                        throw new Error('No camera found on this device.')
-                    }
-                    // Prefer the last device (usually rear on Android tablets)
-                    const preferred = devices[devices.length - 1]
-                    await withTimeout(
-                        html5Qr.start(
-                            preferred.id,
-                            SCANNER_CONFIG,
-                            onSuccess,
-                            onFrameFailure,
-                        ),
-                        10000,
-                        'Device camera'
-                    )
-                }
-
-                try {
-                    await tryEnvironment()
-                } catch {
-                    // Environment facing failed — fall back to device enumeration
-                    await tryAnyDevice()
                 }
 
                 setStatus('scanning')
@@ -124,13 +101,13 @@ export const QRScanner = forwardRef<{ restart: () => void }, QRScannerProps>(
 
                 let friendly: string
                 if (lower.includes('permission') || lower.includes('denied') || lower.includes('notallowed')) {
-                    friendly = 'Camera permission denied. Please allow camera access in your browser settings and try again.'
-                } else if (lower.includes('no camera') || lower.includes('no device') || lower.includes('notfound')) {
+                    friendly = 'Camera permission denied. Go to Settings → Apps → Wildshakes POS → Permissions and allow Camera.'
+                } else if (lower.includes('no camera') || lower.includes('notfound') || lower.includes('no device')) {
                     friendly = 'No camera found on this device.'
-                } else if (lower.includes('not supported') || lower.includes('api')) {
-                    friendly = 'Camera not supported on this browser. Try Chrome or Safari.'
+                } else if (lower.includes('timed out')) {
+                    friendly = 'Camera took too long to start. Tap "Try Again".'
                 } else {
-                    friendly = 'Camera unavailable. Tap "Try Again" or use PIN login.'
+                    friendly = `Camera error: ${raw}`   // show raw error for debugging
                 }
 
                 setErrorMsg(friendly)
@@ -143,10 +120,13 @@ export const QRScanner = forwardRef<{ restart: () => void }, QRScannerProps>(
         // Expose restart() so LoginScreen can call it after failed login
         useImperativeHandle(ref, () => ({ restart: startScanner }))
 
-        // Auto-start on mount
+        // Auto-start on mount — small delay lets Capacitor bridge finish initializing
         useEffect(() => {
-            startScanner()
-            return () => { stopScanner() }
+            const t = setTimeout(() => startScanner(), 600)
+            return () => {
+                clearTimeout(t)
+                stopScanner()
+            }
         }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
         // Restart when login fails (loginFailed pulses true → false)
