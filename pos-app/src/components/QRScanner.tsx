@@ -64,28 +64,49 @@ export const QRScanner = forwardRef<{ restart: () => void }, QRScannerProps>(
                 }
                 const onFrameFailure = () => { /* per-frame miss — ignore */ }
 
+                // Wrap a promise with a timeout so we never freeze on "Starting camera..."
+                const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+                    Promise.race([
+                        promise,
+                        new Promise<T>((_, reject) =>
+                            setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)
+                        ),
+                    ])
+
                 // Strategy 1: environment (rear) camera
                 const tryEnvironment = () =>
-                    html5Qr.start(
-                        { facingMode: { ideal: 'environment' } },
-                        SCANNER_CONFIG,
-                        onSuccess,
-                        onFrameFailure,
+                    withTimeout(
+                        html5Qr.start(
+                            { facingMode: { ideal: 'environment' } },
+                            SCANNER_CONFIG,
+                            onSuccess,
+                            onFrameFailure,
+                        ),
+                        10000,
+                        'Environment camera'
                     )
 
                 // Strategy 2: enumerate all video devices, try each one
                 const tryAnyDevice = async () => {
-                    const devices = await Html5Qrcode.getCameras()
+                    const devices = await withTimeout(
+                        Html5Qrcode.getCameras(),
+                        5000,
+                        'Camera enumeration'
+                    )
                     if (!devices || devices.length === 0) {
                         throw new Error('No camera found on this device.')
                     }
                     // Prefer the last device (usually rear on Android tablets)
                     const preferred = devices[devices.length - 1]
-                    await html5Qr.start(
-                        preferred.id,
-                        SCANNER_CONFIG,
-                        onSuccess,
-                        onFrameFailure,
+                    await withTimeout(
+                        html5Qr.start(
+                            preferred.id,
+                            SCANNER_CONFIG,
+                            onSuccess,
+                            onFrameFailure,
+                        ),
+                        10000,
+                        'Device camera'
                     )
                 }
 
