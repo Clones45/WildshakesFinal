@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, X, Delete, KeyRound, QrCode } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -22,10 +22,13 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
     const [shake, setShake] = useState(false)
     const [checking, setChecking] = useState(false)
     const [qrFailed, setQrFailed] = useState(false)
+    // Prevent double-firing onSuccess if auth resolves twice
+    const doneRef = useRef(false)
 
     const padKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'backspace']
 
     const handleClose = () => {
+        doneRef.current = false
         setPin('')
         setError('')
         setTab('pin')
@@ -44,10 +47,13 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
     }
 
     const verifyPin = async (pinValue: string) => {
+        if (doneRef.current) return
         setChecking(true)
         const managerId = await lookupManager({ pin_code: pinValue })
         setChecking(false)
         if (managerId) {
+            if (doneRef.current) return
+            doneRef.current = true
             setPin('')
             onSuccess(managerId)
         } else {
@@ -59,58 +65,69 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
 
     // ── QR verification ─────────────────────────────────────────────────────
     const handleQRScan = async (token: string) => {
+        if (doneRef.current || checking) return  // block duplicate scans
         setChecking(true)
         const managerId = await lookupManager({ qr_access_token: token })
         setChecking(false)
         if (managerId) {
+            if (doneRef.current) return
+            doneRef.current = true
             onSuccess(managerId)
         } else {
             setError('Invalid or non-manager QR code')
             setQrFailed(true)
-            setTimeout(() => { setQrFailed(false); setError('') }, 100)
+            setTimeout(() => { setQrFailed(false); setError('') }, 1500)
         }
     }
 
     // ── Shared: lookup a manager by PIN or QR token ─────────────────────────
+    // Tries Supabase with a 2 s timeout; falls back to local Dexie cache so
+    // slow tablet connections don't leave the modal frozen on "Authenticating…".
     const lookupManager = async (
         filter: { pin_code?: string; qr_access_token?: string }
     ): Promise<string | null> => {
-        // Always try Supabase first
-        try {
-            // Build query incrementally (Supabase builder is immutable — must reassign)
-            let q = supabase
-                .from('users')
-                .select('id')
-                .in('role', ['manager', 'investor'])
-                .eq('is_active', true)
-                .eq('branch_id', branch?.id ?? '')  // ✅ Only accept managers from THIS branch
-                .limit(1)
-
-            if (filter.pin_code)        q = q.eq('pin_code', filter.pin_code)
-            if (filter.qr_access_token) q = q.eq('qr_access_token', filter.qr_access_token)
-
-            const { data } = await q
-            if (data && data.length > 0) return (data[0] as { id: string }).id
-        } catch {
-            // fall through to Dexie
+        // Helper: check Dexie offline cache
+        const checkLocal = async (): Promise<string | null> => {
+            try {
+                const { db } = await import('../lib/db')
+                const all = await db.users
+                    .filter(u => u.is_active && (u.role === 'manager' || u.role === 'investor') && u.branch_id === (branch?.id ?? ''))
+                    .toArray()
+                const match = all.find(u =>
+                    filter.pin_code
+                        ? u.pin_code === filter.pin_code
+                        : u.qr_access_token === filter.qr_access_token
+                )
+                return match?.id ?? null
+            } catch { return null }
         }
 
-        // Offline fallback
-        try {
-            const { db } = await import('../lib/db')
-            const all = await db.users
-                .filter(u => u.is_active && (u.role === 'manager' || u.role === 'investor') && u.branch_id === (branch?.id ?? ''))
-                .toArray()
+        // Helper: Supabase lookup wrapped in a 2-second timeout
+        const checkRemote = async (): Promise<string | null> => {
+            try {
+                let q = supabase
+                    .from('users')
+                    .select('id')
+                    .in('role', ['manager', 'investor'])
+                    .eq('is_active', true)
+                    .eq('branch_id', branch?.id ?? '')
+                    .limit(1)
 
-            const match = all.find(u =>
-                filter.pin_code
-                    ? u.pin_code === filter.pin_code
-                    : u.qr_access_token === filter.qr_access_token
-            )
-            if (match) return match.id
-        } catch { /* ignore */ }
+                if (filter.pin_code)        q = q.eq('pin_code', filter.pin_code)
+                if (filter.qr_access_token) q = q.eq('qr_access_token', filter.qr_access_token)
 
-        return null
+                const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))
+                const result  = await Promise.race([
+                    q.then(({ data }) => (data && data.length > 0 ? (data[0] as { id: string }).id : null)),
+                    timeout,
+                ])
+                return result
+            } catch { return null }
+        }
+
+        // Race remote vs local — whichever answers first wins
+        const [remote, local] = await Promise.all([checkRemote(), checkLocal()])
+        return remote ?? local ?? null
     }
 
     return (
