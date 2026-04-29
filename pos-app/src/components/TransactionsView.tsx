@@ -323,7 +323,7 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                     const payLabel = PAYMENT_LABELS[tx.payment_method] ?? tx.payment_method
                                     const isVoided = tx.status === 'voided'
                                     const isDiscounted = tx.discount_type !== 'none' && tx.discount_amount > 0
-                                    const tableNum = tx.table_number ?? tx.local_ref
+                                    const tableNum = tx.table_number && !tx.table_number.includes('-') ? tx.table_number : null
 
                                     return (
                                         <motion.div
@@ -361,12 +361,10 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                                             <Clock size={10} />
                                                             {formatDateTime(tx.created_at)}
                                                         </div>
-                                                        {tableNum && (
-                                                            <div className="flex items-center gap-1 text-teal-400 text-xs">
-                                                                <MapPin size={10} />
-                                                                Table #{tableNum}
-                                                            </div>
-                                                        )}
+                                                        <div className={`flex items-center gap-1 text-xs ${tableNum ? 'text-teal-400' : 'text-gray-600'}`}>
+                                                            <MapPin size={10} />
+                                                            {tableNum ? `Table #${tableNum}` : 'Nothing'}
+                                                        </div>
                                                     </div>
                                                     <p className="text-gray-500 text-xs mt-0.5">
                                                         Cashier: <span className="text-gray-300">{tx.cashier_name}</span>
