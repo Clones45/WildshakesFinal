@@ -125,9 +125,19 @@ export function ManagerPinModal({ isOpen, title, onSuccess, onClose }: ManagerPi
             } catch { return null }
         }
 
-        // Race remote vs local — whichever answers first wins
-        const [remote, local] = await Promise.all([checkRemote(), checkLocal()])
-        return remote ?? local ?? null
+        // Resolve as soon as EITHER source returns a non-null match.
+        // Local Dexie typically answers in <50 ms; remote is capped at 2 s.
+        // We don't wait for the slower one once we have a confirmed match.
+        return new Promise<string | null>((resolve) => {
+            let settled = 0
+            const total = 2
+            const onResult = (id: string | null) => {
+                if (id !== null) { resolve(id); return }
+                if (++settled === total) resolve(null)
+            }
+            checkLocal().then(onResult).catch(() => onResult(null))
+            checkRemote().then(onResult).catch(() => onResult(null))
+        })
     }
 
     return (

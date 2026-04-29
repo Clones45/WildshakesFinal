@@ -384,7 +384,7 @@ export function POSScreen() {
             <ManagerPinModal
                 isOpen={showManagerPin}
                 title="Manager Authorization"
-                onSuccess={() => managerPinCallback()}
+                onSuccess={() => { setShowManagerPin(false); managerPinCallback() }}
                 onClose={() => setShowManagerPin(false)}
             />
 
