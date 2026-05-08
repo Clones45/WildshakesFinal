@@ -147,6 +147,8 @@ async function pushTransaction(local: LocalTransaction) {
         quantity: item.quantity,
         unit_price: item.unitPrice,
         subtotal: item.subtotal,
+        notes: item.notes ?? null,
+        cancelled: item.cancelled ?? false,
     }))
 
     const { error: itemsError } = await supabase.from('transaction_items').insert(items)

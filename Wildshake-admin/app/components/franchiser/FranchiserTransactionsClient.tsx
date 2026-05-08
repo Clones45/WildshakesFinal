@@ -7,6 +7,7 @@ interface TxItem {
   unit_price: number
   subtotal: number
   notes?: string | null
+  cancelled?: boolean | null
   products: { name: string; category: string } | null
 }
 
@@ -184,6 +185,18 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                           -{tx.discount_type} ₱{Number(tx.discount_amount).toFixed(2)}
                         </div>
                       )}
+                      {/* Cancelled items pill */}
+                      {(tx.transaction_items || []).some(i => i.cancelled) && (
+                        <div style={{
+                          display: 'inline-block', marginTop: '3px',
+                          fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.04em',
+                          background: 'rgba(220,53,69,0.12)', color: '#dc3545',
+                          border: '1px solid rgba(220,53,69,0.25)',
+                          borderRadius: '99px', padding: '1px 7px',
+                        }}>
+                          ⚠ {(tx.transaction_items || []).filter(i => i.cancelled).length} cancelled
+                        </div>
+                      )}
                     </td>
                     <td style={{ fontSize: '0.85rem' }}>
                       {payLabels[tx.payment_method] || '📎'} {tx.payment_method.replace('_', ' ')}
@@ -239,21 +252,37 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                             </tr>
                           </thead>
                           <tbody>
-                            {(tx.transaction_items || []).map((item, idx) => (
-                              <tr key={idx}>
-                                <td style={{ padding: '0.3rem 0.5rem' }}>
-                                  {item.products?.name || 'Unknown'}
-                                  {item.notes && <span style={{ color: 'var(--color-text-muted)', fontSize: '0.72rem' }}> — {item.notes}</span>}
-                                </td>
-                                <td style={{ textAlign: 'center', padding: '0.3rem' }}>×{item.quantity}</td>
-                                <td style={{ textAlign: 'right', padding: '0.3rem', color: 'var(--color-text-muted)' }}>
-                                  ₱{Number(item.unit_price).toFixed(2)}
-                                </td>
-                                <td style={{ textAlign: 'right', padding: '0.3rem', fontWeight: 600 }}>
-                                  ₱{Number(item.subtotal).toFixed(2)}
-                                </td>
-                              </tr>
-                            ))}
+                            {(tx.transaction_items || []).map((item, idx) => {
+                              const isCancelled = !!item.cancelled
+                              return (
+                                <tr key={idx} style={{ opacity: isCancelled ? 0.7 : 1, background: isCancelled ? 'rgba(220,53,69,0.04)' : undefined }}>
+                                  <td style={{ padding: '0.3rem 0.5rem' }}>
+                                    <span style={{ textDecoration: isCancelled ? 'line-through' : 'none', color: isCancelled ? '#dc3545' : undefined }}>
+                                      {item.products?.name || 'Unknown'}
+                                    </span>
+                                    {isCancelled && (
+                                      <span style={{
+                                        marginLeft: '6px', fontSize: '0.62rem', fontWeight: 700,
+                                        background: 'rgba(220,53,69,0.15)', color: '#dc3545',
+                                        border: '1px solid rgba(220,53,69,0.3)',
+                                        borderRadius: '99px', padding: '1px 6px',
+                                        textDecoration: 'none', display: 'inline-block',
+                                      }}>CANCELLED</span>
+                                    )}
+                                    {item.notes && !isCancelled && (
+                                      <span style={{ color: 'var(--color-text-muted)', fontSize: '0.72rem' }}> — {item.notes}</span>
+                                    )}
+                                  </td>
+                                  <td style={{ textAlign: 'center', padding: '0.3rem', textDecoration: isCancelled ? 'line-through' : 'none', color: isCancelled ? '#dc3545' : undefined }}>×{item.quantity}</td>
+                                  <td style={{ textAlign: 'right', padding: '0.3rem', color: isCancelled ? '#dc3545' : 'var(--color-text-muted)', textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                                    ₱{Number(item.unit_price).toFixed(2)}
+                                  </td>
+                                  <td style={{ textAlign: 'right', padding: '0.3rem', fontWeight: 600, textDecoration: isCancelled ? 'line-through' : 'none', color: isCancelled ? '#dc3545' : undefined }}>
+                                    {isCancelled ? <span style={{ fontSize: '0.7rem' }}>not charged</span> : `₱${Number(item.subtotal).toFixed(2)}`}
+                                  </td>
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </td>

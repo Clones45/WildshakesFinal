@@ -29,7 +29,7 @@ export default async function FranchiserTransactionsPage() {
       created_at, void_reason,
       users(name),
       branches(name),
-      transaction_items(quantity, unit_price, subtotal, notes, products(name, category))
+      transaction_items(quantity, unit_price, subtotal, notes, cancelled, products(name, category))
     `)
     .in('branch_id', branchIds.length > 0 ? branchIds : ['00000000-0000-0000-0000-000000000000'])
     .order('created_at', { ascending: false })
