@@ -195,6 +195,8 @@ export function POSScreen() {
                     quantity: i.quantity,
                     unitPrice: i.product.price,
                     subtotal: i.product.price * i.quantity,
+                    notes: i.notes || undefined,
+                    cancelled: i.cancelled || false,
                 })),
                 syncStatus: 'pending',
                 createdAt,

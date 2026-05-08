@@ -37,6 +37,8 @@ export interface LocalTransactionItem {
     quantity: number
     unitPrice: number
     subtotal: number
+    notes?: string
+    cancelled?: boolean   // Marked wrong by cashier — saved for audit, excluded from receipt/total
 }
 
 // ─── Offline Held Order ────────────────────────────────────────────────────

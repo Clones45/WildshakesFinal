@@ -4,7 +4,8 @@ import type { Product } from '../lib/supabase'
 export interface CartItem {
     product: Product
     quantity: number
-    notes?: string  // e.g. "no sugar", "extra ice"
+    notes?: string      // e.g. "no sugar", "extra ice"
+    cancelled?: boolean // Struck-through — saved for records but excluded from total/print
 }
 
 export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'custom'
@@ -43,6 +44,7 @@ interface CartState {
     removeItem: (productId: string) => void
     updateQty: (productId: string, qty: number) => void
     updateNotes: (productId: string, notes: string) => void
+    cancelItem: (productId: string) => void   // Toggle strikethrough on item
     setDiscount: (type: DiscountType, customAmount?: number) => void
     setPaymentMethod: (method: PaymentMethod) => void
     setCashTendered: (amount: number) => void
@@ -69,7 +71,7 @@ const initialState = {
 export const useCartStore = create<CartState>()((set, get) => ({
     ...initialState,
 
-    subtotal: () => get().items.reduce((sum, i) => sum + i.product.price * i.quantity, 0),
+    subtotal: () => get().items.filter(i => !i.cancelled).reduce((sum, i) => sum + i.product.price * i.quantity, 0),
 
     discountAmount: () => {
         const { discountType, customDiscountAmount } = get()
@@ -103,6 +105,13 @@ export const useCartStore = create<CartState>()((set, get) => ({
     updateNotes: (productId, notes) =>
         set((state) => ({
             items: state.items.map((i) => i.product.id === productId ? { ...i, notes } : i),
+        })),
+
+    cancelItem: (productId) =>
+        set((state) => ({
+            items: state.items.map((i) =>
+                i.product.id === productId ? { ...i, cancelled: !i.cancelled } : i
+            ),
         })),
 
     setDiscount: (type, customAmount = 0) =>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCartStore } from '../store/cartStore'
-import { Minus, Plus, Trash2, Tag, ShoppingCart, PauseCircle, Clock, MapPin, X, Pencil } from 'lucide-react'
+import { Minus, Plus, Trash2, Tag, ShoppingCart, PauseCircle, Clock, MapPin, X, Pencil, Ban } from 'lucide-react'
 
 interface CartProps {
     onCheckout: () => void
@@ -13,7 +13,7 @@ interface CartProps {
 
 export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending }: CartProps) {
     const {
-        items, discountType, updateQty, updateNotes, clearCart,
+        items, discountType, updateQty, updateNotes, cancelItem, clearCart,
         subtotal, discountAmount, total,
         resumedHoldId, resumedTableNumber,
     } = useCartStore()
@@ -24,7 +24,8 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
     const sub = subtotal()
     const disc = discountAmount()
     const tot = total()
-    const hasItems = items.length > 0
+    const activeItems = items.filter(i => !i.cancelled)
+    const hasItems = activeItems.length > 0
 
     const handleNoteEdit = (productId: string, currentNote: string) => {
         setEditingNoteId(productId)
@@ -54,7 +55,12 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                     </div>
                     <div>
                         <h2 className="font-bold text-surface-800 text-lg leading-none">Current Order</h2>
-                        <p className="text-surface-600 text-xs font-semibold uppercase mt-1">{items.length} item{items.length !== 1 ? 's' : ''}</p>
+                        <p className="text-surface-600 text-xs font-semibold uppercase mt-1">
+                            {activeItems.length} item{activeItems.length !== 1 ? 's' : ''}
+                            {items.length > activeItems.length && (
+                                <span className="text-red-400 ml-1">· {items.length - activeItems.length} cancelled</span>
+                            )}
+                        </p>
                     </div>
                 </div>
 
@@ -119,70 +125,113 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 exit={{ opacity: 0, x: -20, height: 0 }}
-                                className="card px-4 py-3"
+                                className={`card px-4 py-3 transition-all ${
+                                    item.cancelled
+                                        ? 'opacity-60 bg-red-50/60 border-red-200'
+                                        : ''
+                                }`}
                             >
                                 {/* Main row */}
                                 <div className="flex items-center gap-3">
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-surface-800 font-bold text-sm leading-tight truncate">{item.product.name}</p>
-                                        <p className="text-surface-500 font-medium text-xs">₱{item.product.price.toFixed(2)} each</p>
+                                        <p className={`font-bold text-sm leading-tight truncate ${
+                                            item.cancelled
+                                                ? 'line-through text-red-400'
+                                                : 'text-surface-800'
+                                        }`}>
+                                            {item.product.name}
+                                        </p>
+                                        <p className={`font-medium text-xs ${
+                                            item.cancelled ? 'line-through text-red-300' : 'text-surface-500'
+                                        }`}>
+                                            ₱{item.product.price.toFixed(2)} each
+                                        </p>
                                     </div>
 
-                                    {/* Qty controls */}
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => updateQty(item.product.id, item.quantity - 1)}
-                                            className="w-8 h-8 rounded-full bg-surface-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-surface-200 border border-surface-200"
-                                        >
-                                            {item.quantity === 1 ? <Trash2 size={13} className="text-red-500" /> : <Minus size={13} className="text-surface-600" />}
-                                        </button>
-                                        <span className="w-7 text-center font-bold text-surface-800">{item.quantity}</span>
-                                        <button
-                                            onClick={() => updateQty(item.product.id, item.quantity + 1)}
-                                            className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-brand-200 border border-brand-200"
-                                        >
-                                            <Plus size={13} className="text-brand-600" />
-                                        </button>
-                                    </div>
-
-                                    <div className="text-right w-16">
-                                        <p className="text-brand-600 font-bold text-sm">₱{(item.product.price * item.quantity).toFixed(2)}</p>
-                                    </div>
-                                </div>
-
-                                {/* Notes row */}
-                                <div className="mt-1.5">
-                                    {editingNoteId === item.product.id ? (
-                                        <div className="flex gap-1.5 items-center">
-                                            <input
-                                                type="text"
-                                                autoFocus
-                                                value={noteInput}
-                                                onChange={e => setNoteInput(e.target.value)}
-                                                onKeyDown={e => { if (e.key === 'Enter') handleNoteConfirm(item.product.id) }}
-                                                placeholder="e.g. no sugar, extra ice…"
-                                                maxLength={60}
-                                                className="flex-1 text-xs bg-brand-50 border border-brand-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-400 text-surface-700 placeholder-surface-400"
-                                            />
+                                    {/* Qty controls — hidden when cancelled */}
+                                    {!item.cancelled ? (
+                                        <div className="flex items-center gap-2">
                                             <button
-                                                onClick={() => handleNoteConfirm(item.product.id)}
-                                                className="text-xs font-bold text-brand-600 hover:text-brand-800 transition-colors px-1"
+                                                onClick={() => updateQty(item.product.id, item.quantity - 1)}
+                                                className="w-8 h-8 rounded-full bg-surface-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-surface-200 border border-surface-200"
                                             >
-                                                OK
+                                                {item.quantity === 1 ? <Trash2 size={13} className="text-red-500" /> : <Minus size={13} className="text-surface-600" />}
+                                            </button>
+                                            <span className="w-7 text-center font-bold text-surface-800">{item.quantity}</span>
+                                            <button
+                                                onClick={() => updateQty(item.product.id, item.quantity + 1)}
+                                                className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-brand-200 border border-brand-200"
+                                            >
+                                                <Plus size={13} className="text-brand-600" />
                                             </button>
                                         </div>
                                     ) : (
-                                        <button
-                                            onClick={() => handleNoteEdit(item.product.id, item.notes || '')}
-                                            className="flex items-center gap-1 text-[11px] text-surface-400 hover:text-brand-500 transition-colors"
-                                        >
-                                            <Pencil size={10} />
-                                            {item.notes
-                                                ? <span className="text-brand-600 font-semibold italic">{item.notes}</span>
-                                                : <span>Add note</span>
-                                            }
-                                        </button>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-400 bg-red-100 px-2 py-1 rounded-full border border-red-200">
+                                            Cancelled
+                                        </span>
                                     )}
+
+                                    <div className="text-right w-16">
+                                        <p className={`font-bold text-sm ${
+                                            item.cancelled ? 'line-through text-red-300' : 'text-brand-600'
+                                        }`}>
+                                            ₱{(item.product.price * item.quantity).toFixed(2)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Cancel button + notes row */}
+                                <div className="mt-1.5 flex items-center gap-2">
+                                    {/* Notes — only when not cancelled */}
+                                    {!item.cancelled && (
+                                        <div className="flex-1">
+                                            {editingNoteId === item.product.id ? (
+                                                <div className="flex gap-1.5 items-center">
+                                                    <input
+                                                        type="text"
+                                                        autoFocus
+                                                        value={noteInput}
+                                                        onChange={e => setNoteInput(e.target.value)}
+                                                        onKeyDown={e => { if (e.key === 'Enter') handleNoteConfirm(item.product.id) }}
+                                                        placeholder="e.g. no sugar, extra ice…"
+                                                        maxLength={60}
+                                                        className="flex-1 text-xs bg-brand-50 border border-brand-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-400 text-surface-700 placeholder-surface-400"
+                                                    />
+                                                    <button
+                                                        onClick={() => handleNoteConfirm(item.product.id)}
+                                                        className="text-xs font-bold text-brand-600 hover:text-brand-800 transition-colors px-1"
+                                                    >
+                                                        OK
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleNoteEdit(item.product.id, item.notes || '')}
+                                                    className="flex items-center gap-1 text-[11px] text-surface-400 hover:text-brand-500 transition-colors"
+                                                >
+                                                    <Pencil size={10} />
+                                                    {item.notes
+                                                        ? <span className="text-brand-600 font-semibold italic">{item.notes}</span>
+                                                        : <span>Add note</span>
+                                                    }
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Cancel / Uncancel toggle */}
+                                    <button
+                                        onClick={() => cancelItem(item.product.id)}
+                                        title={item.cancelled ? 'Restore item' : 'Mark as cancelled (wrong order)'}
+                                        className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg border transition-all ${
+                                            item.cancelled
+                                                ? 'bg-green-50 border-green-300 text-green-600 hover:bg-green-100'
+                                                : 'bg-red-50 border-red-200 text-red-400 hover:bg-red-100 hover:text-red-600'
+                                        }`}
+                                    >
+                                        <Ban size={10} />
+                                        {item.cancelled ? 'Restore' : 'Cancel'}
+                                    </button>
                                 </div>
                             </motion.div>
                         ))

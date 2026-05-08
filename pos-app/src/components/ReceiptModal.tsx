@@ -20,12 +20,28 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
     const dateStr = now.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
-    const itemRows = transaction.items.map(item =>
+    // Only non-cancelled items go on the customer receipt
+    const activeItems = transaction.items.filter(i => !(i as any).cancelled)
+    const cancelledItems = transaction.items.filter(i => (i as any).cancelled)
+
+    const itemRows = activeItems.map(item =>
         `<tr>
-            <td style="padding:2px 0">${item.productName} x${item.quantity}</td>
+            <td style="padding:2px 0">${item.productName} x${item.quantity}${
+                (item as any).notes ? ` <em style="color:#666;font-size:10px">[${(item as any).notes}]</em>` : ''
+            }</td>
             <td style="text-align:right;padding:2px 0">₱${item.subtotal.toFixed(2)}</td>
         </tr>`
     ).join('')
+
+    // Cancelled items shown in a separate block (manager record only, not customer-facing)
+    const cancelledRows = cancelledItems.length > 0
+        ? `<div style="margin-top:8px;border-top:1px dashed #ccc;padding-top:6px">
+               <p style="font-size:10px;color:#c00;margin:0 0 4px">CANCELLED ITEMS (not charged):</p>
+               ${cancelledItems.map(i =>
+                   `<p style="font-size:10px;color:#c00;text-decoration:line-through;margin:2px 0">${i.productName} x${i.quantity}</p>`
+               ).join('')}
+           </div>`
+        : ''
 
     printWindow.document.write(`
         <html><head><title>Wildshakes Receipt</title>
@@ -49,6 +65,7 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
             ${transaction.tableNumber ? `<p>Table: #${transaction.tableNumber}</p>` : ''}
             <div class="divider"></div>
             <table>${itemRows}</table>
+            ${cancelledRows}
             <div class="divider"></div>
             <table>
                 <tr><td>Subtotal</td><td style="text-align:right">₱${(transaction.totalAmount + transaction.discountAmount).toFixed(2)}</td></tr>
@@ -144,17 +161,31 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
 
                             {/* Items */}
                             <div className="py-2 space-y-1.5">
-                                {transaction.items.map((item, i) => (
-                                    <div key={i}>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-gray-300 flex-1">{item.productName} ×{item.quantity}</span>
-                                            <span className="text-white ml-2">₱{item.subtotal.toFixed(2)}</span>
+                                {transaction.items.map((item, i) => {
+                                    const isCancelled = !!(item as any).cancelled
+                                    return (
+                                        <div key={i} className={isCancelled ? 'opacity-60' : ''}>
+                                            <div className="flex justify-between text-xs">
+                                                <span className={`flex-1 ${
+                                                    isCancelled
+                                                        ? 'line-through text-red-400'
+                                                        : 'text-gray-300'
+                                                }`}>
+                                                    {item.productName} ×{item.quantity}
+                                                    {isCancelled && <span className="no-underline ml-1 text-red-400 text-[10px] font-bold not-italic">[cancelled]</span>}
+                                                </span>
+                                                <span className={`ml-2 ${
+                                                    isCancelled ? 'line-through text-red-400' : 'text-white'
+                                                }`}>
+                                                    ₱{item.subtotal.toFixed(2)}
+                                                </span>
+                                            </div>
+                                            {(item as any).notes && !isCancelled && (
+                                                <p className="text-gray-500 text-[10px] italic pl-2">↳ {(item as any).notes}</p>
+                                            )}
                                         </div>
-                                        {(item as any).notes && (
-                                            <p className="text-gray-500 text-[10px] italic pl-2">↳ {(item as any).notes}</p>
-                                        )}
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
 
                             {/* Totals */}
