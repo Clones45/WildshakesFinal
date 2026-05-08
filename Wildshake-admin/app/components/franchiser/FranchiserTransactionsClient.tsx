@@ -255,30 +255,31 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                             {(tx.transaction_items || []).map((item, idx) => {
                               const isCancelled = !!item.cancelled
                               return (
-                                <tr key={idx} style={{ opacity: isCancelled ? 0.7 : 1, background: isCancelled ? 'rgba(220,53,69,0.04)' : undefined }}>
-                                  <td style={{ padding: '0.3rem 0.5rem' }}>
-                                    <span style={{ textDecoration: isCancelled ? 'line-through' : 'none', color: isCancelled ? '#dc3545' : undefined }}>
-                                      {item.products?.name || 'Unknown'}
-                                    </span>
-                                    {isCancelled && (
-                                      <span style={{
-                                        marginLeft: '6px', fontSize: '0.62rem', fontWeight: 700,
-                                        background: 'rgba(220,53,69,0.15)', color: '#dc3545',
-                                        border: '1px solid rgba(220,53,69,0.3)',
-                                        borderRadius: '99px', padding: '1px 6px',
-                                        textDecoration: 'none', display: 'inline-block',
-                                      }}>CANCELLED</span>
-                                    )}
-                                    {item.notes && !isCancelled && (
-                                      <span style={{ color: 'var(--color-text-muted)', fontSize: '0.72rem' }}> — {item.notes}</span>
-                                    )}
+                                <tr key={idx} style={{
+                                  background: isCancelled ? 'rgba(220,53,69,0.10)' : undefined,
+                                  borderLeft: isCancelled ? '3px solid #dc3545' : '3px solid transparent',
+                                }}>
+                                  <td style={{ padding: '0.4rem 0.5rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                      <span style={{ textDecoration: isCancelled ? 'line-through' : 'none', color: isCancelled ? '#dc3545' : undefined, fontWeight: isCancelled ? 600 : undefined }}>
+                                        {item.products?.name || 'Unknown'}
+                                      </span>
+                                      {isCancelled && (
+                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, background: '#dc3545', color: '#fff', borderRadius: '4px', padding: '1px 7px', letterSpacing: '0.05em' }}>
+                                          cancelled
+                                        </span>
+                                      )}
+                                      {item.notes && !isCancelled && (
+                                        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.72rem' }}> — {item.notes}</span>
+                                      )}
+                                    </div>
                                   </td>
-                                  <td style={{ textAlign: 'center', padding: '0.3rem', textDecoration: isCancelled ? 'line-through' : 'none', color: isCancelled ? '#dc3545' : undefined }}>×{item.quantity}</td>
-                                  <td style={{ textAlign: 'right', padding: '0.3rem', color: isCancelled ? '#dc3545' : 'var(--color-text-muted)', textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                                  <td style={{ textAlign: 'center', padding: '0.4rem 0.3rem', textDecoration: isCancelled ? 'line-through' : 'none', color: isCancelled ? '#dc3545' : undefined }}>×{item.quantity}</td>
+                                  <td style={{ textAlign: 'right', padding: '0.4rem 0.3rem', color: isCancelled ? '#dc3545' : 'var(--color-text-muted)', textDecoration: isCancelled ? 'line-through' : 'none' }}>
                                     ₱{Number(item.unit_price).toFixed(2)}
                                   </td>
-                                  <td style={{ textAlign: 'right', padding: '0.3rem', fontWeight: 600, textDecoration: isCancelled ? 'line-through' : 'none', color: isCancelled ? '#dc3545' : undefined }}>
-                                    {isCancelled ? <span style={{ fontSize: '0.7rem' }}>not charged</span> : `₱${Number(item.subtotal).toFixed(2)}`}
+                                  <td style={{ textAlign: 'right', padding: '0.4rem 0.3rem', fontWeight: 700, color: isCancelled ? '#dc3545' : undefined, textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                                    {isCancelled ? <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#dc3545', textDecoration: 'none', display: 'inline-block' }}>not charged</span> : `₱${Number(item.subtotal).toFixed(2)}`}
                                   </td>
                                 </tr>
                               )
