@@ -81,17 +81,21 @@ export function useMenuItems() {
                 throw new Error('Empty result from products')
             }
 
-            // ── 2. Fetch this branch's out-of-stock overrides ────────────────
+            // ── 2. Fetch this branch's out-of-stock overrides ──────────────────
             let unavailableIds = new Set<string>()
             if (branch?.id) {
                 const { data: overrides } = await supabase
                     .from('branch_menu_availability')
-                    .select('product_id')
+                    .select('product_id, is_available, stock_qty')
                     .eq('branch_id', branch.id)
-                    .eq('is_available', false)
 
                 if (overrides) {
-                    unavailableIds = new Set(overrides.map((o: { product_id: string }) => o.product_id))
+                    for (const o of overrides as { product_id: string; is_available: boolean; stock_qty: number | null }[]) {
+                        // Hide if explicitly marked unavailable
+                        if (!o.is_available) { unavailableIds.add(o.product_id); continue }
+                        // Hide if stock_qty is set and has reached 0
+                        if (o.stock_qty !== null && o.stock_qty <= 0) { unavailableIds.add(o.product_id) }
+                    }
                 }
             }
 
@@ -110,7 +114,7 @@ export function useMenuItems() {
             // ── 4. Refresh offline cache ─────────────────────────────────────
             await db.products.clear()
             await db.products.bulkPut(
-                prods.map((p) => ({ ...p, cachedAt: new Date().toISOString() }))
+                prods.map((p) => ({ ...p, stock_qty: null as null, cachedAt: new Date().toISOString() }))
             )
             console.log('[useMenuItems] Offline cache refreshed from products table')
         } catch (err) {

@@ -9,15 +9,16 @@ import { db, type LocalTransaction } from '../lib/db'
 import { logAudit } from '../lib/auditLog'
 import { ProductGrid } from '../components/ProductGrid'
 import { Cart } from '../components/Cart'
-import { CheckoutModal } from '../components/CheckoutModal'
+import { CheckoutModal, type SplitEntry } from '../components/CheckoutModal'
 import { DiscountModal } from '../components/DiscountModal'
 import { ReceiptModal } from '../components/ReceiptModal'
 import { ManagerPinModal } from '../components/ManagerPinModal'
 import { SyncStatusBar } from '../components/SyncStatusBar'
 import { PendingOrders } from '../components/PendingOrders'
 import { HoldModal } from '../components/HoldModal'
+import { StockControlModal } from '../components/StockControlModal'
 import { TransactionsViewGated } from '../components/TransactionsView'
-import { LogOut, Clock, ReceiptText, Lock } from 'lucide-react'
+import { LogOut, Clock, ReceiptText, Lock, Package } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
 import { printKitchenTicket } from '../lib/printer'
@@ -44,6 +45,7 @@ export function POSScreen() {
     const [showPending, setShowPending] = useState(false)
     const [showHoldModal, setShowHoldModal] = useState(false)
     const [showTransactions, setShowTransactions] = useState(false)
+    const [showStockControl, setShowStockControl] = useState(false)
     const [managerPinCallback, setManagerPinCallback] = useState<() => void>(() => () => { })
     const [lastTransaction, setLastTransaction] = useState<LocalTransaction | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
@@ -147,20 +149,20 @@ export function POSScreen() {
     }
 
     // ─── Checkout logic ──────────────────────────────────────────────────────────
-    const handleCheckout = async (method: string, tendered: number, refNumber: string, bank: string) => {
+    const handleCheckout = async (method: string, tendered: number, refNumber: string, bank: string, splits?: SplitEntry[]) => {
         if (items.length === 0) return
         setIsProcessing(true)
 
         if (discountType === 'manager' && user?.role === 'cashier') {
             setIsProcessing(false)
-            requireManager(() => processCheckout(method, tendered, refNumber, bank))
+            requireManager(() => processCheckout(method, tendered, refNumber, bank, splits))
             return
         }
 
-        await processCheckout(method, tendered, refNumber, bank)
+        await processCheckout(method, tendered, refNumber, bank, splits)
     }
 
-    const processCheckout = async (method: string, _tendered: number, refNumber: string, bank: string) => {
+    const processCheckout = async (method: string, _tendered: number, refNumber: string, bank: string, splits?: SplitEntry[]) => {
         setIsProcessing(true)
         try {
             const localRef = uuidv4()
@@ -178,6 +180,12 @@ export function POSScreen() {
                 paymentMethod: method,
                 referenceNumber: refNumber || undefined,
                 bankName: bank || undefined,
+                splitPayments: splits ? splits.map(s => ({
+                    method: s.method,
+                    amount: s.amount,
+                    referenceNumber: s.referenceNumber || undefined,
+                    bankName: s.bankName || undefined,
+                })) : undefined,
                 status: 'completed',
                 source: 'pos',
                 tableNumber: resumedTableNumber ?? undefined,
@@ -279,6 +287,16 @@ export function POSScreen() {
 
                 {/* Right: Transactions + Sync + User + Logout */}
                 <div className="flex items-center gap-3">
+                    {/* Stock Control button */}
+                    <button
+                        onClick={() => setShowStockControl(true)}
+                        className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-sm font-bold hover:bg-amber-100 transition-all"
+                        title="Stock Control — mark items sold out or set quantity"
+                    >
+                        <Package size={15} className="text-amber-500" />
+                        <span>Stock</span>
+                    </button>
+
                     {/* Transactions button — visible to all; PIN-gated internally for non-managers */}
                     <button
                         onClick={() => setShowTransactions(true)}
@@ -399,6 +417,13 @@ export function POSScreen() {
             <PendingOrders
                 isOpen={showPending}
                 onClose={() => setShowPending(false)}
+            />
+
+            {/* Stock Control */}
+            <StockControlModal
+                isOpen={showStockControl}
+                onClose={() => setShowStockControl(false)}
+                products={products}
             />
 
             {/* Manager-gated Transactions view */}

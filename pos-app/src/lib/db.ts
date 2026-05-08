@@ -1,5 +1,13 @@
 import Dexie, { type Table } from 'dexie'
 
+// ─── Split Payment Entry ───────────────────────────────────────────────────
+export interface SplitPaymentEntry {
+    method: string
+    amount: number
+    referenceNumber?: string
+    bankName?: string
+}
+
 // ─── Completed Transaction (Checkout Outbox) ───────────────────────────────
 export interface LocalTransaction {
     localRef: string          // UUID generated on device — primary key
@@ -11,6 +19,7 @@ export interface LocalTransaction {
     paymentMethod: string
     referenceNumber?: string  // Last 6 digits for GCash/Maya, 5 for Bank Transfer
     bankName?: string         // For bank_transfer: BDO, BPI, Metrobank, etc.
+    splitPayments?: SplitPaymentEntry[]  // Populated for split payment transactions
     status: string
     source: string
     tableNumber?: string      // Table number if order came from a held order
@@ -76,6 +85,7 @@ export interface CachedProduct {
     price: number
     image_url: string | null
     is_available: boolean
+    stock_qty: number | null   // null = unlimited
     cachedAt: string
 }
 
@@ -137,6 +147,16 @@ export class WildshakesDB extends Dexie {
 
         // Version 5 — adds qr_access_token index for offline QR login
         this.version(5).stores({
+            transactions: 'localRef, syncStatus, branchId, createdAt',
+            localHeldOrders: 'localId, syncStatus, branchId, createdAt',
+            localAuditLogs: 'localId, syncStatus, createdAt',
+            products: 'id, category, name',
+            branches: 'id',
+            users: 'id, branch_id, pin_code, qr_access_token, role',
+        })
+
+        // Version 6 — splitPayments on transactions; stock_qty on products (no new indexes needed)
+        this.version(6).stores({
             transactions: 'localRef, syncStatus, branchId, createdAt',
             localHeldOrders: 'localId, syncStatus, branchId, createdAt',
             localAuditLogs: 'localId, syncStatus, createdAt',

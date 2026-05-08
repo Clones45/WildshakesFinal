@@ -32,7 +32,7 @@ export function useProducts() {
 
                 // Cache for offline use
                 await db.products.bulkPut(
-                    prods.map((p) => ({ ...p, cachedAt: new Date().toISOString() }))
+                    prods.map((p) => ({ ...p, stock_qty: null as null, cachedAt: new Date().toISOString() }))
                 )
                 return
             }
