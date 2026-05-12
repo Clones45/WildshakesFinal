@@ -11,6 +11,13 @@ interface TxItem {
   products: { name: string; category: string } | null
 }
 
+const SIZE_FROM_CATEGORY: Record<string, string> = {
+  'Fruitshakes Grande': 'Grande',
+  'Fruitshakes Petite': 'Petite',
+  'Milkshakes Grande':  'Grande',
+  'Milkshakes Petite':  'Petite',
+}
+
 interface Tx {
   id: string
   local_ref: string | null
@@ -264,6 +271,21 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                                       <span style={{ textDecoration: isCancelled ? 'line-through' : 'none', color: isCancelled ? '#dc3545' : undefined, fontWeight: isCancelled ? 600 : undefined }}>
                                         {item.products?.name || 'Unknown'}
                                       </span>
+                                      {(() => {
+                                        const sizeLabel = SIZE_FROM_CATEGORY[item.products?.category ?? '']
+                                        if (!sizeLabel) return null
+                                        return (
+                                          <span style={{
+                                            fontSize: '0.68rem', fontWeight: 800,
+                                            background: isCancelled ? '#dc3545' : '#7c3aed',
+                                            color: '#fff', borderRadius: '4px',
+                                            padding: '1px 6px', letterSpacing: '0.05em',
+                                            textDecoration: 'none',
+                                          }}>
+                                            {sizeLabel}
+                                          </span>
+                                        )
+                                      })()}
                                       {isCancelled && (
                                         <span style={{ fontSize: '0.7rem', fontWeight: 800, background: '#dc3545', color: '#fff', borderRadius: '4px', padding: '1px 7px', letterSpacing: '0.05em' }}>
                                           cancelled

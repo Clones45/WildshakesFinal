@@ -191,7 +191,7 @@ export function POSScreen() {
                 tableNumber: resumedTableNumber ?? undefined,
                 items: items.map((i) => ({
                     productId: i.product.id,
-                    productName: i.product.name,
+                    productName: i.variant ? `${i.product.name} · ${i.variant}` : i.product.name,
                     quantity: i.quantity,
                     unitPrice: i.product.price,
                     subtotal: i.product.price * i.quantity,
