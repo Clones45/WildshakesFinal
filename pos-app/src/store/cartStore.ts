@@ -6,6 +6,7 @@ export interface CartItem {
     quantity: number
     notes?: string      // e.g. "no sugar", "extra ice"
     cancelled?: boolean // Struck-through — saved for records but excluded from total/print
+    variant?: string    // e.g. "Grande", "Petite", "Regular" for shakes
 }
 
 export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'custom'
@@ -40,7 +41,7 @@ interface CartState {
     resumedTableNumber: string | null
 
     // Actions
-    addItem: (product: Product) => void
+    addItem: (product: Product, variant?: string) => void
     removeItem: (productId: string) => void
     updateQty: (productId: string, qty: number) => void
     updateNotes: (productId: string, notes: string) => void
@@ -84,13 +85,19 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
     change: () => Math.max(0, get().cashTendered - get().total()),
 
-    addItem: (product) =>
+    addItem: (product, variant) =>
         set((state) => {
-            const existing = state.items.find((i) => i.product.id === product.id)
+            // Unique key = product.id + variant so same product in different sizes stacks separately
+            const key = product.id + (variant ?? '')
+            const existing = state.items.find((i) => i.product.id === product.id && (i.variant ?? '') === (variant ?? ''))
             if (existing) {
-                return { items: state.items.map((i) => i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i) }
+                return { items: state.items.map((i) => (i.product.id === product.id && (i.variant ?? '') === (variant ?? ''))
+                    ? { ...i, quantity: i.quantity + 1 }
+                    : i
+                )}
             }
-            return { items: [...state.items, { product, quantity: 1, notes: '' }] }
+            return { items: [...state.items, { product, quantity: 1, notes: '', variant }] }
+            void key // suppress unused warning
         }),
 
     removeItem: (productId) =>

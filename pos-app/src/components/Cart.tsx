@@ -123,6 +123,13 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                                 : 'text-surface-800'
                                         }`}>
                                             {item.product.name}
+                                            {item.variant && (
+                                                <span className={`ml-1.5 text-[10px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-md ${
+                                                    item.cancelled ? 'bg-red-100 text-red-400' : 'bg-brand-100 text-brand-600'
+                                                }`}>
+                                                    {item.variant}
+                                                </span>
+                                            )}
                                         </p>
                                         <p className={`font-medium text-xs ${
                                             item.cancelled ? 'line-through text-red-300' : 'text-surface-500'

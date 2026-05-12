@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { Product } from '../lib/supabase'
 import { useCartStore } from '../store/cartStore'
 import { Search, Coffee, Loader2, AlertTriangle, Plus, RefreshCw } from 'lucide-react'
+import { SizePickerModal, type SizeOption } from './SizePickerModal'
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     // Exact category values from Wildshakes products table
@@ -39,6 +40,25 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
     const [search, setSearch] = useState('')
     const { addItem, items } = useCartStore()
     const [flashId, setFlashId] = useState<string | null>(null)
+    const [sizePicker, setSizePicker] = useState<{ product: Product; options: SizeOption[] } | null>(null)
+
+    const handleProductTap = (product: Product) => {
+        const options = getSizeOptions(product, products)
+        if (options) {
+            setSizePicker({ product, options })
+        } else {
+            addItem(product)
+            setFlashId(product.id)
+            setTimeout(() => setFlashId(null), 350)
+        }
+    }
+
+    const handleSizeSelect = (sizedProduct: Product, sizeLabel: string) => {
+        addItem(sizedProduct, sizeLabel)
+        setFlashId(sizedProduct.id)
+        setTimeout(() => setFlashId(null), 350)
+        setSizePicker(null)
+    }
 
     // Build a map of productId → quantity in cart for badges
     const cartQtyMap = new Map<string, number>()
@@ -58,14 +78,61 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
     const categoryCount = (cat: string) =>
         cat === 'All' ? products.length : products.filter((p) => p.category === cat).length
 
-    const handleAdd = (product: Product) => {
-        addItem(product)
-        setFlashId(product.id)
-        setTimeout(() => setFlashId(null), 350)
-    }
+// ─── Size-picker setup ────────────────────────────────────────────────────────
+// These are the category names that are size variants for Fruitshakes / Milkshakes
+const SHAKE_SIZE_CATEGORIES = new Set([
+    'Fruitshakes Petite', 'Fruitshakes Grande',
+    'Milkshakes Petite', 'Milkshakes Grande',
+])
+
+// Map each size-category to a display label for the picker
+const SIZE_LABEL: Record<string, string> = {
+    'Fruitshakes Petite':  'Petite',
+    'Fruitshakes Grande':  'Grande',
+    'Milkshakes Petite':   'Petite',
+    'Milkshakes Grande':   'Grande',
+}
+
+// Group same-base-type categories together so we know which categories to search
+const SHAKE_BASE_GROUPS: string[][] = [
+    ['Fruitshakes Petite', 'Fruitshakes Grande'],
+    ['Milkshakes Petite', 'Milkshakes Grande'],
+]
+
+function getSizeOptions(tappedProduct: Product, allProducts: Product[]): SizeOption[] | null {
+    if (!SHAKE_SIZE_CATEGORIES.has(tappedProduct.category)) return null
+
+    // Find the group this category belongs to
+    const group = SHAKE_BASE_GROUPS.find(g => g.includes(tappedProduct.category))
+    if (!group) return null
+
+    // Find all same-name products across the group's categories
+    const variants = group
+        .map(cat => {
+            const match = allProducts.find(p => p.name === tappedProduct.name && p.category === cat)
+            if (!match) return null
+            return { sizeLabel: SIZE_LABEL[cat] ?? cat, product: match } as SizeOption
+        })
+        .filter((v): v is SizeOption => v !== null)
+
+    // Only show picker when we have more than 1 size variant
+    return variants.length > 1 ? variants : null
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 
     return (
         <div className="flex flex-col h-full">
+            {/* Size picker modal */}
+            {sizePicker && (
+                <SizePickerModal
+                    baseName={sizePicker.product.name}
+                    emoji={CATEGORY_EMOJIS[sizePicker.product.category] ?? '🥤'}
+                    options={sizePicker.options}
+                    onSelect={handleSizeSelect}
+                    onClose={() => setSizePicker(null)}
+                />
+            )}
             {/* Search bar */}
             <div className="px-4 pt-4 pb-3 flex items-center gap-2">
                 <div className="relative flex-1">
@@ -167,7 +234,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                             scale: isFlashing ? 0.96 : 1,
                                         }}
                                         exit={{ opacity: 0, scale: 0.95 }}
-                                        onClick={() => handleAdd(product)}
+                                        onClick={() => handleProductTap(product)}
                                         className={`product-card text-left relative ${inCart ? 'ring-2 ring-brand-400/60' : ''}`}
                                     >
                                         {/* In-cart quantity badge */}
