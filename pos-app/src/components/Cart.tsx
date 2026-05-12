@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCartStore } from '../store/cartStore'
-import { Minus, Plus, Tag, ShoppingCart, PauseCircle, Clock, MapPin, X, Pencil, Ban } from 'lucide-react'
+import { Minus, Plus, Tag, ShoppingCart, PauseCircle, Clock, MapPin, Pencil, Ban } from 'lucide-react'
 
 interface CartProps {
     onCheckout: () => void
@@ -13,7 +13,7 @@ interface CartProps {
 
 export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending }: CartProps) {
     const {
-        items, discountType, updateQty, updateNotes, cancelItem, clearCart,
+        items, discountType, updateQty, updateNotes, cancelItem,
         subtotal, discountAmount, total,
         resumedHoldId, resumedTableNumber,
     } = useCartStore()
@@ -38,12 +38,6 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
         setNoteInput('')
     }
 
-    const handleClearCart = () => {
-        if (items.length === 0) return
-        if (confirm('Clear all items from the cart?')) {
-            clearCart()
-        }
-    }
 
     return (
         <div className="flex flex-col h-full bg-white border-l border-brand-200">
@@ -65,17 +59,6 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Clear cart */}
-                    {hasItems && (
-                        <button
-                            onClick={handleClearCart}
-                            title="Clear cart"
-                            className="w-8 h-8 rounded-full bg-white border border-brand-200 flex items-center justify-center hover:bg-red-50 hover:border-red-300 hover:text-red-500 text-brand-400 transition-all"
-                        >
-                            <X size={14} />
-                        </button>
-                    )}
-
                     {/* Held orders badge button */}
                     <button
                         onClick={onShowPending}
