@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCartStore } from '../store/cartStore'
-import { Minus, Plus, Trash2, Tag, ShoppingCart, PauseCircle, Clock, MapPin, X, Pencil, Ban } from 'lucide-react'
+import { Minus, Plus, Tag, ShoppingCart, PauseCircle, Clock, MapPin, X, Pencil, Ban } from 'lucide-react'
 
 interface CartProps {
     onCheckout: () => void
@@ -152,10 +152,15 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                     {!item.cancelled ? (
                                         <div className="flex items-center gap-2">
                                             <button
-                                                onClick={() => updateQty(item.product.id, item.quantity - 1)}
-                                                className="w-8 h-8 rounded-full bg-surface-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-surface-200 border border-surface-200"
+                                                onClick={() => item.quantity > 1 && updateQty(item.product.id, item.quantity - 1)}
+                                                disabled={item.quantity <= 1}
+                                                className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform border ${
+                                                    item.quantity <= 1
+                                                        ? 'bg-surface-50 border-surface-100 opacity-30 cursor-not-allowed'
+                                                        : 'bg-surface-100 border-surface-200 active:scale-90 hover:bg-surface-200'
+                                                }`}
                                             >
-                                                {item.quantity === 1 ? <Trash2 size={13} className="text-red-500" /> : <Minus size={13} className="text-surface-600" />}
+                                                <Minus size={13} className="text-surface-600" />
                                             </button>
                                             <span className="w-7 text-center font-bold text-surface-800">{item.quantity}</span>
                                             <button

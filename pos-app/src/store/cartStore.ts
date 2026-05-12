@@ -98,7 +98,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
     updateQty: (productId, qty) =>
         set((state) => {
-            if (qty <= 0) return { items: state.items.filter((i) => i.product.id !== productId) }
+            if (qty < 1) return state // Never delete via qty — use cancelItem instead
             return { items: state.items.map((i) => i.product.id === productId ? { ...i, quantity: qty } : i) }
         }),
 
