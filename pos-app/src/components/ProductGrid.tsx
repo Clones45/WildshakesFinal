@@ -7,24 +7,25 @@ import { SizePickerModal, type SizeOption } from './SizePickerModal'
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     // Exact category values from Wildshakes products table
-    'Fruitshakes Grande': '🥤',
-    'Fruitshakes Petite': '🍹',
+    'Fruitshakes':         '🍹',
+    'Fruitshakes Grande':  '🥤',
+    'Fruitshakes Petite':  '🍹',
     'Fruitshakes Regular': '🍹',
-    'Milkshakes Grande': '🍦',
-    'Milkshakes Petite': '🍨',
-    'Milkshakes': '🍦',
-    'Coffee Hot': '☕',
-    'Coffee Iced': '🧋',
-    'Coffee': '☕',
-    'Pasta': '🍝',
-    'Chicken Wings': '🍗',
+    'Milkshakes':          '🍦',
+    'Milkshakes Grande':   '🍦',
+    'Milkshakes Petite':   '🍨',
+    'Coffee Hot':          '☕',
+    'Coffee Iced':         '🧋',
+    'Coffee':              '☕',
+    'Pasta':               '🍝',
+    'Chicken Wings':       '🍗',
     'Chicken Wings Rice Meals': '🍚',
-    'Rice Meals': '🍛',
-    'Pica Pica': '🍟',
-    'Burger and Fries': '🍔',
-    'Tortilla Pizza': '🍕',
-    'Snacks': '🧆',
-    'Add-ons': '➕',
+    'Rice Meals':          '🍛',
+    'Pica Pica':           '🍟',
+    'Burger and Fries':    '🍔',
+    'Tortilla Pizza':      '🍕',
+    'Snacks':              '🧆',
+    'Add-ons':             '➕',
 }
 
 interface ProductGridProps {
@@ -60,23 +61,77 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
         setSizePicker(null)
     }
 
-    // Build a map of productId → quantity in cart for badges
-    const cartQtyMap = new Map<string, number>()
-    for (const ci of items) {
-        cartQtyMap.set(ci.product.id, ci.quantity)
+    // ── Category consolidation ───────────────────────────────────────────────
+    // Merge the 4 size sub-categories into 2 parent labels in the tab bar
+    const MERGE_MAP: Record<string, string> = {
+        'Fruitshakes Petite': 'Fruitshakes',
+        'Fruitshakes Grande': 'Fruitshakes',
+        'Milkshakes Petite':  'Milkshakes',
+        'Milkshakes Grande':  'Milkshakes',
     }
 
-    const allCategories = ['All', ...categories]
+    // Build deduplicated category list for the tabs
+    const allCategories = ['All', ...(() => {
+        const seen = new Set<string>()
+        const result: string[] = []
+        for (const cat of categories) {
+            const label = MERGE_MAP[cat] ?? cat
+            if (!seen.has(label)) { seen.add(label); result.push(label) }
+        }
+        return result
+    })()]
 
-    const filtered = products.filter((p) => {
-        const matchCat = activeCategory === 'All' || p.category === activeCategory
-        const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
-        return matchCat && matchSearch
-    })
+    // Filter + deduplicate products for display
+    // When a merged category (e.g. "Fruitshakes") is active, include products from all its sub-categories
+    // but show each name only ONCE (using the first/cheapest variant as the card representative)
+    const MERGED_SUB_CATS: Record<string, string[]> = {
+        'Fruitshakes': ['Fruitshakes Petite', 'Fruitshakes Grande'],
+        'Milkshakes':  ['Milkshakes Petite', 'Milkshakes Grande'],
+    }
 
-    // Item count per category for badges
-    const categoryCount = (cat: string) =>
-        cat === 'All' ? products.length : products.filter((p) => p.category === cat).length
+    const isMergedCategory = (cat: string) => cat in MERGED_SUB_CATS
+
+    const filtered = (() => {
+        // Step 1: which products match the active category / search
+        const matchesCat = (p: Product) => {
+            if (activeCategory === 'All') return true
+            if (isMergedCategory(activeCategory)) return MERGED_SUB_CATS[activeCategory].includes(p.category)
+            return p.category === activeCategory
+        }
+
+        const base = products.filter(p => matchesCat(p) && p.name.toLowerCase().includes(search.toLowerCase()))
+
+        // Step 2: deduplicate by name — keep only ONE card per product name
+        // (prefer the Petite/smaller variant as the representative so the price shown is the lower bound)
+        const seen = new Set<string>()
+        return base.filter(p => {
+            if (seen.has(p.name)) return false
+            seen.add(p.name)
+            return true
+        })
+    })()
+
+    // Build a map of productId+variant → quantity in cart for badges
+    const cartQtyMap = new Map<string, number>()
+    for (const ci of items) {
+        const key = ci.product.id + (ci.variant ?? '')
+        cartQtyMap.set(key, (cartQtyMap.get(key) ?? 0) + ci.quantity)
+    }
+    // Also map by name for consolidated badge counting on merged categories
+    const cartNameMap = new Map<string, number>()
+    for (const ci of items) {
+        cartNameMap.set(ci.product.name, (cartNameMap.get(ci.product.name) ?? 0) + ci.quantity)
+    }
+
+    // Item count per category for badges (deduplicated for merged categories)
+    const categoryCount = (cat: string) => {
+        if (cat === 'All') return [...new Set(products.map(p => p.name))].length
+        const subCats = MERGED_SUB_CATS[cat]
+        if (subCats) {
+            return [...new Set(products.filter(p => subCats.includes(p.category)).map(p => p.name))].length
+        }
+        return products.filter(p => p.category === cat).length
+    }
 
 // ─── Size-picker setup ────────────────────────────────────────────────────────
 // These are the category names that are size variants for Fruitshakes / Milkshakes
@@ -220,7 +275,11 @@ function getSizeOptions(tappedProduct: Product, allProducts: Product[]): SizeOpt
                     <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
                         <AnimatePresence>
                             {filtered.map((product) => {
-                                const cartQty = cartQtyMap.get(product.id) ?? 0
+                                // For shake products (size-picker ones), badge = total qty across all sizes of this name
+                                const isShake = SHAKE_SIZE_CATEGORIES.has(product.category)
+                                const cartQty = isShake
+                                    ? (cartNameMap.get(product.name) ?? 0)
+                                    : (cartQtyMap.get(product.id + '') ?? 0)
                                 const inCart = cartQty > 0
                                 const isFlashing = flashId === product.id
 
