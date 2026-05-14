@@ -8,6 +8,7 @@ const navItems = [
   { href: '/franchiser/dashboard',     label: 'Dashboard',          icon: '📊' },
   { href: '/franchiser/sales',         label: 'Sales Reports',      icon: '📈' },
   { href: '/franchiser/transactions',  label: 'Transactions',       icon: '🧾' },
+  { href: '/franchiser/inventory',     label: 'Inventory',          icon: '📦' },
   { href: '/franchiser/staff',         label: 'My Staff',           icon: '👥' },
   { href: '/franchiser/menu',          label: 'Menu Availability',  icon: '🍹' },
   { href: '/franchiser/pos-device',    label: 'POS Device',         icon: '🖥️' },
