@@ -401,16 +401,13 @@ export default function FranchiserInventoryClient({
                             onBlur={e => saveField(item, 'ending_stock', e.target.value)}
                             style={{
                               ...inputStyle,
-                              borderColor: status === 'out'
-                                ? 'rgba(220,53,69,0.5)'
-                                : status === 'low'
-                                  ? 'rgba(230,126,34,0.5)'
-                                  : undefined,
-                              background: status === 'out'
-                                ? 'rgba(220,53,69,0.08)'
-                                : status === 'low'
-                                  ? 'rgba(230,126,34,0.08)'
-                                  : undefined,
+                              ...(status === 'out' ? {
+                                borderColor: 'rgba(220,53,69,0.5)',
+                                background: 'rgba(220,53,69,0.08)'
+                              } : status === 'low' ? {
+                                borderColor: 'rgba(230,126,34,0.5)',
+                                background: 'rgba(230,126,34,0.08)'
+                              } : {})
                             }}
                           />
                         </td>
