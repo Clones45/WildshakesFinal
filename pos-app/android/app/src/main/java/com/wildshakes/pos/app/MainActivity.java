@@ -2,6 +2,7 @@ package com.wildshakes.pos.app;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.webkit.PermissionRequest;
 import androidx.core.app.ActivityCompat;
@@ -12,11 +13,30 @@ import com.getcapacitor.BridgeWebChromeClient;
 public class MainActivity extends BridgeActivity {
 
     private static final int CAMERA_PERMISSION_CODE = 1001;
+    private static final int BLUETOOTH_PERMISSION_CODE = 1002;
     private PermissionRequest pendingWebPermission;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // ── Request Bluetooth runtime permissions (Android 12+ only) ──────────
+        // BLUETOOTH_CONNECT and BLUETOOTH_SCAN are runtime permissions on API 31+.
+        // The plugin uses @SuppressLint("MissingPermission") so it won't request
+        // them itself — we must do it here on startup.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            boolean connectGranted = ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+            boolean scanGranted = ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED;
+
+            if (!connectGranted || !scanGranted) {
+                ActivityCompat.requestPermissions(this, new String[]{
+                        Manifest.permission.BLUETOOTH_CONNECT,
+                        Manifest.permission.BLUETOOTH_SCAN
+                }, BLUETOOTH_PERMISSION_CODE);
+            }
+        }
 
         // Extend BridgeWebChromeClient (NOT bare WebChromeClient) so Capacitor's
         // JavaScript bridge, file pickers, and other WebView features still work.
@@ -24,7 +44,6 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
-                    // Check if this request includes VIDEO_CAPTURE
                     boolean needsVideo = false;
                     for (String res : request.getResources()) {
                         if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res)) {
@@ -34,7 +53,6 @@ public class MainActivity extends BridgeActivity {
                     }
 
                     if (!needsVideo) {
-                        // Not a camera request — let Capacitor's default handle it
                         super.onPermissionRequest(request);
                         return;
                     }
@@ -44,10 +62,8 @@ public class MainActivity extends BridgeActivity {
                             == PackageManager.PERMISSION_GRANTED;
 
                     if (cameraGranted) {
-                        // OS permission already granted — grant only VIDEO_CAPTURE to WebView
                         request.grant(new String[]{ PermissionRequest.RESOURCE_VIDEO_CAPTURE });
                     } else {
-                        // Ask the OS for CAMERA permission (no audio — QR only needs video)
                         pendingWebPermission = request;
                         ActivityCompat.requestPermissions(
                                 MainActivity.this,
@@ -69,12 +85,12 @@ public class MainActivity extends BridgeActivity {
         if (requestCode == CAMERA_PERMISSION_CODE && pendingWebPermission != null) {
             if (grantResults.length > 0
                     && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // User tapped Allow → grant VIDEO_CAPTURE to WebView
                 pendingWebPermission.grant(new String[]{ PermissionRequest.RESOURCE_VIDEO_CAPTURE });
             } else {
                 pendingWebPermission.deny();
             }
             pendingWebPermission = null;
         }
+        // BLUETOOTH_PERMISSION_CODE: OS handles this automatically on startup prompt.
     }
 }
