@@ -13,84 +13,99 @@ interface ReceiptModalProps {
 }
 
 function printReceipt(transaction: LocalTransaction, branchName: string, cashierName: string) {
-    const now = new Date(transaction.createdAt)
-    const dateStr = now.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-    const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    const W = 32 // 58mm paper = 32 chars per line at default font
 
-    // Only non-cancelled items go on the customer receipt
-    const activeItems = transaction.items.filter(i => !(i as any).cancelled)
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    /** Center a string within W characters. Truncates if too long. */
+    const center = (str: string): string => {
+        const s = str.slice(0, W)
+        const pad = Math.max(0, Math.floor((W - s.length) / 2))
+        return ' '.repeat(pad) + s
+    }
+
+    /** Left-align label, right-align value, space-padded to exactly W chars.
+     *  Truncates label if the combined length would exceed W. */
+    const leftRight = (left: string, right: string): string => {
+        const maxLeft = W - right.length - 1
+        const l = left.slice(0, maxLeft)
+        const gap = W - l.length - right.length
+        return l + ' '.repeat(Math.max(1, gap)) + right
+    }
+
+    /** A dashed divider line */
+    const divider = '-'.repeat(W)
+
+    // ── Date / time (compact) ─────────────────────────────────────────────────
+    const now = new Date(transaction.createdAt)
+    const dateStr = now.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+    const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
+
+    // ── Items ─────────────────────────────────────────────────────────────────
+    const activeItems  = transaction.items.filter(i => !(i as any).cancelled)
     const cancelledItems = transaction.items.filter(i => (i as any).cancelled)
 
-    const itemRows = activeItems.map(item =>
-        `<tr>
-            <td style="padding:2px 0">${item.productName} x${item.quantity}${
-                (item as any).notes ? ` <em style="color:#666;font-size:10px">[${(item as any).notes}]</em>` : ''
-            }</td>
-            <td style="text-align:right;padding:2px 0">&#8369;${item.subtotal.toFixed(2)}</td>
-        </tr>`
-    ).join('')
+    const itemLines = activeItems.flatMap(item => {
+        const price = `P${item.subtotal.toFixed(2)}`
+        const label = `${item.productName} x${item.quantity}`
+        const lines: string[] = [leftRight(label, price)]
+        if ((item as any).notes) {
+            // indent notes, truncated to fit
+            lines.push(`  >${(item as any).notes}`.slice(0, W))
+        }
+        return lines
+    })
 
-    // Cancelled items shown in a separate block (manager record only, not customer-facing)
-    const cancelledRows = cancelledItems.length > 0
-        ? `<div style="margin-top:8px;border-top:1px dashed #ccc;padding-top:6px">
-               <p style="font-size:10px;color:#c00;margin:0 0 4px">CANCELLED ITEMS (not charged):</p>
-               ${cancelledItems.map(i =>
-                   `<p style="font-size:10px;color:#c00;text-decoration:line-through;margin:2px 0">${i.productName} x${i.quantity}</p>`
-               ).join('')}
-           </div>`
-        : ''
+    const cancelledLines = cancelledItems.length > 0
+        ? [
+            divider,
+            center('CANCELLED (not charged)'),
+            ...cancelledItems.map(i =>
+                `[X] ${i.productName} x${i.quantity}`.slice(0, W)
+            ),
+          ]
+        : []
 
-    // Use hidden iframe instead of window.open() to avoid Chrome blocking the popup
-    const iframe = document.createElement('iframe')
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
-    document.body.appendChild(iframe)
+    // ── Totals ────────────────────────────────────────────────────────────────
+    const subtotal = transaction.totalAmount + transaction.discountAmount
+    const totalLines: string[] = [
+        leftRight('Subtotal', `P${subtotal.toFixed(2)}`),
+    ]
+    if (transaction.discountAmount > 0) {
+        totalLines.push(leftRight(`${transaction.discountType} disc.`, `-P${transaction.discountAmount.toFixed(2)}`))
+    }
+    totalLines.push(leftRight('TOTAL', `P${transaction.totalAmount.toFixed(2)}`))
+    totalLines.push(leftRight('Payment', transaction.paymentMethod.replace('_', ' ').toUpperCase()))
+    if (transaction.referenceNumber) {
+        totalLines.push(leftRight('Ref#', transaction.referenceNumber.slice(0, 12)))
+    }
 
-    const doc = iframe.contentWindow?.document
-    if (!doc) return
+    // ── Assemble receipt ──────────────────────────────────────────────────────
+    const lines: string[] = [
+        center('WILDSHAKES CAFE'),
+        center(branchName.slice(0, W)),
+        center(`${dateStr} ${timeStr}`),
+        divider,
+        `Cashier: ${cashierName}`.slice(0, W),
+        `Ref: ${transaction.localRef.slice(0, 12).toUpperCase()}`,
+        ...(transaction.tableNumber ? [`Table: #${transaction.tableNumber}`] : []),
+        divider,
+        ...itemLines,
+        ...cancelledLines,
+        divider,
+        ...totalLines,
+        divider,
+        center('-- Thank you! Come again! --'),
+        '\n\n\n', // feed past the tear bar
+    ]
 
-    doc.open()
-    doc.write(`
-        <html><head><title>Wildshakes Receipt</title>
-        <style>
-            body { font-family: 'Courier New', monospace; font-size: 12px; padding: 10px; width: 280px; margin: auto; color: black; }
-            h2 { text-align: center; margin: 0; font-size: 15px; }
-            .center { text-align: center; }
-            .divider { border-top: 1px dashed #ccc; margin: 6px 0; }
-            table { width: 100%; border-collapse: collapse; }
-            .total-row td { font-weight: bold; font-size: 14px; }
-            .note { font-style: italic; color: #555; font-size: 10px; padding-left: 10px; }
-        </style>
-        </head><body>
-            <h2>WILDSHAKES CAFE</h2>
-            <p class="center">${branchName}</p>
-            <p class="center">${dateStr}</p>
-            <p class="center">${timeStr}</p>
-            <div class="divider"></div>
-            <p>Cashier: ${cashierName}</p>
-            <p>Ref: ${transaction.localRef.slice(0, 12).toUpperCase()}</p>
-            ${transaction.tableNumber ? `<p>Table: #${transaction.tableNumber}</p>` : ''}
-            <div class="divider"></div>
-            <table>${itemRows}</table>
-            ${cancelledRows}
-            <div class="divider"></div>
-            <table>
-                <tr><td>Subtotal</td><td style="text-align:right">&#8369;${(transaction.totalAmount + transaction.discountAmount).toFixed(2)}</td></tr>
-                ${transaction.discountAmount > 0 ? `<tr><td>${transaction.discountType} disc.</td><td style="text-align:right">-&#8369;${transaction.discountAmount.toFixed(2)}</td></tr>` : ''}
-                <tr class="total-row"><td>TOTAL</td><td style="text-align:right">&#8369;${transaction.totalAmount.toFixed(2)}</td></tr>
-                <tr><td>Payment</td><td style="text-align:right; text-transform: capitalize">${transaction.paymentMethod.replace('_', ' ')}</td></tr>
-                ${transaction.referenceNumber ? `<tr><td>Ref#</td><td style="text-align:right">${transaction.referenceNumber}</td></tr>` : ''}
-            </table>
-            <div class="divider"></div>
-            <p class="center">-- Thank you! Come again! --</p>
-        </body></html>
-    `)
-    doc.close()
+    const receipt = lines.join('\n')
 
-    setTimeout(() => {
-        iframe.contentWindow?.focus()
-        iframe.contentWindow?.print()
-        setTimeout(() => document.body.removeChild(iframe), 1000)
-    }, 250)
+    // ── Fire RawBT Android Intent ─────────────────────────────────────────────
+    const encodedData = encodeURIComponent(receipt)
+    window.location.href =
+        'intent:' + encodedData +
+        '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;'
 }
 
 export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: ReceiptModalProps) {
