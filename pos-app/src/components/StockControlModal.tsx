@@ -108,9 +108,9 @@ export function StockControlModal({ isOpen, onClose, products }: StockControlMod
                 })
             }
             setOverrides(map)
-        } catch (err) {
+        } catch (err: any) {
             console.error('[StockControl] Failed to load overrides:', err)
-            toast.error('Failed to load stock data')
+            toast.error(`Failed to load stock data: ${err?.message || err}`)
         } finally {
             setIsLoadingOverrides(false)
         }
