@@ -156,12 +156,14 @@ export async function printKitchenTicket(
     })
     const shortId = orderId.slice(-4).toUpperCase()
 
-    const normalizedItems = (orderItems as any[]).map((item) => ({
-        quantity: item.quantity,
-        name: (item.item_name || item.product?.name || 'Unknown Item') as string,
-        variant: (item.variant ?? '') as string,
-        notes: (item.notes ?? '') as string,
-    }))
+    const normalizedItems = (orderItems as any[])
+        .filter((item) => !item.cancelled)   // ← skip cancelled items
+        .map((item) => ({
+            quantity: item.quantity,
+            name: (item.item_name || item.product?.name || 'Unknown Item') as string,
+            variant: (item.variant ?? '') as string,
+            notes: (item.notes ?? '') as string,
+        }))
 
     const lines: string[] = [
         center('*** KITCHEN TICKET ***'),

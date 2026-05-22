@@ -153,7 +153,9 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             return null
         }
 
-        const total = cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0)
+        // Only include non-cancelled items in the hold
+        const activeItems = cartItems.filter((i) => !i.cancelled)
+        const total = activeItems.reduce((s, i) => s + i.product.price * i.quantity, 0)
         const localId = uuidv4()
         const ref = tableRef ?? null
 
@@ -166,9 +168,9 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             return null
         }
 
-        const localItems = cartItems.map((i) => ({
+        const localItems = activeItems.map((i) => ({
             productId: i.product.id,
-            productName: i.product.name,
+            productName: i.variant ? `${i.product.name} · ${i.variant}` : i.product.name,
             quantity: i.quantity,
             unitPrice: i.product.price,
             subtotal: i.product.price * i.quantity,
@@ -258,13 +260,13 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
 
     // ── Update held (always online; local-held are replaced by a fresh hold) ─
     updateHeldOrder: async (id, cartItems, tableRef) => {
-        const total = cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0)
+        const total = cartItems.filter((i) => !i.cancelled).reduce((s, i) => s + i.product.price * i.quantity, 0)
         const { user } = useAuthStore.getState()
 
         // Local-only hold: just update in IndexedDB
         if (id.startsWith('local::')) {
             const localId = id.replace('local::', '')
-            const localItems = cartItems.map((i) => ({
+            const localItems = cartItems.filter((i) => !i.cancelled).map((i) => ({
                 productId: i.product.id,
                 productName: i.product.name,
                 quantity: i.quantity,
@@ -294,7 +296,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             if (txnErr) throw txnErr
 
             await supabase.from('transaction_items').delete().eq('transaction_id', id)
-            const lineItems = cartItems.map((i) => ({
+            const lineItems = cartItems.filter((i) => !i.cancelled).map((i) => ({
                 transaction_id: id,
                 product_id: i.product.id,
                 quantity: i.quantity,
