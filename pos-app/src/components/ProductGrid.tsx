@@ -4,6 +4,7 @@ import type { Product } from '../lib/supabase'
 import { useCartStore } from '../store/cartStore'
 import { Search, Coffee, Loader2, AlertTriangle, Plus, RefreshCw } from 'lucide-react'
 import { SizePickerModal, type SizeOption } from './SizePickerModal'
+import { FlavorPickerModal, FRIES_FLAVOR_PRODUCTS, type FriesFlavor } from './FlavorPickerModal'
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     // Exact category values from Wildshakes products table
@@ -42,8 +43,14 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
     const { addItem, items } = useCartStore()
     const [flashId, setFlashId] = useState<string | null>(null)
     const [sizePicker, setSizePicker] = useState<{ product: Product; options: SizeOption[] } | null>(null)
+    const [flavorPicker, setFlavorPicker] = useState<Product | null>(null)
 
     const handleProductTap = (product: Product) => {
+        // Fries flavor picker takes priority
+        if (FRIES_FLAVOR_PRODUCTS.has(product.name)) {
+            setFlavorPicker(product)
+            return
+        }
         const options = getSizeOptions(product, products)
         if (options) {
             setSizePicker({ product, options })
@@ -52,6 +59,13 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             setFlashId(product.id)
             setTimeout(() => setFlashId(null), 350)
         }
+    }
+
+    const handleFlavorSelect = (product: Product, flavor: FriesFlavor) => {
+        addItem(product, flavor)   // flavor stored as the variant
+        setFlashId(product.id)
+        setTimeout(() => setFlashId(null), 350)
+        setFlavorPicker(null)
     }
 
     const handleSizeSelect = (sizedProduct: Product, sizeLabel: string) => {
@@ -178,6 +192,14 @@ function getSizeOptions(tappedProduct: Product, allProducts: Product[]): SizeOpt
 
     return (
         <div className="flex flex-col h-full">
+            {/* Flavor picker modal (Fries) */}
+            {flavorPicker && (
+                <FlavorPickerModal
+                    product={flavorPicker}
+                    onSelect={handleFlavorSelect}
+                    onClose={() => setFlavorPicker(null)}
+                />
+            )}
             {/* Size picker modal */}
             {sizePicker && (
                 <SizePickerModal
