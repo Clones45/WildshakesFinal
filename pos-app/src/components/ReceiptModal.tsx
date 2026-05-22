@@ -13,9 +13,6 @@ interface ReceiptModalProps {
 }
 
 function printReceipt(transaction: LocalTransaction, branchName: string, cashierName: string) {
-    const printWindow = window.open('', '_blank', 'width=400,height=600')
-    if (!printWindow) return
-
     const now = new Date(transaction.createdAt)
     const dateStr = now.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -29,7 +26,7 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
             <td style="padding:2px 0">${item.productName} x${item.quantity}${
                 (item as any).notes ? ` <em style="color:#666;font-size:10px">[${(item as any).notes}]</em>` : ''
             }</td>
-            <td style="text-align:right;padding:2px 0">₱${item.subtotal.toFixed(2)}</td>
+            <td style="text-align:right;padding:2px 0">&#8369;${item.subtotal.toFixed(2)}</td>
         </tr>`
     ).join('')
 
@@ -43,10 +40,19 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
            </div>`
         : ''
 
-    printWindow.document.write(`
+    // Use hidden iframe instead of window.open() to avoid Chrome blocking the popup
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+    document.body.appendChild(iframe)
+
+    const doc = iframe.contentWindow?.document
+    if (!doc) return
+
+    doc.open()
+    doc.write(`
         <html><head><title>Wildshakes Receipt</title>
         <style>
-            body { font-family: 'Courier New', monospace; font-size: 12px; padding: 10px; width: 280px; margin: auto; }
+            body { font-family: 'Courier New', monospace; font-size: 12px; padding: 10px; width: 280px; margin: auto; color: black; }
             h2 { text-align: center; margin: 0; font-size: 15px; }
             .center { text-align: center; }
             .divider { border-top: 1px dashed #ccc; margin: 6px 0; }
@@ -68,19 +74,23 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
             ${cancelledRows}
             <div class="divider"></div>
             <table>
-                <tr><td>Subtotal</td><td style="text-align:right">₱${(transaction.totalAmount + transaction.discountAmount).toFixed(2)}</td></tr>
-                ${transaction.discountAmount > 0 ? `<tr><td>${transaction.discountType} disc.</td><td style="text-align:right">-₱${transaction.discountAmount.toFixed(2)}</td></tr>` : ''}
-                <tr class="total-row"><td>TOTAL</td><td style="text-align:right">₱${transaction.totalAmount.toFixed(2)}</td></tr>
+                <tr><td>Subtotal</td><td style="text-align:right">&#8369;${(transaction.totalAmount + transaction.discountAmount).toFixed(2)}</td></tr>
+                ${transaction.discountAmount > 0 ? `<tr><td>${transaction.discountType} disc.</td><td style="text-align:right">-&#8369;${transaction.discountAmount.toFixed(2)}</td></tr>` : ''}
+                <tr class="total-row"><td>TOTAL</td><td style="text-align:right">&#8369;${transaction.totalAmount.toFixed(2)}</td></tr>
                 <tr><td>Payment</td><td style="text-align:right; text-transform: capitalize">${transaction.paymentMethod.replace('_', ' ')}</td></tr>
                 ${transaction.referenceNumber ? `<tr><td>Ref#</td><td style="text-align:right">${transaction.referenceNumber}</td></tr>` : ''}
             </table>
             <div class="divider"></div>
-            <p class="center">— Thank you! Come again! —</p>
+            <p class="center">-- Thank you! Come again! --</p>
         </body></html>
     `)
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
+    doc.close()
+
+    setTimeout(() => {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+        setTimeout(() => document.body.removeChild(iframe), 1000)
+    }, 250)
 }
 
 export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: ReceiptModalProps) {
