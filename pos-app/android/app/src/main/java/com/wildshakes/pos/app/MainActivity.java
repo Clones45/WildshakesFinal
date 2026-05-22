@@ -50,7 +50,7 @@ public class MainActivity extends BridgeActivity {
                             needsVideo = true;
                             break;
                         }
-                    }   
+                    }
 
                     if (!needsVideo) {
                         super.onPermissionRequest(request);
