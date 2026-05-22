@@ -5,11 +5,16 @@
  * thermal printer (Vozy P50 / any SPP device) via the native plugin.
  */
 
-import { BluetoothPrinter } from '@kduma-autoid/capacitor-bluetooth-printer'
+import { registerPlugin } from '@capacitor/core'
 import { toast } from 'react-hot-toast'
 import type { HeldOrder } from '../store/holdStore'
 import type { CartItem } from '../store/cartStore'
 import type { LocalTransaction } from './db'
+
+export interface NativePrinterPlugin {
+    printBase64(options: { address: string; data: string }): Promise<void>
+}
+const NativePrinter = registerPlugin<NativePrinterPlugin>('NativePrinter')
 
 const BT_PRINTER_KEY = 'nexus_bt_printer_address'
 const W = 32
@@ -31,23 +36,71 @@ const leftRight = (left: string, right: string): string => {
 
 const divider = '-'.repeat(W)
 
-// ── Logo header using ESC/POS text formatting ─────────────────────────────
-// NOTE: Raster image printing (GS v 0) does NOT work through the Capacitor
-// JSON bridge because bytes 0x80-0xFF get UTF-8 encoded, corrupting the
-// pixel data. Text formatting commands (ESC !, ESC a) only use bytes
-// below 0x80 and survive the bridge intact.
-//
-// This prints "WILDSHAKES" in bold, double-width, double-height centered text.
+// ── Base64 & Logo Helpers ───────────────────────────────────────────────────
 
-function buildLogoText(): string {
-    const ESC = '\x1b'
-    return (
-        ESC + '\x61\x01' +    // ESC a 1  — center align
-        ESC + '\x21\x38' +    // ESC ! 56 — bold + double-height + double-width
-        'WILDSHAKES\n' +
-        ESC + '\x21\x00' +    // ESC ! 0  — reset font to normal
-        ESC + '\x61\x00'      // ESC a 0  — left align
-    )
+function uint8ToBase64(bytes: Uint8Array): string {
+    let binary = ''
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i])
+    }
+    return window.btoa(binary)
+}
+
+async function buildLogoBytes(imageUrl: string, targetWidth = 256): Promise<Uint8Array> {
+    return new Promise((resolve) => {
+        const img = new Image()
+        img.onload = () => {
+            try {
+                const scale    = targetWidth / img.width
+                const w        = targetWidth
+                const h        = Math.round(img.height * scale)
+                const rowBytes = Math.ceil(w / 8)
+
+                const canvas = document.createElement('canvas')
+                canvas.width  = w
+                canvas.height = h
+                const ctx = canvas.getContext('2d')!
+
+                ctx.fillStyle = '#ffffff'
+                ctx.fillRect(0, 0, w, h)
+                ctx.drawImage(img, 0, 0, w, h)
+
+                const { data } = ctx.getImageData(0, 0, w, h)
+
+                const bytes: number[] = []
+                
+                // ESC @ — reset printer
+                bytes.push(0x1b, 0x40)
+
+                // GS v 0 m xL xH yL yH [pixel data]
+                bytes.push(0x1d, 0x76, 0x30, 0x00)
+                bytes.push(rowBytes & 0xff, (rowBytes >> 8) & 0xff)
+                bytes.push(h & 0xff, (h >> 8) & 0xff)
+
+                for (let y = 0; y < h; y++) {
+                    for (let xb = 0; xb < rowBytes; xb++) {
+                        let byte = 0
+                        for (let bit = 0; bit < 8; bit++) {
+                            const x = xb * 8 + bit
+                            if (x < w) {
+                                const i   = (y * w + x) * 4
+                                const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+                                if (lum < 128) byte |= (0x80 >> bit)
+                            }
+                        }
+                        bytes.push(byte)
+                    }
+                }
+
+                bytes.push(0x0a) // line feed
+                resolve(new Uint8Array(bytes))
+            } catch {
+                resolve(new Uint8Array(0))
+            }
+        }
+        img.onerror = () => resolve(new Uint8Array(0))
+        img.src = imageUrl
+    })
 }
 
 // ── Core Bluetooth sender ───────────────────────────────────────────────────
@@ -67,7 +120,9 @@ async function sendToPrinter(text: string, label: string): Promise<void> {
 
     const printingToast = toast.loading(`Printing ${label}…`)
     try {
-        await BluetoothPrinter.connectAndPrint({ address, data: text })
+        const textBytes = new TextEncoder().encode(text)
+        const base64Data = uint8ToBase64(textBytes)
+        await NativePrinter.printBase64({ address, data: base64Data })
         toast.success(`${label} printed!`, { id: printingToast })
     } catch (err: any) {
         toast.error(`Print failed: ${err?.message ?? 'Check Bluetooth connection'}`, { id: printingToast })
@@ -150,10 +205,35 @@ export async function printReceipt(
     branchEmail?: string,
     branchLocation?: string,
 ): Promise<void> {
-    // Prepend ESC/POS styled text logo (all bytes < 0x80 — safe through Capacitor bridge)
-    const logo    = buildLogoText()
-    const receipt = buildReceiptText(transaction, branchName, cashierName, branchEmail, branchLocation)
-    await sendToPrinter(logo + receipt, 'Receipt')
+    const isNative = !!(window as any).Capacitor?.isNativePlatform?.()
+    if (!isNative) {
+        toast.error('Bluetooth printing only works in the tablet app.')
+        return
+    }
+
+    const address = localStorage.getItem(BT_PRINTER_KEY)
+    if (!address) {
+        toast.error('No printer selected.')
+        return
+    }
+
+    const printingToast = toast.loading('Printing Receipt…')
+    try {
+        const logoBytes = await buildLogoBytes('/Logo 1.png', 256).catch(() => new Uint8Array(0))
+        const textStr   = buildReceiptText(transaction, branchName, cashierName, branchEmail, branchLocation)
+        const textBytes = new TextEncoder().encode(textStr)
+
+        const combined = new Uint8Array(logoBytes.length + textBytes.length)
+        combined.set(logoBytes)
+        combined.set(textBytes, logoBytes.length)
+
+        const base64Data = uint8ToBase64(combined)
+        await NativePrinter.printBase64({ address, data: base64Data })
+
+        toast.success('Receipt printed!', { id: printingToast })
+    } catch (err: any) {
+        toast.error(`Print failed: ${err?.message ?? 'Unknown error'}`, { id: printingToast })
+    }
 }
 
 // ── Kitchen Ticket ──────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(NativePrinterPlugin.class);
         super.onCreate(savedInstanceState);
 
         // ── Request Bluetooth runtime permissions (Android 12+ only) ──────────
