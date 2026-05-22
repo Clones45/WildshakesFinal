@@ -145,8 +145,24 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
         try {
             const { devices } = await BluetoothPrinter.list()
             setBtDevices(devices)
-        } catch {
-            toast.error('Could not list Bluetooth devices. Check BT is on.')
+        } catch (err: any) {
+            const msg: string = err?.message ?? String(err) ?? 'Unknown error'
+            console.error('[BT Printer] list() failed:', msg)
+
+            const isPermissionError =
+                msg.toLowerCase().includes('permission') ||
+                msg.toLowerCase().includes('security') ||
+                msg.toLowerCase().includes('access')
+
+            if (isPermissionError) {
+                toast.error(
+                    '⚠️ Bluetooth permission denied. Go to:\nAndroid Settings → Apps → Wildshakes POS → Permissions → Nearby devices → Allow',
+                    { duration: 8000 }
+                )
+            } else {
+                toast.error(`Bluetooth error: ${msg}`, { duration: 6000 })
+            }
+            setShowPrinterSelector(false)
         } finally {
             setScanningBt(false)
         }
