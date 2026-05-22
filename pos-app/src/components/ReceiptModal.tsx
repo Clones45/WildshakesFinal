@@ -1,8 +1,18 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, RotateCcw, AlertTriangle, Printer } from 'lucide-react'
+import { CheckCircle, RotateCcw, AlertTriangle, Printer, Bluetooth, BluetoothSearching } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import type { LocalTransaction } from '../lib/db'
+import { BluetoothPrinter } from '@kduma-autoid/capacitor-bluetooth-printer'
+import { toast } from 'react-hot-toast'
+
+// ── Bluetooth printer helpers ────────────────────────────────────────────────
+const BT_PRINTER_KEY = 'nexus_bt_printer_address'
+
+const isNative = (): boolean =>
+    !!(window as any).Capacitor?.isNativePlatform?.()
+
+type BTPrinterDevice = { name: string; address: string }
 
 interface ReceiptModalProps {
     isOpen: boolean
@@ -12,20 +22,20 @@ interface ReceiptModalProps {
     onNewOrder: () => void
 }
 
-function printReceipt(transaction: LocalTransaction, branchName: string, cashierName: string) {
-    const W = 32 // 58mm paper = 32 chars per line at default font
+/** Builds the 32-char plain-text receipt string. */
+function buildReceiptText(
+    transaction: LocalTransaction,
+    branchName: string,
+    cashierName: string
+): string {
+    const W = 32
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    /** Center a string within W characters. Truncates if too long. */
     const center = (str: string): string => {
         const s = str.slice(0, W)
         const pad = Math.max(0, Math.floor((W - s.length) / 2))
         return ' '.repeat(pad) + s
     }
 
-    /** Left-align label, right-align value, space-padded to exactly W chars.
-     *  Truncates label if the combined length would exceed W. */
     const leftRight = (left: string, right: string): string => {
         const maxLeft = W - right.length - 1
         const l = left.slice(0, maxLeft)
@@ -33,55 +43,39 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
         return l + ' '.repeat(Math.max(1, gap)) + right
     }
 
-    /** A dashed divider line */
     const divider = '-'.repeat(W)
 
-    // ── Date / time (compact) ─────────────────────────────────────────────────
     const now = new Date(transaction.createdAt)
     const dateStr = now.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
     const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
 
-    // ── Items ─────────────────────────────────────────────────────────────────
-    const activeItems  = transaction.items.filter(i => !(i as any).cancelled)
-    const cancelledItems = transaction.items.filter(i => (i as any).cancelled)
+    const activeItems   = transaction.items.filter(i => !(i as any).cancelled)
+    const cancelledItems = transaction.items.filter(i =>  (i as any).cancelled)
 
     const itemLines = activeItems.flatMap(item => {
         const price = `P${item.subtotal.toFixed(2)}`
         const label = `${item.productName} x${item.quantity}`
         const lines: string[] = [leftRight(label, price)]
-        if ((item as any).notes) {
-            // indent notes, truncated to fit
+        if ((item as any).notes)
             lines.push(`  >${(item as any).notes}`.slice(0, W))
-        }
         return lines
     })
 
     const cancelledLines = cancelledItems.length > 0
-        ? [
-            divider,
-            center('CANCELLED (not charged)'),
-            ...cancelledItems.map(i =>
-                `[X] ${i.productName} x${i.quantity}`.slice(0, W)
-            ),
-          ]
+        ? [divider, center('CANCELLED (not charged)'),
+           ...cancelledItems.map(i => `[X] ${i.productName} x${i.quantity}`.slice(0, W))]
         : []
 
-    // ── Totals ────────────────────────────────────────────────────────────────
     const subtotal = transaction.totalAmount + transaction.discountAmount
-    const totalLines: string[] = [
-        leftRight('Subtotal', `P${subtotal.toFixed(2)}`),
-    ]
-    if (transaction.discountAmount > 0) {
+    const totalLines: string[] = [leftRight('Subtotal', `P${subtotal.toFixed(2)}`)]
+    if (transaction.discountAmount > 0)
         totalLines.push(leftRight(`${transaction.discountType} disc.`, `-P${transaction.discountAmount.toFixed(2)}`))
-    }
-    totalLines.push(leftRight('TOTAL', `P${transaction.totalAmount.toFixed(2)}`))
-    totalLines.push(leftRight('Payment', transaction.paymentMethod.replace('_', ' ').toUpperCase()))
-    if (transaction.referenceNumber) {
+    totalLines.push(leftRight('TOTAL',   `P${transaction.totalAmount.toFixed(2)}`))
+    totalLines.push(leftRight('Payment',  transaction.paymentMethod.replace('_', ' ').toUpperCase()))
+    if (transaction.referenceNumber)
         totalLines.push(leftRight('Ref#', transaction.referenceNumber.slice(0, 12)))
-    }
 
-    // ── Assemble receipt ──────────────────────────────────────────────────────
-    const lines: string[] = [
+    return [
         center('WILDSHAKES CAFE'),
         center(branchName.slice(0, W)),
         center(`${dateStr} ${timeStr}`),
@@ -96,35 +90,74 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
         ...totalLines,
         divider,
         center('-- Thank you! Come again! --'),
-        '\n\n\n', // feed past the tear bar
-    ]
+        '\n\n\n',
+    ].join('\n')
+}
 
-    const receipt = lines.join('\n')
-
-    // ── Fire RawBT Android Intent ────────────────────────────────────────────
-    // PWA standalone mode blocks hidden anchor clicks for intent:// URIs.
-    // window.open() with _blank correctly exits the PWA context on Android
-    // and hands the intent off to the OS, which routes it to RawBT.
-    const encodedData = encodeURIComponent(receipt)
-    const intentUrl =
-        'intent://' + encodedData +
-        '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;'
-
-    window.open(intentUrl, '_blank')
+/** Sends a receipt to the saved Bluetooth printer via native plugin. */
+async function printReceiptNative(
+    transaction: LocalTransaction,
+    branchName: string,
+    cashierName: string
+): Promise<void> {
+    const address = localStorage.getItem(BT_PRINTER_KEY)
+    if (!address) {
+        toast.error('No printer selected. Tap the printer icon to choose one.')
+        return
+    }
+    const receipt = buildReceiptText(transaction, branchName, cashierName)
+    const printingToast = toast.loading('Sending to printer…')
+    try {
+        await BluetoothPrinter.connectAndPrint({ address, data: receipt })
+        toast.success('Printed!', { id: printingToast })
+    } catch (err: any) {
+        toast.error(`Print failed: ${err?.message ?? 'Check Bluetooth connection'}`, { id: printingToast })
+    }
 }
 
 export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: ReceiptModalProps) {
     const { user, branch } = useAuthStore()
     const [showVoidPrompt, setShowVoidPrompt] = useState(false)
     const [voidReason, setVoidReason] = useState('')
+    const [showPrinterSelector, setShowPrinterSelector] = useState(false)
+    const [btDevices, setBtDevices] = useState<BTPrinterDevice[]>([])
+    const [savedPrinter, setSavedPrinter] = useState<string | null>(
+        () => localStorage.getItem(BT_PRINTER_KEY)
+    )
+    const [scanningBt, setScanningBt] = useState(false)
 
     // Reset state when modal opens/closes
     useEffect(() => {
         if (!isOpen) {
             setShowVoidPrompt(false)
             setVoidReason('')
+            setShowPrinterSelector(false)
         }
     }, [isOpen])
+
+    const openPrinterSelector = async () => {
+        if (!isNative()) {
+            toast.error('Bluetooth printing only works in the tablet app.')
+            return
+        }
+        setScanningBt(true)
+        setShowPrinterSelector(true)
+        try {
+            const { devices } = await BluetoothPrinter.list()
+            setBtDevices(devices)
+        } catch {
+            toast.error('Could not list Bluetooth devices. Check BT is on.')
+        } finally {
+            setScanningBt(false)
+        }
+    }
+
+    const selectPrinter = (device: BTPrinterDevice) => {
+        localStorage.setItem(BT_PRINTER_KEY, device.address)
+        setSavedPrinter(device.address)
+        setShowPrinterSelector(false)
+        toast.success(`Printer set: ${device.name}`)
+    }
 
     if (!transaction) return null
 
@@ -250,7 +283,43 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
 
                         {/* Actions */}
                         <div className="px-5 pb-5 pt-3 space-y-2">
-                            {showVoidPrompt ? (
+                            {showPrinterSelector ? (
+                                /* ── Bluetooth Printer Selector ── */
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <p className="text-white text-sm font-semibold flex items-center gap-2">
+                                            <BluetoothSearching size={15} className="text-brand-400" />
+                                            Select Printer
+                                        </p>
+                                        <button
+                                            onClick={() => setShowPrinterSelector(false)}
+                                            className="text-gray-500 text-xs hover:text-gray-300"
+                                        >Cancel</button>
+                                    </div>
+                                    {scanningBt && (
+                                        <p className="text-gray-500 text-xs text-center py-2">Scanning paired devices…</p>
+                                    )}
+                                    {!scanningBt && btDevices.length === 0 && (
+                                        <p className="text-gray-500 text-xs text-center py-2">No paired devices found. Pair the printer in Android Bluetooth settings first.</p>
+                                    )}
+                                    {btDevices.map(device => (
+                                        <button
+                                            key={device.address}
+                                            onClick={() => selectPrinter(device)}
+                                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-700 hover:bg-surface-600 transition-colors text-left"
+                                        >
+                                            <Bluetooth size={15} className="text-brand-400 flex-shrink-0" />
+                                            <div>
+                                                <p className="text-white text-sm font-medium leading-tight">{device.name || 'Unknown Device'}</p>
+                                                <p className="text-gray-500 text-xs">{device.address}</p>
+                                            </div>
+                                            {device.address === savedPrinter && (
+                                                <span className="ml-auto text-teal-400 text-xs font-bold">Active</span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : showVoidPrompt ? (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
                                     <input
                                         autoFocus
@@ -279,13 +348,28 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                 </div>
                             ) : (
                                 <>
-                                    <button
-                                        onClick={() => printReceipt(transaction, branch?.name ?? 'Wildshakes', user?.name ?? 'Staff')}
-                                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 text-sm font-semibold hover:bg-brand-500/20 transition-colors"
-                                    >
-                                        <Printer size={15} />
-                                        Print Receipt
-                                    </button>
+                                    {/* Print + printer picker */}
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => printReceiptNative(transaction, branch?.name ?? 'Wildshakes', user?.name ?? 'Staff')}
+                                            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 text-sm font-semibold hover:bg-brand-500/20 transition-colors"
+                                        >
+                                            <Printer size={15} />
+                                            {savedPrinter ? 'Print Receipt' : 'Print Receipt'}
+                                        </button>
+                                        <button
+                                            onClick={openPrinterSelector}
+                                            title={savedPrinter ? 'Change printer' : 'Select printer'}
+                                            className="px-3 py-3 rounded-xl bg-surface-700 border border-surface-600 text-gray-400 hover:text-brand-400 hover:border-brand-500/50 transition-colors"
+                                        >
+                                            <Bluetooth size={15} />
+                                        </button>
+                                    </div>
+                                    {!savedPrinter && (
+                                        <p className="text-amber-400/80 text-xs text-center -mt-1">
+                                            ⚠ Tap the Bluetooth icon to select a printer first
+                                        </p>
+                                    )}
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => setShowVoidPrompt(true)}
