@@ -9,6 +9,8 @@ export default async function CommissaryPage() {
     { data: shipments },
     { data: branches },
     { data: ingredients },
+    { data: categories },
+    { data: inventoryItems },
   ] = await Promise.all([
     supabase
       .from('inventory')
@@ -21,6 +23,8 @@ export default async function CommissaryPage() {
       .limit(50),
     supabase.from('branches').select('id, name').eq('status', 'active'),
     supabase.from('ingredients').select('id, name, unit_of_measure').order('name'),
+    supabase.from('inventory_categories').select('*').order('sheet_type').order('sort_order'),
+    supabase.from('inventory_items').select('*').order('category_id').order('sort_order'),
   ])
 
   return (
@@ -29,6 +33,8 @@ export default async function CommissaryPage() {
       shipments={(shipments || []) as unknown as Parameters<typeof CommissaryClient>[0]['shipments']}
       branches={branches || []}
       ingredients={ingredients || []}
+      inventoryCategories={categories || []}
+      inventoryItems={inventoryItems || []}
     />
   )
 }

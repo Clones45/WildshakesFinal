@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { logShipment, updateShipmentStatus, createIngredient, setInventoryLevel } from '@/lib/actions/commissary'
+import { createInventoryItem, updateInventoryItemStatus } from '@/lib/actions/inventorySetup'
 
 interface InventoryItem {
   id: string
@@ -27,10 +28,13 @@ interface CommissaryClientProps {
   shipments: Shipment[]
   branches: { id: string; name: string }[]
   ingredients: { id: string; name: string; unit_of_measure: string }[]
+  inventoryCategories?: { id: string; name: string; sheet_type: string }[]
+  inventoryItems?: { id: string; category_id: string; name: string; unit: string | null; min_stock_level: number; is_active: boolean }[]
 }
 
-export default function CommissaryClient({ inventory, shipments, branches, ingredients }: CommissaryClientProps) {
-  const [modal, setModal] = useState<'shipment' | 'ingredient' | 'stock' | null>(null)
+export default function CommissaryClient({ inventory, shipments, branches, ingredients, inventoryCategories = [], inventoryItems = [] }: CommissaryClientProps) {
+  const [activeTab, setActiveTab] = useState<'commissary' | 'franchise_inventory'>('commissary')
+  const [modal, setModal] = useState<'shipment' | 'ingredient' | 'stock' | 'inventory_item' | null>(null)
   const [formError, setFormError]   = useState('')
   const [formSuccess, setFormSuccess] = useState('')
   const [isPending, startTransition] = useTransition()
@@ -81,6 +85,24 @@ export default function CommissaryClient({ inventory, shipments, branches, ingre
     })
   }
 
+  async function handleCreateInventoryItem(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setFormError('')
+    const fd = new FormData(e.currentTarget)
+    startTransition(async () => {
+      const result = await createInventoryItem(fd)
+      if (result.error) { setFormError(result.error); return }
+      setFormSuccess('Franchise inventory item added!')
+      setTimeout(() => { setModal(null); setFormSuccess('') }, 1500)
+    })
+  }
+
+  async function handleToggleInventoryItem(id: string, current: boolean) {
+    startTransition(async () => {
+      await updateInventoryItemStatus(id, !current)
+    })
+  }
+
   async function handleStatus(id: string, status: string) {
     startTransition(async () => { await updateShipmentStatus(id, status) })
   }
@@ -97,8 +119,36 @@ export default function CommissaryClient({ inventory, shipments, branches, ingre
         <button className="btn btn-accent" onClick={() => openModal('shipment')}>🚚 Log Shipment</button>
       </div>
 
-      {/* Summary row */}
-      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '1.5rem' }}>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '0.25rem', borderBottom: '1px solid var(--color-border)', marginBottom: '1.5rem' }}>
+        <button
+          onClick={() => setActiveTab('commissary')}
+          style={{
+            padding: '0.6rem 1.25rem', border: 'none', background: 'none', cursor: 'pointer',
+            borderBottom: activeTab === 'commissary' ? '2px solid var(--color-accent)' : '2px solid transparent',
+            color: activeTab === 'commissary' ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            fontWeight: activeTab === 'commissary' ? 700 : 400, fontSize: '0.88rem', transition: 'all 0.15s',
+          }}
+        >
+          🏭 Commissary Stock & Shipments
+        </button>
+        <button
+          onClick={() => setActiveTab('franchise_inventory')}
+          style={{
+            padding: '0.6rem 1.25rem', border: 'none', background: 'none', cursor: 'pointer',
+            borderBottom: activeTab === 'franchise_inventory' ? '2px solid var(--color-accent)' : '2px solid transparent',
+            color: activeTab === 'franchise_inventory' ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            fontWeight: activeTab === 'franchise_inventory' ? 700 : 400, fontSize: '0.88rem', transition: 'all 0.15s',
+          }}
+        >
+          📋 Franchiser Inventory Setup
+        </button>
+      </div>
+
+      {activeTab === 'commissary' && (
+        <>
+          {/* Summary row */}
+          <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '1.5rem' }}>
         <div className="stat-card">
           <div className="stat-card-icon green">📦</div>
           <p className="stat-card-label">Total SKUs Tracked</p>
@@ -229,6 +279,65 @@ export default function CommissaryClient({ inventory, shipments, branches, ingre
           </tbody>
         </table>
       </div>
+      </>
+      )}
+
+      {activeTab === 'franchise_inventory' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <p className="text-sm text-muted">Manage the items that franchisers see on their Daily Inventory sheets.</p>
+            <button className="btn btn-accent btn-sm" onClick={() => setModal('inventory_item')}>➕ Add Inventory Item</button>
+          </div>
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Item Name</th>
+                  <th>Unit</th>
+                  <th>Min Stock</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventoryItems.map(item => {
+                  const cat = inventoryCategories.find(c => c.id === item.category_id)
+                  return (
+                    <tr key={item.id}>
+                      <td><span className="badge badge-muted">{cat?.name || 'Unknown'}</span></td>
+                      <td style={{ fontWeight: 600 }}>{item.name}</td>
+                      <td>{item.unit || '—'}</td>
+                      <td>{item.min_stock_level}</td>
+                      <td>
+                        <span className={`badge ${item.is_active ? 'badge-success' : 'badge-danger'}`}>
+                          {item.is_active ? 'Active' : 'Hidden'}
+                        </span>
+                      </td>
+                      <td>
+                        <button 
+                          className="btn btn-ghost btn-sm" 
+                          onClick={() => handleToggleInventoryItem(item.id, item.is_active)}
+                          disabled={isPending}
+                        >
+                          {item.is_active ? 'Hide' : 'Show'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {inventoryItems.length === 0 && (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
+                      No inventory items setup yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ── Log Shipment Modal ── */}
       {modal === 'shipment' && (
@@ -364,6 +473,50 @@ export default function CommissaryClient({ inventory, shipments, branches, ingre
                 <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={isPending}>
                   {isPending ? <><span className="loading-spinner" /> Saving…</> : '📋 Save Stock Level'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Inventory Item Modal ── */}
+      {modal === 'inventory_item' && (
+        <div className="modal-overlay" onClick={() => setModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <p className="modal-title">➕ Add Franchise Inventory Item</p>
+              <button className="modal-close" onClick={() => setModal(null)}>✕</button>
+            </div>
+            {formError && <div className="alert alert-danger">{formError}</div>}
+            <form onSubmit={handleCreateInventoryItem}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">Category *</label>
+                  <select name="category_id" className="form-select" required>
+                    <option value="">Select category...</option>
+                    {inventoryCategories.map(c => <option key={c.id} value={c.id}>{c.name} ({c.sheet_type})</option>)}
+                  </select>
+                </div>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="form-label">Item Name *</label>
+                    <input name="name" className="form-input" required />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Unit of Measure</label>
+                    <input name="unit" className="form-input" placeholder="e.g. pcs, L" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Min Stock Level</label>
+                    <input name="min_stock_level" type="number" step="0.5" className="form-input" defaultValue={0} />
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isPending}>
+                  {isPending ? <span className="loading-spinner" /> : 'Add Item'}
                 </button>
               </div>
             </form>
