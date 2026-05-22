@@ -15,13 +15,23 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
   const supabase = createAdminClient()
 
   // Fetch franchise info
-  const { data: franchise } = await supabase
+  const cleanId = id.trim()
+  const { data: franchise, error } = await supabase
     .from('franchises')
     .select('id, name, owner_name, owner_email, region, status, created_at, auth_id')
-    .eq('id', id)
+    .eq('id', cleanId)
     .single()
 
-  if (!franchise) notFound()
+  if (error || !franchise) {
+    return (
+      <div style={{ padding: '2rem', color: 'red' }}>
+        <h2>DEBUG 404 DATA</h2>
+        <p><strong>ID Param:</strong> {JSON.stringify(id)}</p>
+        <p><strong>Error:</strong> {JSON.stringify(error)}</p>
+        <p><strong>Franchise Data:</strong> {JSON.stringify(franchise)}</p>
+      </div>
+    )
+  }
 
   // Fetch all branches
   const { data: branches } = await supabase
