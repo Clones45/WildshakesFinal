@@ -69,8 +69,7 @@ export function buildReceiptText(
     const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
     const shortRef = transaction.localRef.slice(-8).toUpperCase()
 
-    const activeItems   = transaction.items.filter(i => !(i as any).cancelled)
-    const cancelledItems = transaction.items.filter(i =>  (i as any).cancelled)
+    const activeItems = transaction.items.filter(i => !(i as any).cancelled)
 
     const itemLines = activeItems.flatMap(item => {
         const rows: string[] = []
@@ -81,13 +80,9 @@ export function buildReceiptText(
         return rows
     })
 
-    const cancelledLines = cancelledItems.length > 0
-        ? [divider, center('CANCELLED (not charged)'),
-           ...cancelledItems.map(i => `[X] ${i.productName}`.slice(0, W))]
-        : []
+    const orderTypeLabel = transaction.orderType === 'take-out' ? 'Take-out' : 'Dine-in'
 
     const subtotal = transaction.totalAmount + transaction.discountAmount
-    const orderTypeLabel = transaction.orderType === 'take-out' ? 'Take-out' : 'Dine-in'
 
     const totalLines: string[] = []
     totalLines.push(leftRight('Subtotal', `P${subtotal.toFixed(2)}`))
@@ -100,7 +95,10 @@ export function buildReceiptText(
         totalLines.push(leftRight('Ref#', transaction.referenceNumber))
 
     return [
-        // ── Header ──
+        // ── Logo / Brand Header ──
+        center('** WILDSHAKES **'),
+        divider,
+        // ── Branch & Employee ──
         center(branchName),
         ...(branchLocation ? [center(branchLocation)] : []),
         ...(branchEmail ? [center(branchEmail)] : []),
@@ -112,14 +110,12 @@ export function buildReceiptText(
         divider,
         orderTypeLabel,
         divider,
-        // ── Ref / Table ──
+        // ── Ref / Date (no Table shown on receipt) ──
         `Ref#: ${shortRef}`,
-        ...(transaction.tableNumber ? [`Table: #${transaction.tableNumber}`] : []),
         `Date: ${dateStr} ${timeStr}`,
         divider,
-        // ── Items ──
+        // ── Active items only (cancelled items excluded) ──
         ...itemLines,
-        ...cancelledLines,
         divider,
         // ── Totals ──
         ...totalLines,
