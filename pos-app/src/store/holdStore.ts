@@ -40,6 +40,7 @@ export interface HeldOrderItem {
     item_name: string
     quantity: number
     unit_price: number
+    cancelled?: boolean   // Logged for audit — excluded from totals and print
 }
 
 interface HoldState {
@@ -70,6 +71,7 @@ function localToHeld(local: LocalHeldOrder): HeldOrder {
             item_name: i.productName,
             quantity: i.quantity,
             unit_price: i.unitPrice,
+            cancelled: i.cancelled ?? false,
         })),
     }
 }
@@ -102,7 +104,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
 
                     const { data: allItems } = await supabase
                         .from('transaction_items')
-                        .select('id, transaction_id, product_id, quantity, unit_price')
+                        .select('id, transaction_id, product_id, quantity, unit_price, cancelled')
                         .in('transaction_id', txnIds)
 
                     // Build product name lookup from local cache (always available)
@@ -128,6 +130,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                                     item_name: nameMap.get(productId) ?? productId,
                                     quantity: Number(ti.quantity),
                                     unit_price: Number(ti.unit_price),
+                                    cancelled: Boolean(ti.cancelled),
                                 }
                             }),
                     }))
@@ -153,7 +156,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             return null
         }
 
-        // Only include non-cancelled items in the hold
+        // Save ALL items (including cancelled) for audit — total excludes cancelled
         const activeItems = cartItems.filter((i) => !i.cancelled)
         const total = activeItems.reduce((s, i) => s + i.product.price * i.quantity, 0)
         const localId = uuidv4()
@@ -168,12 +171,14 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             return null
         }
 
-        const localItems = activeItems.map((i) => ({
+        // ALL items saved — cancelled flag preserved for admin audit trail
+        const localItems = cartItems.map((i) => ({
             productId: i.product.id,
             productName: i.variant ? `${i.product.name} · ${i.variant}` : i.product.name,
             quantity: i.quantity,
             unitPrice: i.product.price,
             subtotal: i.product.price * i.quantity,
+            cancelled: i.cancelled ?? false,
         }))
 
         // ── Offline path ──────────────────────────────────────────────────────
@@ -231,6 +236,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                 quantity: i.quantity,
                 unit_price: i.unitPrice,
                 subtotal: i.subtotal,
+                cancelled: i.cancelled ?? false,
             }))
             const { error: itemsErr } = await supabase.from('transaction_items').insert(lineItems)
             if (itemsErr) throw itemsErr
@@ -263,15 +269,16 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
         const total = cartItems.filter((i) => !i.cancelled).reduce((s, i) => s + i.product.price * i.quantity, 0)
         const { user } = useAuthStore.getState()
 
-        // Local-only hold: just update in IndexedDB
+        // Local-only hold: save ALL items with cancelled flag for audit
         if (id.startsWith('local::')) {
             const localId = id.replace('local::', '')
-            const localItems = cartItems.filter((i) => !i.cancelled).map((i) => ({
+            const localItems = cartItems.map((i) => ({
                 productId: i.product.id,
-                productName: i.product.name,
+                productName: i.variant ? `${i.product.name} · ${i.variant}` : i.product.name,
                 quantity: i.quantity,
                 unitPrice: i.product.price,
                 subtotal: i.product.price * i.quantity,
+                cancelled: i.cancelled ?? false,
             }))
             await db.localHeldOrders.update(localId, {
                 totalAmount: total,
@@ -295,13 +302,15 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                 .eq('id', id)
             if (txnErr) throw txnErr
 
+            // Remote hold: replace items — save ALL (with cancelled flag)
             await supabase.from('transaction_items').delete().eq('transaction_id', id)
-            const lineItems = cartItems.filter((i) => !i.cancelled).map((i) => ({
+            const lineItems = cartItems.map((i) => ({
                 transaction_id: id,
                 product_id: i.product.id,
                 quantity: i.quantity,
                 unit_price: i.product.price,
                 subtotal: i.product.price * i.quantity,
+                cancelled: i.cancelled ?? false,
             }))
             const { error: itemsErr } = await supabase.from('transaction_items').insert(lineItems)
             if (itemsErr) throw itemsErr
@@ -423,6 +432,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                     quantity: i.quantity,
                     unit_price: i.unitPrice,
                     subtotal: i.subtotal,
+                    cancelled: i.cancelled ?? false,
                 }))
                 const { error: itemsErr } = await supabase.from('transaction_items').insert(lineItems)
                 if (itemsErr) throw itemsErr

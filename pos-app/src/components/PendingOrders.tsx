@@ -153,6 +153,7 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
             reset()
 
             for (const item of order.items) {
+                if (item.cancelled) continue   // Don't re-add cancelled items to cart
                 const cached = menuLookup.get(item.menu_item_id)
                 const product: Product = cached ?? {
                     id: item.menu_item_id,
@@ -346,9 +347,16 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                                                 {/* Item list */}
                                                 <ul className="space-y-1">
                                                     {order.items.map((item) => (
-                                                        <li key={item.id} className="flex justify-between text-xs text-gray-400">
-                                                            <span className="truncate flex-1">{item.item_name}</span>
-                                                            <span className="ml-2 font-mono">×{item.quantity}</span>
+                                                        <li key={item.id} className="flex justify-between text-xs">
+                                                            <span className={`truncate flex-1 ${item.cancelled ? 'line-through text-red-400/70' : 'text-gray-400'}`}>
+                                                                {item.item_name}
+                                                                {item.cancelled && (
+                                                                    <span className="ml-1 text-red-400/60 not-italic text-[10px]">[cancelled]</span>
+                                                                )}
+                                                            </span>
+                                                            <span className={`ml-2 font-mono ${item.cancelled ? 'text-red-400/50 line-through' : 'text-gray-400'}`}>
+                                                                ×{item.quantity}
+                                                            </span>
                                                         </li>
                                                     ))}
                                                 </ul>
