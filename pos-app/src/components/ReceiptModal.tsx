@@ -101,22 +101,16 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
 
     const receipt = lines.join('\n')
 
-    // ── Fire RawBT Android Intent (hidden anchor pattern) ────────────────────
-    // IMPORTANT: Android requires `intent://` (with //) — `intent:` alone is
-    // silently ignored by Chrome. target="_blank" escapes PWA standalone context.
+    // ── Fire RawBT Android Intent ────────────────────────────────────────────
+    // PWA standalone mode blocks hidden anchor clicks for intent:// URIs.
+    // window.open() with _blank correctly exits the PWA context on Android
+    // and hands the intent off to the OS, which routes it to RawBT.
     const encodedData = encodeURIComponent(receipt)
     const intentUrl =
         'intent://' + encodedData +
         '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;'
 
-    const a = document.createElement('a')
-    a.href = intentUrl
-    a.setAttribute('target', '_blank')
-    a.setAttribute('rel', 'noopener noreferrer')
-    a.style.display = 'none'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    window.open(intentUrl, '_blank')
 }
 
 export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: ReceiptModalProps) {
