@@ -101,11 +101,20 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
 
     const receipt = lines.join('\n')
 
-    // ── Fire RawBT Android Intent ─────────────────────────────────────────────
+    // ── Fire RawBT Android Intent (hidden anchor pattern) ────────────────────
+    // Browsers block programmatic window.location.href for intent:// URIs.
+    // A hidden <a> click is treated as a user-gesture navigation and is allowed.
     const encodedData = encodeURIComponent(receipt)
-    window.location.href =
+    const intentUrl =
         'intent:' + encodedData +
         '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;'
+
+    const a = document.createElement('a')
+    a.href = intentUrl
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
 }
 
 export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: ReceiptModalProps) {
