@@ -46,7 +46,7 @@ function uint8ToBase64(bytes: Uint8Array): string {
     return window.btoa(binary)
 }
 
-async function buildLogoBytes(imageUrl: string, targetWidth = 384): Promise<Uint8Array> {
+async function buildLogoBytes(imageUrl: string, targetWidth = 256): Promise<Uint8Array> {
     return new Promise((resolve) => {
         const img = new Image()
         img.onload = () => {

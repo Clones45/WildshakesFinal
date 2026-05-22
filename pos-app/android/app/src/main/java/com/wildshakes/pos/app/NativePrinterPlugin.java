@@ -57,7 +57,9 @@ public class NativePrinterPlugin extends Plugin {
             stream.write(bytes);
             stream.flush();
 
-            Thread.sleep(100);
+            // Give the Android Bluetooth stack time to finish transmitting
+            // the ~20KB binary image over the air before tearing down the socket.
+            Thread.sleep(2500);
             socket.close();
 
             call.resolve();
