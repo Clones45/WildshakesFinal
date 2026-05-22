@@ -142,7 +142,7 @@ export function POSScreen() {
         }
         if (orderId) {
             if (shouldPrint) {
-                printKitchenTicket(items, tableNumber ?? resumedHoldRef ?? null, orderId, new Date().toISOString())
+                await printKitchenTicket(items, tableNumber ?? resumedHoldRef ?? null, orderId, new Date().toISOString())
             }
             reset()
         }
