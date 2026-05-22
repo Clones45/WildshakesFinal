@@ -139,7 +139,7 @@ export default function FranchisesClient({ franchises }: { franchises: Franchise
                 return (
                   <tr key={f.id}>
                     <td>
-                      <Link href={`/dashboard/franchises/${f.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <Link href={`/franchises/${f.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                         <div style={{ fontWeight: 700, color: 'var(--color-accent)', cursor: 'pointer' }}>{f.name}</div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{f.owner_email}</div>
                       </Link>
