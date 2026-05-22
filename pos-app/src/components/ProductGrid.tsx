@@ -4,7 +4,7 @@ import type { Product } from '../lib/supabase'
 import { useCartStore } from '../store/cartStore'
 import { Search, Coffee, Loader2, AlertTriangle, Plus, RefreshCw } from 'lucide-react'
 import { SizePickerModal, type SizeOption } from './SizePickerModal'
-import { FlavorPickerModal, FRIES_FLAVOR_PRODUCTS, type FriesFlavor } from './FlavorPickerModal'
+import { FlavorPickerModal, requiresFriesFlavor, type FriesFlavor } from './FlavorPickerModal'
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     // Exact category values from Wildshakes products table
@@ -47,7 +47,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
 
     const handleProductTap = (product: Product) => {
         // Fries flavor picker takes priority
-        if (FRIES_FLAVOR_PRODUCTS.has(product.name)) {
+        if (requiresFriesFlavor(product.name)) {
             setFlavorPicker(product)
             return
         }

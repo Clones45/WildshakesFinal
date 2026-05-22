@@ -58,7 +58,7 @@ export function StockControlModal({ isOpen, onClose, products }: StockControlMod
         return FRIES_FLAVORS.map(flavor => ({
             id: `flavor-${flavor}`,
             name: `Fries Flavor: ${flavor}`,
-            category: 'Fries Flavor',
+            category: 'Burger and Fries',
             price: 0,
             image_url: null,
             is_available: isFlavorAvailable(flavor),
