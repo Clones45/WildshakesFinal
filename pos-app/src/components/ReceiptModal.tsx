@@ -102,15 +102,17 @@ function printReceipt(transaction: LocalTransaction, branchName: string, cashier
     const receipt = lines.join('\n')
 
     // ── Fire RawBT Android Intent (hidden anchor pattern) ────────────────────
-    // Browsers block programmatic window.location.href for intent:// URIs.
-    // A hidden <a> click is treated as a user-gesture navigation and is allowed.
+    // IMPORTANT: Android requires `intent://` (with //) — `intent:` alone is
+    // silently ignored by Chrome. target="_blank" escapes PWA standalone context.
     const encodedData = encodeURIComponent(receipt)
     const intentUrl =
-        'intent:' + encodedData +
+        'intent://' + encodedData +
         '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;'
 
     const a = document.createElement('a')
     a.href = intentUrl
+    a.setAttribute('target', '_blank')
+    a.setAttribute('rel', 'noopener noreferrer')
     a.style.display = 'none'
     document.body.appendChild(a)
     a.click()
