@@ -157,9 +157,9 @@ function SplitRow({
                 <div className="flex gap-1.5 flex-1 flex-wrap">
                     {PAYMENT_METHODS.map(m => (
                         <button key={m.id} onClick={() => onChange({ method: m.id, referenceNumber: '', bankName: '' })}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all ${entry.method === m.id ? `${m.bg} ${m.color}` : 'bg-surface-600 border-surface-500 text-gray-500 hover:border-surface-400'}`}>
-                            {m.image ? <img src={m.image} alt={m.label} className="w-3.5 h-3.5 object-contain" /> : m.icon && <m.icon size={13} />}
-                            {m.label}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all flex-shrink-0 ${entry.method === m.id ? `${m.bg} ${m.color}` : 'bg-surface-600 border-surface-500 text-gray-300 hover:border-surface-400'}`}>
+                            {m.image ? <img src={m.image} alt={m.label} className="w-3.5 h-3.5 object-contain flex-shrink-0" /> : m.icon && <m.icon size={13} className="flex-shrink-0" />}
+                            <span className="whitespace-nowrap">{m.label}</span>
                         </button>
                     ))}
                 </div>
