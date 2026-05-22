@@ -38,6 +38,7 @@ const CATEGORY_EMOJIS: Record<string, string> = {
     'Tortilla Pizza': '🍕',
     'Snacks': '🧆',
     'Add-ons': '➕',
+    'Fries Flavor': '🍟',
 }
 
 export function StockControlModal({ isOpen, onClose, products }: StockControlModalProps) {
@@ -55,7 +56,7 @@ export function StockControlModal({ isOpen, onClose, products }: StockControlMod
     const pseudoProducts = useMemo(() => {
         return FRIES_FLAVORS.map(flavor => ({
             id: `flavor-${flavor}`,
-            name: flavor,
+            name: `Fries Flavor: ${flavor}`,
             category: 'Fries Flavor',
             price: 0,
             image_url: null,
@@ -179,7 +180,7 @@ export function StockControlModal({ isOpen, onClose, products }: StockControlMod
 
     const handleToggleAvailable = (product: Product) => {
         if (product.id.startsWith('flavor-')) {
-            const flavor = product.name as FriesFlavor
+            const flavor = product.id.replace('flavor-', '') as FriesFlavor
             toggleFlavorStock(flavor)
             const isOut = !isFlavorAvailable(flavor)
             toast(isOut ? 'Marked as Available' : 'Marked as Sold Out', { icon: isOut ? '✅' : '🚫', duration: 1500 })

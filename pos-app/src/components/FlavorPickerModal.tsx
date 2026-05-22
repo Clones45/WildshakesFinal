@@ -9,7 +9,11 @@ export const FRIES_FLAVORS: FriesFlavor[] = ['Cheese', 'BBQ', 'Sour Cream']
 // Products (by exact name) that require a fries flavor selection
 export const FRIES_FLAVOR_PRODUCTS = new Set([
     'Fries Solo',
+    'Fries Large',
     'Fries with Cheesy Beef',
+    'Fries with cheesy beef',
+    'Burger with fries',
+    'Burger and Fries',
 ])
 
 const FLAVOR_INFO: Record<FriesFlavor, { emoji: string; color: string; desc: string }> = {
