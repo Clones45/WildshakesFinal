@@ -148,7 +148,7 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
     <div>
       {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-        <Link href="/dashboard/franchises" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>
+        <Link href="/franchises" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>
           ← Franchises
         </Link>
         <span>/</span>
