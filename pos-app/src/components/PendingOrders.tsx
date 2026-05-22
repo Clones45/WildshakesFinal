@@ -145,7 +145,7 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
             }
 
             // ── 3. Build the resolved product list BEFORE touching the cart ──
-            const toAdd: { product: Product; cancelled: boolean }[] = order.items.map((item) => {
+            const toAdd: { product: Product; quantity: number; cancelled: boolean }[] = order.items.map((item) => {
                 const cached = menuLookup.get(item.menu_item_id)
                 const product: Product = cached ?? {
                     id: item.menu_item_id,
@@ -155,14 +155,19 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                     image_url: null,
                     is_available: true,
                 }
-                return { product, cancelled: item.cancelled === true }
+                return { product, quantity: item.quantity, cancelled: item.cancelled === true }
             })
 
             // ── 4. Clear cart then populate atomically ───────────────────────
             reset()
-            for (const { product, cancelled } of toAdd) {
-                addItem(product)
-                if (cancelled) cancelItem(product.id)  // Restore cancelled state visually
+            for (const { product, quantity, cancelled } of toAdd) {
+                // Add correct quantity (addItem increments on each call)
+                for (let q = 0; q < quantity; q++) {
+                    addItem(product)
+                }
+                // Restore cancelled state — item stays visible as struck-through
+                // in the cart until the order is checked out or voided
+                if (cancelled) cancelItem(product.id)
             }
 
             // ── 5. Persist the resumed hold reference ────────────────────────
