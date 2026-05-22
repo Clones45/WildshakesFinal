@@ -46,7 +46,7 @@ function uint8ToBase64(bytes: Uint8Array): string {
     return window.btoa(binary)
 }
 
-async function buildLogoBytes(imageUrl: string, targetWidth = 256): Promise<Uint8Array> {
+async function buildLogoBytes(imageUrl: string, targetWidth = 384): Promise<Uint8Array> {
     return new Promise((resolve) => {
         const img = new Image()
         img.onload = () => {
@@ -54,7 +54,6 @@ async function buildLogoBytes(imageUrl: string, targetWidth = 256): Promise<Uint
                 const scale    = targetWidth / img.width
                 const w        = targetWidth
                 const h        = Math.round(img.height * scale)
-                const rowBytes = Math.ceil(w / 8)
 
                 const canvas = document.createElement('canvas')
                 canvas.width  = w
@@ -66,33 +65,48 @@ async function buildLogoBytes(imageUrl: string, targetWidth = 256): Promise<Uint
                 ctx.drawImage(img, 0, 0, w, h)
 
                 const { data } = ctx.getImageData(0, 0, w, h)
-
                 const bytes: number[] = []
-                
-                // ESC @ — reset printer
+
+                // Initialize printer
                 bytes.push(0x1b, 0x40)
 
-                // GS v 0 m xL xH yL yH [pixel data]
-                bytes.push(0x1d, 0x76, 0x30, 0x00)
-                bytes.push(rowBytes & 0xff, (rowBytes >> 8) & 0xff)
-                bytes.push(h & 0xff, (h >> 8) & 0xff)
+                // Center align logo
+                bytes.push(0x1b, 0x61, 0x01)
 
-                for (let y = 0; y < h; y++) {
-                    for (let xb = 0; xb < rowBytes; xb++) {
-                        let byte = 0
-                        for (let bit = 0; bit < 8; bit++) {
-                            const x = xb * 8 + bit
-                            if (x < w) {
-                                const i   = (y * w + x) * 4
-                                const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
-                                if (lum < 128) byte |= (0x80 >> bit)
+                // Set line spacing to 24 dots for seamless vertical merging
+                bytes.push(0x1b, 0x33, 24)
+
+                // Process image in vertical bands of 24 dots (ESC * 33)
+                for (let yStart = 0; yStart < h; yStart += 24) {
+                    bytes.push(0x1b, 0x2a, 33) // ESC * 33 (24-dot double density)
+                    bytes.push(w & 0xff, (w >> 8) & 0xff) // nL, nH
+                    
+                    for (let x = 0; x < w; x++) {
+                        for (let k = 0; k < 3; k++) {
+                            let byte = 0
+                            for (let b = 0; b < 8; b++) {
+                                const y = yStart + k * 8 + b
+                                if (y < h) {
+                                    const i = (y * w + x) * 4
+                                    // Calculate luminance
+                                    const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+                                    if (lum < 128) {
+                                        byte |= (1 << (7 - b)) // Set bit if dark
+                                    }
+                                }
                             }
+                            bytes.push(byte)
                         }
-                        bytes.push(byte)
                     }
+                    bytes.push(0x0a) // Print and feed line
                 }
 
-                bytes.push(0x0a) // line feed
+                // Reset line spacing to default (ESC 2)
+                bytes.push(0x1b, 0x32)
+                
+                // Reset alignment to left
+                bytes.push(0x1b, 0x61, 0x00)
+
                 resolve(new Uint8Array(bytes))
             } catch {
                 resolve(new Uint8Array(0))
