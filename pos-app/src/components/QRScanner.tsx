@@ -72,20 +72,20 @@ export const QRScanner = forwardRef<{ restart: () => void }, QRScannerProps>(
                 }
 
                 if (devices && devices.length > 0) {
-                    // Prefer rear camera: look for "back"/"environment" in label, else take last
-                    const rear = devices.find(d =>
-                        /back|rear|environment/i.test(d.label)
-                    ) ?? devices[devices.length - 1]
+                    // Prefer front camera: look for "front"/"user" in label, else take first
+                    const front = devices.find(d =>
+                        /front|user/i.test(d.label)
+                    ) ?? devices[0]
 
                     await withTimeout(
-                        html5Qr.start(rear.id, SCANNER_CONFIG, onSuccess, onFrameFailure),
+                        html5Qr.start(front.id, SCANNER_CONFIG, onSuccess, onFrameFailure),
                         10000
                     )
                 } else {
                     // Fallback: let browser pick via facingMode
                     await withTimeout(
                         html5Qr.start(
-                            { facingMode: { ideal: 'environment' } },
+                            { facingMode: { ideal: 'user' } },
                             SCANNER_CONFIG,
                             onSuccess,
                             onFrameFailure,
