@@ -27,7 +27,7 @@ function formatTime(iso: string) {
 
 export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
     const { heldOrders, isLoading, fetchHeldOrders, voidHeldOrder } = useHoldStore()
-    const { addItem, reset, items, setResumedHold } = useCartStore()
+    const { addItem, cancelItem, reset, items, setResumedHold } = useCartStore()
 
     const [confirmResumeId, setConfirmResumeId] = useState<string | null>(null)
 
@@ -109,6 +109,7 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
     const doResume = async (order: HeldOrder) => {
         setConfirmResumeId(null)
         try {
+            // ── 1. Build the product lookup from local cache ─────────────────
             const cachedProducts = await db.products.toArray()
             const menuLookup = new Map<string, Product>(
                 cachedProducts.map((p) => [
@@ -124,36 +125,27 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                 ])
             )
 
+            // ── 2. Try to fill missing products from Supabase (safe fallback) ─
             const missingIds = order.items
                 .map((i) => i.menu_item_id)
                 .filter((id) => !menuLookup.has(id))
 
             if (missingIds.length > 0 && navigator.onLine) {
-                const { data: menuRows } = await supabase
-                    .from('menu_items')
-                    .select('category, item_name, new_price')
-
-                ;(menuRows ?? [] as Record<string, unknown>[]).forEach((r: Record<string, unknown>) => {
-                    const cat = String(r.category ?? '')
-                    const name = String(r.item_name ?? '')
-                    const synthId = `${cat}::${name}`.replace(/\s+/g, '_').toLowerCase()
-                    if (!menuLookup.has(synthId)) {
-                        menuLookup.set(synthId, {
-                            id: synthId,
-                            name,
-                            category: cat,
-                            price: Number(r.new_price ?? 0),
-                            image_url: null,
-                            is_available: true,
-                        })
-                    }
-                })
+                try {
+                    const { data: extraProducts } = await supabase
+                        .from('products')
+                        .select('id, name, category, price, image_url, is_available')
+                        .in('id', missingIds)
+                    ;(extraProducts ?? []).forEach((p) => {
+                        menuLookup.set(p.id, p as Product)
+                    })
+                } catch {
+                    // Non-fatal: fallback product info will be used
+                }
             }
 
-            reset()
-
-            for (const item of order.items) {
-                if (item.cancelled) continue   // Don't re-add cancelled items to cart
+            // ── 3. Build the resolved product list BEFORE touching the cart ──
+            const toAdd: { product: Product; cancelled: boolean }[] = order.items.map((item) => {
                 const cached = menuLookup.get(item.menu_item_id)
                 const product: Product = cached ?? {
                     id: item.menu_item_id,
@@ -163,12 +155,17 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                     image_url: null,
                     is_available: true,
                 }
-                for (let q = 0; q < item.quantity; q++) {
-                    addItem(product)
-                }
+                return { product, cancelled: item.cancelled === true }
+            })
+
+            // ── 4. Clear cart then populate atomically ───────────────────────
+            reset()
+            for (const { product, cancelled } of toAdd) {
+                addItem(product)
+                if (cancelled) cancelItem(product.id)  // Restore cancelled state visually
             }
 
-            // Persist the table number so it stays attached after resume
+            // ── 5. Persist the resumed hold reference ────────────────────────
             const tableNum = order.table_number ?? order.local_ref
             setResumedHold(order.id, order.local_ref, tableNum)
             toast.success('Order resumed — add items then Hold or Checkout', { icon: '▶️', duration: 3000 })
