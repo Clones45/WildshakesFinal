@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Package, Search, AlertTriangle, CheckCircle2, Hash, Ban, RotateCcw, Loader2 } from 'lucide-react'
 import { supabase, type Product } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { useFriesStockStore } from '../store/friesStockStore'
+import { FRIES_FLAVORS, type FriesFlavor } from './FlavorPickerModal'
 import { toast } from 'react-hot-toast'
 
 interface StockOverride {
@@ -46,18 +48,37 @@ export function StockControlModal({ isOpen, onClose, products }: StockControlMod
     const [activeCategory, setActiveCategory] = useState('All')
     const [isLoadingOverrides, setIsLoadingOverrides] = useState(false)
 
+    // Fries local stock store
+    const { outOfStockFlavors, toggleFlavorStock, isFlavorAvailable } = useFriesStockStore()
+
+    // Generate pseudo-products for fries flavors
+    const pseudoProducts = useMemo(() => {
+        return FRIES_FLAVORS.map(flavor => ({
+            id: `flavor-${flavor}`,
+            name: flavor,
+            category: 'Fries Flavor',
+            price: 0,
+            image_url: null,
+            is_available: isFlavorAvailable(flavor),
+        })) as Product[]
+    }, [outOfStockFlavors])
+
+    const allItems = useMemo(() => {
+        return [...products, ...pseudoProducts]
+    }, [products, pseudoProducts])
+
     const categories = useMemo(() => {
-        const cats = [...new Set(products.map(p => p.category))]
+        const cats = [...new Set(allItems.map(p => p.category))]
         return ['All', ...cats]
-    }, [products])
+    }, [allItems])
 
     const filtered = useMemo(() => {
-        return products.filter(p => {
+        return allItems.filter(p => {
             const matchCat = activeCategory === 'All' || p.category === activeCategory
             const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
             return matchCat && matchSearch
         })
-    }, [products, activeCategory, search])
+    }, [allItems, activeCategory, search])
 
     // Load existing overrides when modal opens
     useEffect(() => {
@@ -95,6 +116,10 @@ export function StockControlModal({ isOpen, onClose, products }: StockControlMod
     }
 
     const getOverride = (productId: string): StockOverride => {
+        if (productId.startsWith('flavor-')) {
+            const flavor = productId.replace('flavor-', '') as FriesFlavor
+            return { productId, isAvailable: isFlavorAvailable(flavor), stockQty: null }
+        }
         return overrides.get(productId) ?? { productId, isAvailable: true, stockQty: null }
     }
 
@@ -153,6 +178,14 @@ export function StockControlModal({ isOpen, onClose, products }: StockControlMod
     }
 
     const handleToggleAvailable = (product: Product) => {
+        if (product.id.startsWith('flavor-')) {
+            const flavor = product.name as FriesFlavor
+            toggleFlavorStock(flavor)
+            const isOut = !isFlavorAvailable(flavor)
+            toast(isOut ? 'Marked as Available' : 'Marked as Sold Out', { icon: isOut ? '✅' : '🚫', duration: 1500 })
+            return
+        }
+
         const current = getOverride(product.id)
         if (current.isAvailable) {
             // Mark sold out
@@ -172,7 +205,7 @@ export function StockControlModal({ isOpen, onClose, products }: StockControlMod
         saveOverride(product.id, { isAvailable: newAvailable, stockQty: qty })
     }
 
-    const soldOutCount = Array.from(overrides.values()).filter(o => !o.isAvailable).length
+    const soldOutCount = Array.from(overrides.values()).filter(o => !o.isAvailable).length + outOfStockFlavors.length
     const withQtyCount = Array.from(overrides.values()).filter(o => o.isAvailable && o.stockQty !== null).length
 
     return (

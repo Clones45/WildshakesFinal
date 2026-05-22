@@ -105,6 +105,13 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
 
     const isMergedCategory = (cat: string) => cat in MERGED_SUB_CATS
 
+    // ─── Size-picker categories ───────────────────────────────────────────────
+    // These are the category names that are size variants for Fruitshakes / Milkshakes
+    const SHAKE_SIZE_CATEGORIES = new Set([
+        'Fruitshakes Petite', 'Fruitshakes Grande',
+        'Milkshakes Petite', 'Milkshakes Grande',
+    ])
+
     const filtered = (() => {
         // Step 1: which products match the active category / search
         const matchesCat = (p: Product) => {
@@ -113,7 +120,21 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             return p.category === activeCategory
         }
 
-        const base = products.filter(p => matchesCat(p) && p.name.toLowerCase().includes(search.toLowerCase()))
+        const base = products.filter(p => {
+            if (!matchesCat(p)) return false
+            if (!p.name.toLowerCase().includes(search.toLowerCase())) return false
+
+            if (SHAKE_SIZE_CATEGORIES.has(p.category)) {
+                // For shakes, show the base card if ANY size variant of this shake is available
+                return products.some(other => 
+                    other.name === p.name && 
+                    SHAKE_SIZE_CATEGORIES.has(other.category) && 
+                    other.is_available !== false
+                )
+            }
+            // For normal products, only show if available
+            return p.is_available !== false
+        })
 
         // Step 2: deduplicate by name — keep only ONE card per product name
         // (prefer the Petite/smaller variant as the representative so the price shown is the lower bound)
@@ -148,11 +169,6 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
     }
 
 // ─── Size-picker setup ────────────────────────────────────────────────────────
-// These are the category names that are size variants for Fruitshakes / Milkshakes
-const SHAKE_SIZE_CATEGORIES = new Set([
-    'Fruitshakes Petite', 'Fruitshakes Grande',
-    'Milkshakes Petite', 'Milkshakes Grande',
-])
 
 // Map each size-category to a display label for the picker
 const SIZE_LABEL: Record<string, string> = {

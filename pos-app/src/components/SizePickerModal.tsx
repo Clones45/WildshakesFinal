@@ -75,27 +75,32 @@ export function SizePickerModal({ baseName, emoji, options, onSelect, onClose }:
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {options.map((opt) => {
                             const info = SIZE_INFO[opt.sizeLabel] ?? { oz: '', desc: opt.sizeLabel, color: '#7c3aed' }
+                            const isSoldOut = opt.product.is_available === false
                             return (
                                 <motion.button
                                     key={opt.sizeLabel}
-                                    whileTap={{ scale: 0.97 }}
-                                    whileHover={{ scale: 1.01 }}
-                                    onClick={() => onSelect(opt.product, opt.sizeLabel)}
+                                    whileTap={{ scale: isSoldOut ? 1 : 0.97 }}
+                                    whileHover={{ scale: isSoldOut ? 1 : 1.01 }}
+                                    onClick={() => !isSoldOut && onSelect(opt.product, opt.sizeLabel)}
+                                    disabled={isSoldOut}
                                     style={{
                                         display: 'flex', alignItems: 'center',
                                         padding: '14px 18px',
                                         borderRadius: '14px',
-                                        border: `2px solid ${info.color}22`,
-                                        background: `${info.color}08`,
-                                        cursor: 'pointer', width: '100%',
+                                        border: `2px solid ${isSoldOut ? '#e5e7eb' : info.color + '22'}`,
+                                        background: isSoldOut ? '#f9fafb' : `${info.color}08`,
+                                        cursor: isSoldOut ? 'not-allowed' : 'pointer', width: '100%',
                                         gap: '14px', textAlign: 'left',
                                         transition: 'border-color 0.15s, background 0.15s',
+                                        opacity: isSoldOut ? 0.6 : 1,
                                     }}
                                     onMouseEnter={e => {
+                                        if (isSoldOut) return;
                                         (e.currentTarget as HTMLButtonElement).style.borderColor = info.color
                                         ;(e.currentTarget as HTMLButtonElement).style.background = `${info.color}14`
                                     }}
                                     onMouseLeave={e => {
+                                        if (isSoldOut) return;
                                         (e.currentTarget as HTMLButtonElement).style.borderColor = `${info.color}22`
                                         ;(e.currentTarget as HTMLButtonElement).style.background = `${info.color}08`
                                     }}
@@ -103,16 +108,16 @@ export function SizePickerModal({ baseName, emoji, options, onSelect, onClose }:
                                     {/* Size pill */}
                                     <div style={{
                                         width: '52px', height: '52px', borderRadius: '12px',
-                                        background: `linear-gradient(135deg, ${info.color}22, ${info.color}10)`,
+                                        background: isSoldOut ? '#f3f4f6' : `linear-gradient(135deg, ${info.color}22, ${info.color}10)`,
                                         display: 'flex', flexDirection: 'column',
                                         alignItems: 'center', justifyContent: 'center',
-                                        flexShrink: 0, border: `1px solid ${info.color}30`,
+                                        flexShrink: 0, border: `1px solid ${isSoldOut ? '#e5e7eb' : info.color + '30'}`,
                                     }}>
-                                        <span style={{ fontSize: '1.1rem', fontWeight: 900, color: info.color, lineHeight: 1 }}>
+                                        <span style={{ fontSize: '1.1rem', fontWeight: 900, color: isSoldOut ? '#9ca3af' : info.color, lineHeight: 1 }}>
                                             {opt.sizeLabel === 'Regular' ? 'R' : opt.sizeLabel === 'Petite' ? 'P' : 'G'}
                                         </span>
                                         {info.oz && (
-                                            <span style={{ fontSize: '0.6rem', color: info.color, opacity: 0.7, marginTop: '2px' }}>
+                                            <span style={{ fontSize: '0.6rem', color: isSoldOut ? '#9ca3af' : info.color, opacity: 0.7, marginTop: '2px' }}>
                                                 {info.oz}
                                             </span>
                                         )}
@@ -120,21 +125,31 @@ export function SizePickerModal({ baseName, emoji, options, onSelect, onClose }:
 
                                     {/* Labels */}
                                     <div style={{ flex: 1 }}>
-                                        <p style={{ margin: 0, fontWeight: 800, fontSize: '1rem', color: '#1e1b4b' }}>
+                                        <p style={{ margin: 0, fontWeight: 800, fontSize: '1rem', color: isSoldOut ? '#9ca3af' : '#1e1b4b' }}>
                                             {opt.sizeLabel}
                                         </p>
-                                        <p style={{ margin: '2px 0 0', fontSize: '0.77rem', color: '#6b7280', fontWeight: 500 }}>
+                                        <p style={{ margin: '2px 0 0', fontSize: '0.77rem', color: isSoldOut ? '#d1d5db' : '#6b7280', fontWeight: 500 }}>
                                             {info.desc} · {info.oz}
                                         </p>
                                     </div>
 
-                                    {/* Price */}
-                                    <span style={{
-                                        fontWeight: 900, fontSize: '1.15rem',
-                                        color: info.color, letterSpacing: '-0.02em',
-                                    }}>
-                                        ₱{opt.product.price.toFixed(2)}
-                                    </span>
+                                    {/* Price or Sold Out Label */}
+                                    {isSoldOut ? (
+                                        <span style={{
+                                            fontWeight: 800, fontSize: '0.85rem',
+                                            color: '#ef4444', background: '#fee2e2',
+                                            padding: '4px 8px', borderRadius: '6px',
+                                        }}>
+                                            Sold Out
+                                        </span>
+                                    ) : (
+                                        <span style={{
+                                            fontWeight: 900, fontSize: '1.15rem',
+                                            color: info.color, letterSpacing: '-0.02em',
+                                        }}>
+                                            ₱{opt.product.price.toFixed(2)}
+                                        </span>
+                                    )}
                                 </motion.button>
                             )
                         })}

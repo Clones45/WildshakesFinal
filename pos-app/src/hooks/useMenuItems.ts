@@ -99,8 +99,13 @@ export function useMenuItems() {
                 }
             }
 
-            // ── 3. Filter out branch-level unavailable items ─────────────────
-            const prods = (allProducts as Product[]).filter(p => !unavailableIds.has(p.id))
+            // ── 3. Apply branch-level unavailable items ─────────────────────────────────
+            const prods = (allProducts as Product[]).map(p => {
+                if (unavailableIds.has(p.id)) {
+                    return { ...p, is_available: false }
+                }
+                return p
+            })
             const cats = [...new Set(prods.map((p) => p.category))]
 
             console.log(`[useMenuItems] Loaded ${allProducts.length} items from Supabase products`)
