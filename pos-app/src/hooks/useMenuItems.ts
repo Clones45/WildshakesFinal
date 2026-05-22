@@ -83,6 +83,7 @@ export function useMenuItems() {
 
             // ── 2. Fetch this branch's out-of-stock overrides ──────────────────
             let unavailableIds = new Set<string>()
+            let stockQuantities = new Map<string, number | null>()
             if (branch?.id) {
                 const { data: overrides } = await supabase
                     .from('branch_menu_availability')
@@ -91,6 +92,7 @@ export function useMenuItems() {
 
                 if (overrides) {
                     for (const o of overrides as { product_id: string; is_available: boolean; stock_qty: number | null }[]) {
+                        stockQuantities.set(o.product_id, o.stock_qty)
                         // Hide if explicitly marked unavailable
                         if (!o.is_available) { unavailableIds.add(o.product_id); continue }
                         // Hide if stock_qty is set and has reached 0
@@ -119,7 +121,11 @@ export function useMenuItems() {
             // ── 4. Refresh offline cache ─────────────────────────────────────
             await db.products.clear()
             await db.products.bulkPut(
-                prods.map((p) => ({ ...p, stock_qty: null as null, cachedAt: new Date().toISOString() }))
+                prods.map((p) => ({
+                    ...p,
+                    stock_qty: stockQuantities.has(p.id) ? stockQuantities.get(p.id)! : null,
+                    cachedAt: new Date().toISOString()
+                }))
             )
             console.log('[useMenuItems] Offline cache refreshed from products table')
         } catch (err) {
@@ -128,9 +134,8 @@ export function useMenuItems() {
             const cached = await db.products.toArray()
             if (cached.length > 0) {
                 console.log(`[useMenuItems] Using ${cached.length} cached items`)
-                const available = cached.filter((p) => p.is_available !== false)
-                const cats = [...new Set(available.map((p) => p.category))]
-                setProducts(available as Product[])
+                const cats = [...new Set(cached.map((p) => p.category))]
+                setProducts(cached as Product[])
                 setCategories(cats)
             } else {
                 setError('Could not load menu. Check your connection.')

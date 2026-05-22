@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Package, Search, AlertTriangle, CheckCircle2, Hash, Ban, RotateCcw, Loader2 } from 'lucide-react'
 import { supabase, type Product } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { db } from '../lib/db'
 import { useFriesStockStore } from '../store/friesStockStore'
 import { FRIES_FLAVORS, type FriesFlavor } from './FlavorPickerModal'
 import { toast } from 'react-hot-toast'
@@ -109,8 +110,27 @@ export function StockControlModal({ isOpen, onClose, products }: StockControlMod
             }
             setOverrides(map)
         } catch (err: any) {
-            console.error('[StockControl] Failed to load overrides:', err)
-            toast.error(`Failed to load stock data: ${err?.message || err}`)
+            console.warn('[StockControl] Failed to load overrides from Supabase, trying offline cache:', err)
+            try {
+                const cachedProducts = await db.products.toArray()
+                const map = new Map<string, StockOverride>()
+                for (const p of cachedProducts) {
+                    const hasQty = p.stock_qty !== null
+                    const isExplicitlyUnavailable = p.is_available === false
+                    if (hasQty || isExplicitlyUnavailable) {
+                        map.set(p.id, {
+                            productId: p.id,
+                            isAvailable: isExplicitlyUnavailable ? false : true,
+                            stockQty: p.stock_qty ?? null,
+                        })
+                    }
+                }
+                setOverrides(map)
+                toast.success('Loaded stock data from offline cache')
+            } catch (cacheErr) {
+                console.error('[StockControl] Offline cache load failed:', cacheErr)
+                toast.error(`Failed to load stock data: ${err?.message || err}`)
+            }
         } finally {
             setIsLoadingOverrides(false)
         }

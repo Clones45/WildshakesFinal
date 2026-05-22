@@ -1,5 +1,19 @@
 import { createClient } from '@supabase/supabase-js'
 
+// Clear any stale Supabase Auth session if the device is already claimed.
+// This prevents Supabase client from sending expired JWTs and causing query failures.
+if (typeof window !== 'undefined') {
+    const isClaimed = localStorage.getItem('ws_device_branch')
+    if (isClaimed) {
+        for (const key of Object.keys(localStorage)) {
+            if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+                console.warn('[Supabase] Removing stale auth token for claimed device:', key)
+                localStorage.removeItem(key)
+            }
+        }
+    }
+}
+
 const SUPABASE_URL = 'https://jhicfriososaaxebktzv.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoaWNmcmlvc29zYWF4ZWJrdHp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NTg4NDUsImV4cCI6MjA4ODIzNDg0NX0.Q6Oj1ofcAriSHmsnQfAzmh-e0qBIakWOaBvEj9y_m-0'
 
