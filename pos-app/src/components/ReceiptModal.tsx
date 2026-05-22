@@ -132,9 +132,13 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                     className="w-16 h-16 object-contain mx-auto mb-1"
                                     onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                                 />
-                                <p className="font-bold text-white text-sm">Wild Shakes</p>
-                                <p className="text-gray-400 text-[11px]">09276290200</p>
-                                <p className="text-gray-400 text-[11px]">wildshakesdigos@gmail.com</p>
+                                <p className="font-bold text-white text-sm">{branch?.name ?? 'Wild Shakes'}</p>
+                                {branch?.location && (
+                                    <p className="text-gray-400 text-[11px]">{branch.location}</p>
+                                )}
+                                {branch?.owner_email && (
+                                    <p className="text-gray-400 text-[11px]">{branch.owner_email}</p>
+                                )}
                                 <p className="font-bold text-white text-[11px] mt-1">**TRANSACTION RECEIPT**</p>
                             </div>
 
@@ -317,7 +321,7 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                     {/* Print + BT picker */}
                                     <div className="flex gap-2">
                                         <button
-                                            onClick={() => printReceipt(transaction, branch?.name ?? 'Wildshakes', user?.name ?? 'Staff')}
+                                            onClick={() => printReceipt(transaction, branch?.name ?? 'Wild Shakes', user?.name ?? 'Staff', branch?.owner_email ?? undefined, branch?.location ?? undefined)}
                                             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 text-sm font-semibold hover:bg-brand-500/20 transition-colors"
                                         >
                                             <Printer size={15} />

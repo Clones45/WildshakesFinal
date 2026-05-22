@@ -64,16 +64,25 @@ export const useAuthStore = create<AuthState>()(
                         return { success: false, error: 'This account is not authorized for POS setup.' }
                     }
 
-                    // Fetch the target branch and check device lock
+                    // Fetch the target branch (join franchise for owner contact details)
                     const { data: branchRow, error: branchErr } = await supabase
                         .from('branches')
-                        .select('*')
+                        .select('*, franchise:franchises!franchise_id(owner_name, owner_email, name, region)')
                         .eq('id', branchId)
                         .single()
 
                     if (branchErr || !branchRow) {
                         set({ isLoading: false })
                         return { success: false, error: 'Branch not found.' }
+                    }
+
+                    // Flatten franchise fields onto branch
+                    const franchise = (branchRow as any).franchise
+                    const flatBranch: Branch = {
+                        ...branchRow,
+                        owner_name:  franchise?.owner_name  ?? null,
+                        owner_email: franchise?.owner_email ?? null,
+                        region:      franchise?.region      ?? null,
                     }
 
                     // Allow owner to override if it's claimed by another device.
@@ -94,9 +103,9 @@ export const useAuthStore = create<AuthState>()(
 
                     // Persist branch locally so Phase 2 works on restart
                     saveClaimedBranch({
-                        id:       branchRow.id,
-                        name:     branchRow.name,
-                        location: branchRow.location ?? '',
+                        id:          flatBranch.id,
+                        name:        flatBranch.name,
+                        location:    flatBranch.location ?? '',
                     })
 
                     // Sign the owner OUT of Supabase Auth — they only
@@ -104,7 +113,7 @@ export const useAuthStore = create<AuthState>()(
                     await supabase.auth.signOut()
 
                     set({
-                        branch: branchRow as Branch,
+                        branch: flatBranch,
                         isLoading: false,
                         error: null,
                         user: null,
@@ -140,13 +149,21 @@ export const useAuthStore = create<AuthState>()(
                                 userProfile = users[0] as UserProfile
                             }
 
-                            const { data: branch } = await supabase
+                            const { data: branchRaw } = await supabase
                                 .from('branches')
-                                .select('*')
+                                .select('*, franchise:franchises!franchise_id(owner_name, owner_email, name, region)')
                                 .eq('id', branchId)
                                 .single()
-                            
-                            if (branch) branchData = branch as Branch
+
+                            if (branchRaw) {
+                                const fr = (branchRaw as any).franchise
+                                branchData = {
+                                    ...branchRaw,
+                                    owner_name:  fr?.owner_name  ?? null,
+                                    owner_email: fr?.owner_email ?? null,
+                                    region:      fr?.region      ?? null,
+                                } as Branch
+                            }
                         } catch (e) {
                             // fallback to offline
                         }

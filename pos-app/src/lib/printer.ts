@@ -60,7 +60,9 @@ async function sendToPrinter(text: string, label: string): Promise<void> {
 export function buildReceiptText(
     transaction: LocalTransaction,
     branchName: string,
-    cashierName: string
+    cashierName: string,
+    branchEmail?: string,
+    branchLocation?: string,
 ): string {
     const now = new Date(transaction.createdAt)
     const dateStr = now.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -99,9 +101,9 @@ export function buildReceiptText(
 
     return [
         // ── Header ──
-        center('Wild Shakes'),
-        center('09276290200'),
-        center('wildshakesdigos@gmail.com'),
+        center(branchName),
+        ...(branchLocation ? [center(branchLocation)] : []),
+        ...(branchEmail ? [center(branchEmail)] : []),
         center('**TRANSACTION RECEIPT**'),
         divider,
         // ── Meta ──
@@ -132,9 +134,11 @@ export function buildReceiptText(
 export async function printReceipt(
     transaction: LocalTransaction,
     branchName: string,
-    cashierName: string
+    cashierName: string,
+    branchEmail?: string,
+    branchLocation?: string,
 ): Promise<void> {
-    await sendToPrinter(buildReceiptText(transaction, branchName, cashierName), 'Receipt')
+    await sendToPrinter(buildReceiptText(transaction, branchName, cashierName, branchEmail, branchLocation), 'Receipt')
 }
 
 // ── Kitchen Ticket ──────────────────────────────────────────────────────────
