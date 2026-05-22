@@ -5,9 +5,13 @@ import { useCartStore } from '../store/cartStore'
 import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
 import { printKitchenTicket } from '../lib/printer'
+import { BluetoothPrinter } from '@kduma-autoid/capacitor-bluetooth-printer'
 import { ManagerPinModal } from './ManagerPinModal'
-import { AlertTriangle, Clock, Loader2, MapPin, RotateCcw, ShieldAlert, X, Printer, Trash2 } from 'lucide-react'
+import { AlertTriangle, Bluetooth, BluetoothSearching, Clock, Loader2, MapPin, RotateCcw, ShieldAlert, X, Printer, Trash2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
+
+const BT_PRINTER_KEY = 'nexus_bt_printer_address'
+type BTPrinterDevice = { name: string; address: string }
 
 interface PendingOrdersProps {
     isOpen: boolean
@@ -31,6 +35,63 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
     const [voidingOrderId, setVoidingOrderId] = useState<string | null>(null)
     const [voidReason, setVoidReason] = useState('')
     const [showVoidPin, setShowVoidPin] = useState(false)
+
+    // ── Bluetooth printer state ───────────────────────────────────────────────
+    const [savedPrinter, setSavedPrinter] = useState<string | null>(
+        () => localStorage.getItem(BT_PRINTER_KEY)
+    )
+    const [showBtPicker, setShowBtPicker] = useState(false)
+    const [btDevices, setBtDevices] = useState<BTPrinterDevice[]>([])
+    const [scanningBt, setScanningBt] = useState(false)
+    const [pendingPrintOrder, setPendingPrintOrder] = useState<HeldOrder | null>(null)
+
+    const openBtPicker = async (order: HeldOrder) => {
+        setPendingPrintOrder(order)
+        setScanningBt(true)
+        setShowBtPicker(true)
+        try {
+            const { devices } = await BluetoothPrinter.list()
+            setBtDevices(devices)
+        } catch (err: any) {
+            const msg: string = err?.message ?? String(err)
+            toast.error(`Bluetooth error: ${msg}`, { duration: 6000 })
+            setShowBtPicker(false)
+        } finally {
+            setScanningBt(false)
+        }
+    }
+
+    const selectBtPrinter = async (device: BTPrinterDevice) => {
+        localStorage.setItem(BT_PRINTER_KEY, device.address)
+        setSavedPrinter(device.address)
+        setShowBtPicker(false)
+        toast.success(`Printer set: ${device.name}`)
+        // Print the pending order immediately after selecting
+        if (pendingPrintOrder) {
+            await printKitchenTicket(
+                pendingPrintOrder.items,
+                pendingPrintOrder.table_number ?? pendingPrintOrder.local_ref,
+                pendingPrintOrder.id,
+                pendingPrintOrder.created_at
+            )
+            setPendingPrintOrder(null)
+        }
+    }
+
+    const handlePrintTicket = async (order: HeldOrder) => {
+        if (!savedPrinter) {
+            // No printer saved yet — open picker first
+            await openBtPicker(order)
+        } else {
+            // Printer already saved — print directly
+            await printKitchenTicket(
+                order.items,
+                order.table_number ?? order.local_ref,
+                order.id,
+                order.created_at
+            )
+        }
+    }
 
     useEffect(() => {
         if (isOpen) fetchHeldOrders()
@@ -170,13 +231,70 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                                         <p className="text-gray-500 text-xs">{heldOrders.length} pending</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={onClose}
-                                    className="w-9 h-9 rounded-xl bg-surface-600 flex items-center justify-center text-gray-400 hover:text-white hover:bg-surface-500 transition-all"
-                                >
-                                    <X size={16} />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {/* BT printer selector button */}
+                                    <button
+                                        onClick={() => openBtPicker(heldOrders[0] ?? { id: '', items: [], table_number: null, local_ref: '', created_at: new Date().toISOString() } as any)}
+                                        title={savedPrinter ? 'Change printer' : 'Select printer'}
+                                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                                            savedPrinter
+                                                ? 'bg-teal-500/20 text-teal-400 hover:bg-teal-500/30'
+                                                : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
+                                        }`}
+                                    >
+                                        <Bluetooth size={15} />
+                                    </button>
+                                    <button
+                                        onClick={onClose}
+                                        className="w-9 h-9 rounded-xl bg-surface-600 flex items-center justify-center text-gray-400 hover:text-white hover:bg-surface-500 transition-all"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
                             </div>
+
+                            {/* BT Printer Picker (inline) */}
+                            {showBtPicker && (
+                                <div className="px-4 py-3 border-b border-surface-600 bg-surface-700 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-white text-sm font-semibold flex items-center gap-2">
+                                            <BluetoothSearching size={14} className="text-brand-400" />
+                                            Select Printer
+                                        </p>
+                                        <button
+                                            onClick={() => { setShowBtPicker(false); setPendingPrintOrder(null) }}
+                                            className="text-gray-500 text-xs hover:text-gray-300"
+                                        >Cancel</button>
+                                    </div>
+                                    {scanningBt && (
+                                        <p className="text-gray-500 text-xs text-center py-2">Scanning paired devices…</p>
+                                    )}
+                                    {!scanningBt && btDevices.length === 0 && (
+                                        <p className="text-gray-500 text-xs text-center py-2">No paired devices found. Pair the printer in Android Bluetooth settings first.</p>
+                                    )}
+                                    {btDevices.map(device => (
+                                        <button
+                                            key={device.address}
+                                            onClick={() => selectBtPrinter(device)}
+                                            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-surface-600 hover:bg-surface-500 transition-colors text-left"
+                                        >
+                                            <Bluetooth size={13} className="text-brand-400 flex-shrink-0" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-white text-sm font-medium truncate">{device.name || 'Unknown Device'}</p>
+                                                <p className="text-gray-500 text-xs">{device.address}</p>
+                                            </div>
+                                            {device.address === savedPrinter && (
+                                                <span className="text-teal-400 text-xs font-bold">Active</span>
+                                            )}
+                                        </button>
+                                    ))}
+                                    {!savedPrinter && (
+                                        <p className="text-amber-400/70 text-xs text-center">
+                                            ⚠ Select a printer to enable kitchen ticket printing
+                                        </p>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Body */}
                             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
@@ -310,9 +428,9 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                                                             Resume
                                                         </button>
                                                         <button
-                                                            onClick={() => printKitchenTicket(order.items, order.table_number ?? order.local_ref, order.id, order.created_at)}
+                                                            onClick={() => handlePrintTicket(order)}
                                                             className="w-16 flex items-center justify-center gap-1 bg-surface-600 hover:bg-surface-500 text-gray-300 rounded-xl transition-all active:scale-95 text-xs font-semibold"
-                                                            title="Print Kitchen Ticket"
+                                                            title={savedPrinter ? 'Print Kitchen Ticket' : 'Select printer & print'}
                                                         >
                                                             <Printer size={13} />
                                                         </button>
