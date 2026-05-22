@@ -54,7 +54,7 @@ export function LoginScreen() {
         }
     }
 
-    const padKeys = ['1','2','3','4','5','6','7','8','9','','0','backspace']
+    const padKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'backspace']
 
     return (
         <div className="fixed inset-0 bg-brand-950 overflow-hidden flex items-center justify-center">
@@ -67,23 +67,23 @@ export function LoginScreen() {
                                 w-[400px] h-[400px] rounded-full
                                 bg-gold-500/10 blur-[100px]" />
                 <div className="absolute inset-0"
-                     style={{
-                         backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(101,121,98,0.08) 0%, transparent 60%)',
-                     }}
+                    style={{
+                        backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(101,121,98,0.08) 0%, transparent 60%)',
+                    }}
                 />
                 <div className="absolute inset-0 opacity-[0.03]"
-                     style={{
-                         backgroundImage: `linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
+                    style={{
+                        backgroundImage: `linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
                                            linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)`,
-                         backgroundSize: '48px 48px',
-                     }}
+                        backgroundSize: '48px 48px',
+                    }}
                 />
             </div>
 
             {/* ── Main card ── */}
             <motion.div
                 initial={{ opacity: 0, y: 24, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0,  scale: 1 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="relative z-10 w-full max-w-sm mx-4"
             >
@@ -107,7 +107,7 @@ export function LoginScreen() {
                         <span className="text-gold-400">shakes</span>
                     </h1>
                     <p className="text-brand-400 text-xs font-semibold uppercase tracking-[0.2em] mt-1">
-                        Nexus POS System
+                        POS System
                     </p>
                     {branch && (
                         <div className="mt-3 inline-block px-4 py-1.5 rounded-full bg-brand-900 border border-brand-800">
@@ -119,17 +119,16 @@ export function LoginScreen() {
                 {/* ── Tab Toggle ── */}
                 <div className="flex rounded-2xl bg-brand-900 border border-brand-800 p-1 mb-5 gap-1">
                     {([
-                        { id: 'qr' as LoginTab,  label: 'Scan QR',  Icon: QrCode },
+                        { id: 'qr' as LoginTab, label: 'Scan QR', Icon: QrCode },
                         { id: 'pin' as LoginTab, label: 'Enter PIN', Icon: Hash },
                     ]).map(({ id, label, Icon }) => (
                         <button
                             key={id}
                             onClick={() => { setTab(id); clearError(); setPin('') }}
-                            className={`flex-1 flex items-center justify-center gap-2 h-9 rounded-xl text-xs font-bold transition-all duration-200 ${
-                                tab === id
-                                    ? 'bg-brand-700 text-white shadow-sm'
-                                    : 'text-brand-500 hover:text-brand-300'
-                            }`}
+                            className={`flex-1 flex items-center justify-center gap-2 h-9 rounded-xl text-xs font-bold transition-all duration-200 ${tab === id
+                                ? 'bg-brand-700 text-white shadow-sm'
+                                : 'text-brand-500 hover:text-brand-300'
+                                }`}
                         >
                             <Icon size={14} />
                             {label}
@@ -189,11 +188,10 @@ export function LoginScreen() {
                                                 : { scale: 1, backgroundColor: '#2E332D' }
                                             }
                                             transition={{ duration: 0.15 }}
-                                            className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center ${
-                                                i < pin.length
-                                                    ? 'border-brand-500'
-                                                    : 'border-brand-800 bg-brand-900'
-                                            }`}
+                                            className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center ${i < pin.length
+                                                ? 'border-brand-500'
+                                                : 'border-brand-800 bg-brand-900'
+                                                }`}
                                         >
                                             {i < pin.length && (
                                                 <div className="w-2.5 h-2.5 rounded-full bg-white" />
@@ -251,7 +249,7 @@ export function LoginScreen() {
                 <div className="mt-6 text-center">
                     <div className="inline-flex items-center gap-1.5 text-[10px] text-brand-700 font-semibold uppercase tracking-widest">
                         <span className="w-8 h-px bg-brand-800 inline-block" />
-                        Powered by Wildshakes Nexus
+                        Powered by Wildshakes
                         <span className="w-8 h-px bg-brand-800 inline-block" />
                     </div>
                 </div>
