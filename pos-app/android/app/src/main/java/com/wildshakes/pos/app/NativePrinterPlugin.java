@@ -57,12 +57,20 @@ public class NativePrinterPlugin extends Plugin {
             stream.write(bytes);
             stream.flush();
 
-            // Give the Android Bluetooth stack time to finish transmitting
-            // the ~20KB binary image over the air before tearing down the socket.
-            Thread.sleep(2500);
-            socket.close();
-
+            // Unblock the POS app UI immediately so the cashier can continue working!
             call.resolve();
+
+            // Keep the socket open in a background thread so the Android Bluetooth
+            // stack has time to finish transmitting the image data before disconnecting.
+            new Thread(() -> {
+                try {
+                    Thread.sleep(2500);
+                    socket.close();
+                } catch (Exception e) {
+                    // Ignore background cleanup errors
+                }
+            }).start();
+
         } catch (Exception e) {
             call.reject("Print failed: " + e.getMessage());
         }
