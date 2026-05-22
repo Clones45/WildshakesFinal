@@ -149,20 +149,20 @@ export function POSScreen() {
     }
 
     // ─── Checkout logic ──────────────────────────────────────────────────────────
-    const handleCheckout = async (method: string, tendered: number, refNumber: string, bank: string, splits?: SplitEntry[]) => {
+    const handleCheckout = async (method: string, tendered: number, refNumber: string, bank: string, orderType: 'dine-in' | 'take-out', splits?: SplitEntry[]) => {
         if (items.length === 0) return
         setIsProcessing(true)
 
         if (discountType === 'manager' && user?.role === 'cashier') {
             setIsProcessing(false)
-            requireManager(() => processCheckout(method, tendered, refNumber, bank, splits))
+            requireManager(() => processCheckout(method, tendered, refNumber, bank, orderType, splits))
             return
         }
 
-        await processCheckout(method, tendered, refNumber, bank, splits)
+        await processCheckout(method, tendered, refNumber, bank, orderType, splits)
     }
 
-    const processCheckout = async (method: string, _tendered: number, refNumber: string, bank: string, splits?: SplitEntry[]) => {
+    const processCheckout = async (method: string, _tendered: number, refNumber: string, bank: string, orderType: 'dine-in' | 'take-out', splits?: SplitEntry[]) => {
         setIsProcessing(true)
         try {
             const localRef = uuidv4()
@@ -188,6 +188,7 @@ export function POSScreen() {
                 })) : undefined,
                 status: 'completed',
                 source: 'pos',
+                orderType,
                 tableNumber: resumedTableNumber ?? undefined,
                 items: items.map((i) => ({
                     productId: i.product.id,

@@ -9,7 +9,7 @@ import {
 interface CheckoutModalProps {
     isOpen: boolean
     onClose: () => void
-    onConfirm: (method: string, tendered: number, referenceNumber: string, bankName: string, splits?: SplitEntry[]) => Promise<void>
+    onConfirm: (method: string, tendered: number, referenceNumber: string, bankName: string, orderType: 'dine-in' | 'take-out', splits?: SplitEntry[]) => Promise<void>
     isProcessing: boolean
 }
 
@@ -234,6 +234,7 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
 
     const [isSplit, setIsSplit] = useState(false)
     const [splits, setSplits] = useState<SplitEntry[]>([])
+    const [orderType, setOrderType] = useState<'dine-in' | 'take-out'>('dine-in')
 
     const newEntry = useCallback((): SplitEntry => ({
         id: crypto.randomUUID(),
@@ -279,9 +280,9 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
     const handleConfirm = async () => {
         if (isSplit) {
             const primaryMethod = splits.map(s => s.method).join('+')
-            await onConfirm(primaryMethod, splitTotal, '', '', splits)
+            await onConfirm(primaryMethod, splitTotal, '', '', orderType, splits)
         } else {
-            await onConfirm(paymentMethod, cashTendered, referenceNumber, bankName)
+            await onConfirm(paymentMethod, cashTendered, referenceNumber, bankName, orderType)
         }
     }
 
@@ -320,11 +321,38 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                         </div>
 
                         <div className="overflow-y-auto flex-1 p-6 space-y-5">
-                            {/* Total */}
-                            <div className="text-center py-4 bg-surface-700 rounded-2xl border border-surface-500">
-                                <p className="text-gray-400 text-sm mb-1">Amount Due</p>
-                                <p className="text-5xl font-extrabold text-teal-400">₱{tot.toFixed(2)}</p>
+                        {/* Dine-in / Take-out */}
+                        <div>
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Order Type</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    onClick={() => setOrderType('dine-in')}
+                                    className={`py-3 rounded-xl border font-bold text-sm transition-all ${
+                                        orderType === 'dine-in'
+                                            ? 'bg-teal-500/15 border-teal-500/50 text-teal-400'
+                                            : 'bg-surface-700 border-surface-500 text-gray-500 hover:border-surface-400'
+                                    }`}
+                                >
+                                    🍽️ Dine-in
+                                </button>
+                                <button
+                                    onClick={() => setOrderType('take-out')}
+                                    className={`py-3 rounded-xl border font-bold text-sm transition-all ${
+                                        orderType === 'take-out'
+                                            ? 'bg-amber-500/15 border-amber-500/50 text-amber-400'
+                                            : 'bg-surface-700 border-surface-500 text-gray-500 hover:border-surface-400'
+                                    }`}
+                                >
+                                    🥡 Take-out
+                                </button>
                             </div>
+                        </div>
+
+                        {/* Total */}
+                        <div className="text-center py-4 bg-surface-700 rounded-2xl border border-surface-500">
+                            <p className="text-gray-400 text-sm mb-1">Amount Due</p>
+                            <p className="text-5xl font-extrabold text-teal-400">₱{tot.toFixed(2)}</p>
+                        </div>
 
                             {/* Split toggle */}
                             <button

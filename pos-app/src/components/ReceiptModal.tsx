@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, RotateCcw, AlertTriangle, Printer, Bluetooth, BluetoothSearching } from 'lucide-react'
+import { CheckCircle, RotateCcw, AlertTriangle, Printer, Bluetooth, BluetoothSearching, UtensilsCrossed, ShoppingBag } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import type { LocalTransaction } from '../lib/db'
 import { BluetoothPrinter } from '@kduma-autoid/capacitor-bluetooth-printer'
+import { printReceipt } from '../lib/printer'
 import { toast } from 'react-hot-toast'
 
 // ── Bluetooth printer helpers ────────────────────────────────────────────────
@@ -20,99 +21,6 @@ interface ReceiptModalProps {
     onClose: () => void
     onVoid: (localRef: string, reason: string) => void
     onNewOrder: () => void
-}
-
-/** Builds the 32-char plain-text receipt string. */
-function buildReceiptText(
-    transaction: LocalTransaction,
-    branchName: string,
-    cashierName: string
-): string {
-    const W = 32
-
-    const center = (str: string): string => {
-        const s = str.slice(0, W)
-        const pad = Math.max(0, Math.floor((W - s.length) / 2))
-        return ' '.repeat(pad) + s
-    }
-
-    const leftRight = (left: string, right: string): string => {
-        const maxLeft = W - right.length - 1
-        const l = left.slice(0, maxLeft)
-        const gap = W - l.length - right.length
-        return l + ' '.repeat(Math.max(1, gap)) + right
-    }
-
-    const divider = '-'.repeat(W)
-
-    const now = new Date(transaction.createdAt)
-    const dateStr = now.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-    const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
-
-    const activeItems   = transaction.items.filter(i => !(i as any).cancelled)
-    const cancelledItems = transaction.items.filter(i =>  (i as any).cancelled)
-
-    const itemLines = activeItems.flatMap(item => {
-        const price = `P${item.subtotal.toFixed(2)}`
-        const label = `${item.productName} x${item.quantity}`
-        const lines: string[] = [leftRight(label, price)]
-        if ((item as any).notes)
-            lines.push(`  >${(item as any).notes}`.slice(0, W))
-        return lines
-    })
-
-    const cancelledLines = cancelledItems.length > 0
-        ? [divider, center('CANCELLED (not charged)'),
-           ...cancelledItems.map(i => `[X] ${i.productName} x${i.quantity}`.slice(0, W))]
-        : []
-
-    const subtotal = transaction.totalAmount + transaction.discountAmount
-    const totalLines: string[] = [leftRight('Subtotal', `P${subtotal.toFixed(2)}`)]
-    if (transaction.discountAmount > 0)
-        totalLines.push(leftRight(`${transaction.discountType} disc.`, `-P${transaction.discountAmount.toFixed(2)}`))
-    totalLines.push(leftRight('TOTAL',   `P${transaction.totalAmount.toFixed(2)}`))
-    totalLines.push(leftRight('Payment',  transaction.paymentMethod.replace('_', ' ').toUpperCase()))
-    if (transaction.referenceNumber)
-        totalLines.push(leftRight('Ref#', transaction.referenceNumber.slice(0, 12)))
-
-    return [
-        center('WILDSHAKES CAFE'),
-        center(branchName.slice(0, W)),
-        center(`${dateStr} ${timeStr}`),
-        divider,
-        `Cashier: ${cashierName}`.slice(0, W),
-        `Ref: ${transaction.localRef.slice(0, 12).toUpperCase()}`,
-        ...(transaction.tableNumber ? [`Table: #${transaction.tableNumber}`] : []),
-        divider,
-        ...itemLines,
-        ...cancelledLines,
-        divider,
-        ...totalLines,
-        divider,
-        center('-- Thank you! Come again! --'),
-        '\n\n\n',
-    ].join('\n')
-}
-
-/** Sends a receipt to the saved Bluetooth printer via native plugin. */
-async function printReceiptNative(
-    transaction: LocalTransaction,
-    branchName: string,
-    cashierName: string
-): Promise<void> {
-    const address = localStorage.getItem(BT_PRINTER_KEY)
-    if (!address) {
-        toast.error('No printer selected. Tap the printer icon to choose one.')
-        return
-    }
-    const receipt = buildReceiptText(transaction, branchName, cashierName)
-    const printingToast = toast.loading('Sending to printer…')
-    try {
-        await BluetoothPrinter.connectAndPrint({ address, data: receipt })
-        toast.success('Printed!', { id: printingToast })
-    } catch (err: any) {
-        toast.error(`Print failed: ${err?.message ?? 'Check Bluetooth connection'}`, { id: printingToast })
-    }
 }
 
 export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: ReceiptModalProps) {
@@ -180,7 +88,9 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
     const now = new Date(transaction.createdAt)
     const dateStr = now.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
     const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    const paymentLabel = transaction.paymentMethod.replace('_', ' ')
+    const paymentLabel = transaction.paymentMethod.replace(/_/g, ' ')
+    const orderType = transaction.orderType ?? 'dine-in'
+    const shortRef = transaction.localRef.slice(-8).toUpperCase()
 
     return (
         <AnimatePresence>
@@ -197,68 +107,103 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
                         className="bg-surface-800 border border-surface-500 rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden"
                     >
-                        {/* Success header */}
-                        <div className="bg-gradient-to-br from-teal-600/20 to-brand-600/20 border-b border-surface-600 px-6 py-6 text-center">
+                        {/* ── Success header ── */}
+                        <div className="bg-gradient-to-br from-teal-600/20 to-brand-600/20 border-b border-surface-600 px-6 py-5 text-center">
                             <motion.div
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
                                 transition={{ delay: 0.1, type: 'spring', stiffness: 200 }}
-                                className="w-16 h-16 rounded-full bg-teal-500/20 border border-teal-500/40 flex items-center justify-center mx-auto mb-3"
+                                className="w-14 h-14 rounded-full bg-teal-500/20 border border-teal-500/40 flex items-center justify-center mx-auto mb-2"
                             >
-                                <CheckCircle size={32} className="text-teal-400" />
+                                <CheckCircle size={28} className="text-teal-400" />
                             </motion.div>
-                            <h2 className="text-xl font-bold text-white">Payment Complete!</h2>
-                            <p className="text-gray-400 text-sm mt-1">{branch?.name} · {timeStr}</p>
+                            <h2 className="text-lg font-bold text-white">Payment Complete!</h2>
+                            <p className="text-gray-400 text-xs mt-0.5">{branch?.name} · {timeStr}</p>
                         </div>
 
-                        {/* Receipt body */}
-                        <div className="px-6 py-4 font-mono text-xs max-h-72 overflow-y-auto space-y-1">
-                            {/* Header */}
-                            <div className="text-center pb-2 border-b border-dashed border-surface-600">
-                                <p className="font-bold text-white text-sm">WILDSHAKES CAFE</p>
-                                <p className="text-gray-400">{branch?.location}</p>
-                                <p className="text-gray-500">{dateStr}</p>
+                        {/* ── Receipt body — styled like actual thermal receipt ── */}
+                        <div className="px-5 py-4 font-mono text-xs max-h-80 overflow-y-auto">
+
+                            {/* Logo area */}
+                            <div className="text-center pb-3 border-b border-dashed border-surface-600">
+                                <img
+                                    src="/wildshakes-logo.png"
+                                    alt="Wild Shakes"
+                                    className="w-16 h-16 object-contain mx-auto mb-1"
+                                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                                />
+                                <p className="font-bold text-white text-sm">Wild Shakes</p>
+                                <p className="text-gray-400 text-[11px]">09276290200</p>
+                                <p className="text-gray-400 text-[11px]">wildshakesdigos@gmail.com</p>
+                                <p className="font-bold text-white text-[11px] mt-1">**TRANSACTION RECEIPT**</p>
                             </div>
 
-                            {/* Meta */}
-                            <div className="py-1.5 border-b border-dashed border-surface-600 space-y-0.5 text-gray-400">
+                            {/* Employee / POS / Order type */}
+                            <div className="py-2 border-b border-dashed border-surface-600 space-y-0.5 text-gray-400">
                                 <div className="flex justify-between">
-                                    <span>Cashier</span>
+                                    <span>Employee:</span>
                                     <span className="text-white">{user?.name ?? '—'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>POS:</span>
+                                    <span className="text-white">{branch?.name ?? 'POS 1'}</span>
+                                </div>
+                            </div>
+
+                            {/* Order type badge */}
+                            <div className="py-2 border-b border-dashed border-surface-600 text-center">
+                                {orderType === 'dine-in' ? (
+                                    <span className="inline-flex items-center gap-1.5 text-teal-400 font-bold text-xs">
+                                        <UtensilsCrossed size={12} />
+                                        Dine-in
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 text-amber-400 font-bold text-xs">
+                                        <ShoppingBag size={12} />
+                                        Take-out
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Ref / Table / Date */}
+                            <div className="py-2 border-b border-dashed border-surface-600 space-y-0.5 text-gray-400">
+                                <div className="flex justify-between">
+                                    <span>Ref#:</span>
+                                    <span className="text-white font-bold">{shortRef}</span>
                                 </div>
                                 {transaction.tableNumber && (
                                     <div className="flex justify-between">
-                                        <span>Table</span>
+                                        <span>Table:</span>
                                         <span className="text-white">#{transaction.tableNumber}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between">
-                                    <span>Ref#</span>
-                                    <span className="text-white">{transaction.localRef.slice(0, 12).toUpperCase()}</span>
+                                    <span>Date:</span>
+                                    <span className="text-white">{dateStr}</span>
                                 </div>
                             </div>
 
                             {/* Items */}
-                            <div className="py-2 space-y-1.5">
+                            <div className="py-2 border-b border-dashed border-surface-600 space-y-2">
                                 {transaction.items.map((item, i) => {
                                     const isCancelled = !!(item as any).cancelled
                                     return (
-                                        <div key={i} className={isCancelled ? 'opacity-60' : ''}>
-                                            <div className="flex justify-between text-xs">
-                                                <span className={`flex-1 ${
-                                                    isCancelled
-                                                        ? 'line-through text-red-400'
-                                                        : 'text-gray-300'
-                                                }`}>
-                                                    {item.productName} ×{item.quantity}
-                                                    {isCancelled && <span className="no-underline ml-1 text-red-400 text-[10px] font-bold not-italic">[cancelled]</span>}
+                                        <div key={i} className={isCancelled ? 'opacity-50' : ''}>
+                                            <div className="flex justify-between">
+                                                <span className={`flex-1 ${isCancelled ? 'line-through text-red-400' : 'text-gray-300'}`}>
+                                                    {item.productName}
+                                                    {isCancelled && <span className="ml-1 text-red-400 text-[10px] not-italic"> [cancelled]</span>}
                                                 </span>
-                                                <span className={`ml-2 ${
-                                                    isCancelled ? 'line-through text-red-400' : 'text-white'
-                                                }`}>
+                                                <span className={`ml-2 ${isCancelled ? 'line-through text-red-400' : 'text-white'}`}>
                                                     ₱{item.subtotal.toFixed(2)}
                                                 </span>
                                             </div>
+                                            {/* Qty line below, like the reference photo */}
+                                            {!isCancelled && (
+                                                <p className="text-gray-500 text-[10px] pl-1">
+                                                    {item.quantity}x × ₱{item.unitPrice.toFixed(2)}
+                                                </p>
+                                            )}
                                             {(item as any).notes && !isCancelled && (
                                                 <p className="text-gray-500 text-[10px] italic pl-2">↳ {(item as any).notes}</p>
                                             )}
@@ -268,7 +213,7 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                             </div>
 
                             {/* Totals */}
-                            <div className="border-t border-dashed border-surface-600 pt-2 space-y-1">
+                            <div className="py-2 border-b border-dashed border-surface-600 space-y-1">
                                 <div className="flex justify-between text-gray-400">
                                     <span>Subtotal</span>
                                     <span>₱{(transaction.totalAmount + transaction.discountAmount).toFixed(2)}</span>
@@ -279,13 +224,13 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                         <span>-₱{transaction.discountAmount.toFixed(2)}</span>
                                     </div>
                                 )}
-                                <div className="flex justify-between font-bold border-t border-dashed border-surface-600 pt-1">
-                                    <span className="text-white">TOTAL</span>
-                                    <span className="text-teal-400 text-sm">₱{transaction.totalAmount.toFixed(2)}</span>
+                                <div className="flex justify-between font-bold text-sm border-t border-dashed border-surface-600 pt-1">
+                                    <span className="text-white">Total</span>
+                                    <span className="text-teal-400">₱{transaction.totalAmount.toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-gray-400">
-                                    <span>Payment</span>
-                                    <span className="capitalize text-white">{paymentLabel}</span>
+                                    <span className="capitalize">{paymentLabel}</span>
+                                    <span className="text-white">₱{transaction.totalAmount.toFixed(2)}</span>
                                 </div>
                                 {transaction.referenceNumber && (
                                     <div className="flex justify-between text-gray-400">
@@ -293,11 +238,16 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                         <span className="text-white">{transaction.referenceNumber}</span>
                                     </div>
                                 )}
-                                <div className="text-center text-gray-600 pt-2">— Thank you! Come again! —</div>
+                            </div>
+
+                            {/* Footer disclaimer */}
+                            <div className="pt-2 text-center text-gray-500 text-[10px] leading-tight">
+                                ***TRANSACTION RECEIPT ONLY,<br />
+                                THIS IS NOT AN OFFICIAL RECEIPT***
                             </div>
                         </div>
 
-                        {/* Actions */}
+                        {/* ── Actions ── */}
                         <div className="px-5 pb-5 pt-3 space-y-2">
                             {showPrinterSelector ? (
                                 /* ── Bluetooth Printer Selector ── */
@@ -364,19 +314,23 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                 </div>
                             ) : (
                                 <>
-                                    {/* Print + printer picker */}
+                                    {/* Print + BT picker */}
                                     <div className="flex gap-2">
                                         <button
-                                            onClick={() => printReceiptNative(transaction, branch?.name ?? 'Wildshakes', user?.name ?? 'Staff')}
+                                            onClick={() => printReceipt(transaction, branch?.name ?? 'Wildshakes', user?.name ?? 'Staff')}
                                             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 text-sm font-semibold hover:bg-brand-500/20 transition-colors"
                                         >
                                             <Printer size={15} />
-                                            {savedPrinter ? 'Print Receipt' : 'Print Receipt'}
+                                            Print Receipt
                                         </button>
                                         <button
                                             onClick={openPrinterSelector}
                                             title={savedPrinter ? 'Change printer' : 'Select printer'}
-                                            className="px-3 py-3 rounded-xl bg-surface-700 border border-surface-600 text-gray-400 hover:text-brand-400 hover:border-brand-500/50 transition-colors"
+                                            className={`px-3 py-3 rounded-xl border transition-colors ${
+                                                savedPrinter
+                                                    ? 'bg-teal-500/10 border-teal-500/30 text-teal-400 hover:bg-teal-500/20'
+                                                    : 'bg-surface-700 border-surface-600 text-gray-400 hover:text-brand-400 hover:border-brand-500/50'
+                                            }`}
                                         >
                                             <Bluetooth size={15} />
                                         </button>
