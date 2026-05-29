@@ -14,17 +14,17 @@ export default function FranchiserPosDeviceClient({
   branchId, branchName, branchLocation, activeDeviceId, lastActivityAt
 }: Props) {
   const [isPending, startTransition] = useTransition()
-  const [confirmed, setConfirmed]    = useState(false)
-  const [released, setReleased]      = useState(false)
-  const [error, setError]            = useState<string | null>(null)
+  const [confirmed, setConfirmed] = useState(false)
+  const [released, setReleased] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const isOnline = !!activeDeviceId
   const deviceShort = activeDeviceId ? activeDeviceId.slice(0, 12) + '…' : null
 
   const lastActivityLabel = lastActivityAt
     ? new Date(lastActivityAt).toLocaleString('en-PH', {
-        dateStyle: 'medium', timeStyle: 'short',
-      })
+      dateStyle: 'medium', timeStyle: 'short',
+    })
     : 'No recent activity'
 
   const minutesSinceActivity = lastActivityAt
@@ -90,14 +90,11 @@ export default function FranchiserPosDeviceClient({
                 <p style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-text)', marginBottom: '0.2rem' }}>
                   Wildshakes POS App
                 </p>
-                <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
-                  For Android tablets &amp; phones
-                </p>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {[
                     { label: '📦 POS-APP.apk', color: 'rgba(74,124,89,0.15)', text: 'var(--color-primary-light)', border: 'rgba(74,124,89,0.3)' },
-                    { label: 'Android 7.0+',   color: 'rgba(212,175,55,0.12)', text: 'var(--color-accent)',       border: 'rgba(212,175,55,0.3)' },
-                    { label: '~0.5 MB',         color: 'rgba(255,255,255,0.04)', text: 'var(--color-text-muted)', border: 'var(--color-border)' },
+                    { label: 'Android 7.0+', color: 'rgba(212,175,55,0.12)', text: 'var(--color-accent)', border: 'rgba(212,175,55,0.3)' },
+                    { label: '~0.5 MB', color: 'rgba(255,255,255,0.04)', text: 'var(--color-text-muted)', border: 'var(--color-border)' },
                   ].map(tag => (
                     <span key={tag.label} style={{
                       fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
