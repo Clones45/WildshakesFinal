@@ -52,6 +52,18 @@ interface FoodMenuLink {
   product_id: string
 }
 
+interface IncomingShipment {
+  id: string
+  quantity_sent: number
+  quantity_unit: string | null
+  status: string
+  notes: string | null
+  sent_at: string | null
+  created_at: string
+  inventory_item_id: string | null
+  inventory_items: { id: string; name: string; unit: string | null } | null
+}
+
 interface Props {
   branchId: string | null
   branchName: string
@@ -65,6 +77,7 @@ interface Props {
   soldMap: Record<string, number>
   cancelledMap: Record<string, number>
   voidedMap: Record<string, number>
+  incomingShipments?: IncomingShipment[]
 }
 
 /* ─── Sheet Tab Config ─────────────────────────────────────────── */
@@ -123,6 +136,7 @@ export default function FranchiserInventoryClient({
   branchId, branchName, categories, items, todayLogs, today,
   products, menuLogs, foodMenuLinks,
   soldMap, cancelledMap, voidedMap,
+  incomingShipments = [],
 }: Props) {
   const supabase = createClient()
   const [, startTransition] = useTransition()
@@ -148,6 +162,8 @@ export default function FranchiserInventoryClient({
   const [search, setSearch] = useState('')
   const [showOnlyLow, setShowOnlyLow] = useState(false)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [shipmentProcessing, setShipmentProcessing] = useState<Record<string, boolean>>({})
+  const [localShipments, setLocalShipments] = useState<IncomingShipment[]>(incomingShipments)
 
   /* Tag picker state per food item */
   const [tagPickerOpen, setTagPickerOpen] = useState<string | null>(null)
@@ -400,6 +416,44 @@ export default function FranchiserInventoryClient({
     }
   }
 
+
+  /* ── Incoming shipment actions ─────────────────────────────────── */
+  async function handleReceiveShipment(shipmentId: string, itemId: string | null, qty: number) {
+    if (!branchId || !itemId) return
+    setShipmentProcessing(prev => ({ ...prev, [shipmentId]: true }))
+    try {
+      const { markShipmentReceived } = await import('@/lib/actions/commissary')
+      const r = await markShipmentReceived(shipmentId)
+      if (r?.error) { showToast(`❌ ${r.error}`); return }
+
+      // Optimistically remove from list
+      setLocalShipments(prev => prev.filter(s => s.id !== shipmentId))
+
+      // Also bump additional_stock in local state
+      const existing = logs[itemId]
+      const newAdd = (existing?.additional_stock ?? 0) + qty
+      if (existing) {
+        const updated = { ...existing, additional_stock: newAdd }
+        setLogs(prev => ({ ...prev, [itemId]: updated }))
+      }
+      showToast(`✅ Shipment received! ${qty} added to additional stock.`)
+    } finally {
+      setShipmentProcessing(prev => ({ ...prev, [shipmentId]: false }))
+    }
+  }
+
+  async function handleRejectShipment(shipmentId: string, reason?: string) {
+    setShipmentProcessing(prev => ({ ...prev, [shipmentId]: true }))
+    try {
+      const { markShipmentRejected } = await import('@/lib/actions/commissary')
+      const r = await markShipmentRejected(shipmentId, reason)
+      if (r?.error) { showToast(`❌ ${r.error}`); return }
+      setLocalShipments(prev => prev.filter(s => s.id !== shipmentId))
+      showToast('Shipment rejected.')
+    } finally {
+      setShipmentProcessing(prev => ({ ...prev, [shipmentId]: false }))
+    }
+  }
 
   /* ── Copy yesterday's ending → today's starting ───────────────── */
   async function copyFromYesterday() {
@@ -782,6 +836,89 @@ export default function FranchiserInventoryClient({
       )}
 
       {/* ── FOOD / COMMISSARY TABS ──────────────────────────────────── */}
+      {/* Incoming Commissary Shipments Banner */}
+      {(activeSheet === 'commissary' || activeSheet === 'commissary_home') && localShipments.length > 0 && (
+        <div style={{
+          marginBottom: '1rem',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid rgba(212,175,55,0.35)',
+          background: 'rgba(212,175,55,0.06)',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '0.65rem 1.1rem',
+            background: 'rgba(212,175,55,0.12)',
+            borderBottom: '1px solid rgba(212,175,55,0.2)',
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+          }}>
+            <span style={{ fontSize: '1rem' }}>🚚</span>
+            <span style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-accent)' }}>
+              Incoming Shipments ({localShipments.length})
+            </span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginLeft: '0.25rem' }}>
+              — Tap Receive to add to your Additional stock
+            </span>
+          </div>
+          <div style={{ padding: '0.75rem 1.1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {localShipments.map(s => {
+              const isProcessing = shipmentProcessing[s.id]
+              const itemName = s.inventory_items?.name || 'Unknown item'
+              const unit = s.inventory_items?.unit || s.quantity_unit || ''
+              return (
+                <div key={s.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  gap: '0.75rem', flexWrap: 'wrap',
+                  padding: '0.5rem 0.75rem',
+                  background: 'var(--color-surface)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-border)',
+                }}>
+                  <div>
+                    <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>📦 {itemName}</span>
+                    <span style={{
+                      marginLeft: '0.6rem', fontWeight: 800, fontSize: '0.875rem',
+                      color: 'var(--color-accent)',
+                    }}>
+                      +{s.quantity_sent} {unit}
+                    </span>
+                    {s.sent_at && (
+                      <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                        Sent {new Date(s.sent_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
+                    {s.notes && (
+                      <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>
+                        📝 {s.notes}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={isProcessing}
+                      onClick={() => handleReceiveShipment(s.id, s.inventory_item_id, s.quantity_sent)}
+                    >
+                      {isProcessing ? <span className="loading-spinner" /> : '✅ Receive'}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ color: 'var(--color-danger-light)' }}
+                      disabled={isProcessing}
+                      onClick={() => {
+                        const reason = prompt('Rejection reason (optional):') ?? undefined
+                        handleRejectShipment(s.id, reason)
+                      }}
+                    >
+                      ✕ Reject
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {activeSheet !== 'menu_items' && (
         <div className="table-wrapper">
           <div className="table-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>

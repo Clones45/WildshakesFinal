@@ -60,6 +60,16 @@ export default async function FranchiserInventoryPage() {
         .eq('log_date', today)
     : { data: [] }
 
+  // ── Incoming shipments from commissary (admin → franchiser) ─────────────────
+  const { data: incomingShipments } = branchId
+    ? await supabase
+        .from('commissary_shipments')
+        .select('id, quantity_sent, quantity_unit, status, notes, sent_at, created_at, inventory_item_id, inventory_items(id, name, unit)')
+        .eq('branch_id', branchId)
+        .in('status', ['in_transit', 'pending'])
+        .order('created_at', { ascending: false })
+    : { data: [] }
+
   // ── Compute sold / cancelled / voided per product from transactions ──────────
   // Sold = quantity from completed (non-voided) transactions, item not cancelled
   // Cancelled = quantity of cancelled items within completed transactions
@@ -195,6 +205,7 @@ export default async function FranchiserInventoryPage() {
       soldMap={soldMap}
       cancelledMap={cancelledMap}
       voidedMap={voidedMap}
+      incomingShipments={(incomingShipments || []) as unknown as Parameters<typeof FranchiserInventoryClient>[0]['incomingShipments']}
     />
   )
 }
