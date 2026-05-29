@@ -132,6 +132,25 @@ export default async function FranchiserInventoryPage() {
         }
       }
     }
+
+    // ── Sync menu item (product) availability from menu_item_daily_logs ──────
+    // For each product that has a log entry today, compute ending and set is_available
+    if (menuLogs && products) {
+      for (const mLog of menuLogs) {
+        const start = mLog.starting_stock ?? null
+        if (start === null) continue  // no starting set — don't touch availability
+
+        const add    = mLog.additional_stock ?? 0
+        const sold   = soldMap[mLog.product_id] ?? 0
+        const ending = Math.max(0, start + add - sold)
+        const isAvailable = ending > 0
+
+        await supabase
+          .from('products')
+          .update({ is_available: isAvailable })
+          .eq('id', mLog.product_id)
+      }
+    }
   }
 
 

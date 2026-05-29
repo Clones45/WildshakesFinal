@@ -357,7 +357,32 @@ export default function FranchiserInventoryClient({
     } finally {
       setSaving(prev => ({ ...prev, [`m_${product.id}`]: false }))
     }
+
+    // ── Sync this product's own is_available based on its ending ──
+    // Ending = starting + additional - sold (sold comes from POS transactions)
+    const mergedLog = { ...newLog, [field]: typeof parsed === 'number' ? parsed : newLog[field as keyof MenuLog] }
+    const start  = mergedLog.starting_stock ?? null
+    if (start !== null) {
+      const add    = mergedLog.additional_stock ?? 0
+      const sold   = soldMap[product.id] ?? 0
+      const ending = Math.max(0, start + add - sold)
+      const isAvailable = ending > 0
+
+      const { error } = await supabase
+        .from('products')
+        .update({ is_available: isAvailable })
+        .eq('id', product.id)
+
+      if (!error) {
+        if (!isAvailable) {
+          showToast(`🔴 "${product.name}" ending = 0 — marked sold out in POS`)
+        } else {
+          showToast(`✅ "${product.name}" restocked — available again in POS`)
+        }
+      }
+    }
   }
+
 
   /* ── Copy yesterday's ending → today's starting ───────────────── */
   async function copyFromYesterday() {
