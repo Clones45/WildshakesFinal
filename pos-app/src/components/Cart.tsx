@@ -134,7 +134,7 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                         <p className={`font-medium text-xs ${
                                             item.cancelled ? 'line-through text-red-300' : 'text-surface-500'
                                         }`}>
-                                            ₱{item.product.price.toFixed(2)} each
+                                            ₱{(item.overridePrice ?? item.product.price).toFixed(2)} each
                                         </p>
                                     </div>
 
@@ -170,7 +170,7 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                         <p className={`font-bold text-sm ${
                                             item.cancelled ? 'line-through text-red-300' : 'text-brand-600'
                                         }`}>
-                                            ₱{(item.product.price * item.quantity).toFixed(2)}
+                                            ₱{((item.overridePrice ?? item.product.price) * item.quantity).toFixed(2)}
                                         </p>
                                     </div>
                                 </div>

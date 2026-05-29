@@ -4,9 +4,10 @@ import type { Product } from '../lib/supabase'
 export interface CartItem {
     product: Product
     quantity: number
-    notes?: string      // e.g. "no sugar", "extra ice"
-    cancelled?: boolean // Struck-through — saved for records but excluded from total/print
-    variant?: string    // e.g. "Grande", "Petite", "Regular" for shakes
+    notes?: string        // e.g. "no sugar", "extra ice"
+    cancelled?: boolean   // Struck-through — saved for records but excluded from total/print
+    variant?: string      // e.g. "Grande · Regular Pearls", "Hot", "Cold"
+    overridePrice?: number // Used when an add-on changes the effective price (e.g. +₱25 for Add-on Pearls)
 }
 
 export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'custom'
@@ -41,7 +42,7 @@ interface CartState {
     resumedTableNumber: string | null
 
     // Actions
-    addItem: (product: Product, variant?: string) => void
+    addItem: (product: Product, variant?: string, overridePrice?: number) => void
     removeItem: (productId: string) => void
     updateQty: (productId: string, qty: number) => void
     updateNotes: (productId: string, notes: string) => void
@@ -72,7 +73,7 @@ const initialState = {
 export const useCartStore = create<CartState>()((set, get) => ({
     ...initialState,
 
-    subtotal: () => get().items.filter(i => !i.cancelled).reduce((sum, i) => sum + i.product.price * i.quantity, 0),
+    subtotal: () => get().items.filter(i => !i.cancelled).reduce((sum, i) => sum + (i.overridePrice ?? i.product.price) * i.quantity, 0),
 
     discountAmount: () => {
         const { discountType, customDiscountAmount } = get()
@@ -85,10 +86,9 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
     change: () => Math.max(0, get().cashTendered - get().total()),
 
-    addItem: (product, variant) =>
+    addItem: (product, variant, overridePrice) =>
         set((state) => {
             // Unique key = product.id + variant so same product in different sizes stacks separately
-            const key = product.id + (variant ?? '')
             const existing = state.items.find((i) => i.product.id === product.id && (i.variant ?? '') === (variant ?? ''))
             if (existing) {
                 return { items: state.items.map((i) => (i.product.id === product.id && (i.variant ?? '') === (variant ?? ''))
@@ -96,8 +96,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
                     : i
                 )}
             }
-            return { items: [...state.items, { product, quantity: 1, notes: '', variant }] }
-            void key // suppress unused warning
+            return { items: [...state.items, { product, quantity: 1, notes: '', variant, overridePrice }] }
         }),
 
     removeItem: (productId) =>
