@@ -54,6 +54,7 @@ export default function FranchiserPosDeviceClient({
 
   return (
     <div>
+      {/* Page Header */}
       <div className="page-header">
         <div>
           <h1>POS Device</h1>
@@ -65,6 +66,84 @@ export default function FranchiserPosDeviceClient({
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+
+        {/* ── APK Download Card (full width) ──────────────────────────── */}
+        <div className="chart-card" style={{
+          display: 'flex', flexDirection: 'column', gap: '1.25rem',
+          gridColumn: '1 / -1',
+          background: 'linear-gradient(135deg, rgba(74,124,89,0.08) 0%, rgba(212,175,55,0.06) 100%)',
+          border: '1px solid rgba(74,124,89,0.3)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+            {/* App info */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+              <div style={{
+                width: '64px', height: '64px', borderRadius: 'var(--radius-md)',
+                background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary-light))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '2rem', flexShrink: 0,
+                boxShadow: 'var(--shadow-glow)',
+              }}>
+                🧾
+              </div>
+              <div>
+                <p style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-text)', marginBottom: '0.2rem' }}>
+                  Wildshakes POS App
+                </p>
+                <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                  For Android tablets &amp; phones
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {[
+                    { label: '📦 POS-APP.apk', color: 'rgba(74,124,89,0.15)', text: 'var(--color-primary-light)', border: 'rgba(74,124,89,0.3)' },
+                    { label: 'Android 7.0+',   color: 'rgba(212,175,55,0.12)', text: 'var(--color-accent)',       border: 'rgba(212,175,55,0.3)' },
+                    { label: '~0.5 MB',         color: 'rgba(255,255,255,0.04)', text: 'var(--color-text-muted)', border: 'var(--color-border)' },
+                  ].map(tag => (
+                    <span key={tag.label} style={{
+                      fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+                      background: tag.color, color: tag.text, border: `1px solid ${tag.border}`,
+                    }}>
+                      {tag.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Download button */}
+            <a
+              href="/POS-APP.apk"
+              download="Wildshakes-POS.apk"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.6rem',
+                padding: '0.75rem 1.75rem',
+                background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary-light))',
+                color: 'white', fontWeight: 700, fontSize: '0.92rem',
+                borderRadius: 'var(--radius-pill)',
+                textDecoration: 'none',
+                boxShadow: '0 4px 20px rgba(74,124,89,0.4)',
+                transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              ⬇️ Download APK
+            </a>
+          </div>
+
+          {/* Install tip */}
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
+            padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)',
+            background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.2)',
+            fontSize: '0.78rem', color: 'var(--color-warning)',
+          }}>
+            <span style={{ flexShrink: 0 }}>⚠️</span>
+            <span>
+              Before installing, enable <strong>Install from Unknown Sources</strong> in your Android settings
+              (Settings → Security → Unknown Sources). This is required for sideloaded APKs.
+            </span>
+          </div>
+        </div>
 
         {/* Branch Info Card */}
         <div className="chart-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -91,13 +170,9 @@ export default function FranchiserPosDeviceClient({
         <div className="chart-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <p className="chart-title">Terminal Status</p>
 
-          {/* Status indicator */}
           <div style={{
-            padding: '1.25rem',
-            borderRadius: 'var(--radius-md)',
-            background: (isOnline && !released)
-              ? 'rgba(74, 124, 89, 0.08)'
-              : 'rgba(255, 193, 7, 0.06)',
+            padding: '1.25rem', borderRadius: 'var(--radius-md)',
+            background: (isOnline && !released) ? 'rgba(74, 124, 89, 0.08)' : 'rgba(255, 193, 7, 0.06)',
             border: `1px solid ${(isOnline && !released) ? 'rgba(74, 124, 89, 0.25)' : 'rgba(255, 193, 7, 0.2)'}`,
             display: 'flex', flexDirection: 'column', gap: '0.75rem',
           }}>
@@ -150,17 +225,10 @@ export default function FranchiserPosDeviceClient({
                     ⚠️ This will log the POS device out. Are you sure?
                   </p>
                   <div className="flex gap-1">
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={handleReleaseDevice}
-                      disabled={isPending}
-                    >
+                    <button className="btn btn-danger btn-sm" onClick={handleReleaseDevice} disabled={isPending}>
                       {isPending ? <><span className="loading-spinner" /> Releasing…</> : 'Yes, Release Device'}
                     </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setConfirmed(false)}
-                    >
+                    <button className="btn btn-ghost btn-sm" onClick={() => setConfirmed(false)}>
                       Cancel
                     </button>
                   </div>
@@ -183,8 +251,8 @@ export default function FranchiserPosDeviceClient({
           <p className="chart-title">POS Setup Instructions</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', fontSize: '0.82rem' }}>
             {[
-              { step: '1', icon: '📱', text: 'Open the Wildshakes POS app on your tablet or phone.' },
-              { step: '2', icon: '🔑', text: 'Tap "Set Up Device" and log in with your franchisee email and password.' },
+              { step: '1', icon: '⬇️', text: 'Download the Wildshakes POS APK from the button above and install it on your Android tablet or phone.' },
+              { step: '2', icon: '🔑', text: 'Open the app, tap "Set Up Device" and log in with your franchisee email and password.' },
               { step: '3', icon: '🏪', text: `Select "${branchName}" from the branch list.` },
               { step: '4', icon: '✅', text: 'The device is now bound to this branch. Staff can log in with their PIN.' },
             ].map(item => (
@@ -219,6 +287,7 @@ export default function FranchiserPosDeviceClient({
             </div>
           )}
         </div>
+
       </div>
     </div>
   )
