@@ -209,39 +209,50 @@ export default function FranchiserInventoryClient({
   }).length
 
   /* ── Auto-sync POS product availability from food item ending ─── */
+  // Uses branch_menu_availability (per-branch override, same table as Menu Availability page)
   async function syncProductAvailability(itemId: string, updatedLog: DailyLog) {
+    if (!branchId) return
     const linkedProductIds = links
       .filter(l => l.inventory_item_id === itemId)
       .map(l => l.product_id)
     if (linkedProductIds.length === 0) return
 
     const start = updatedLog.starting_stock ?? null
-    if (start === null) return  // no starting stock set yet — don't touch availability
+    if (start === null) return  // no starting stock yet — don't touch availability
 
     const add  = updatedLog.additional_stock ?? 0
     const used = updatedLog.used_stock ?? 0
     const ending = Math.max(0, start + add - used)
-
     const isAvailable = ending > 0
 
-    // Update all linked products in the POS products table
-    const { error } = await supabase
-      .from('products')
-      .update({ is_available: isAvailable })
-      .in('id', linkedProductIds)
+    const item = items.find(i => i.id === itemId)
+    const linkedNames = products
+      .filter(p => linkedProductIds.includes(p.id))
+      .map(p => p.name)
+      .join(', ')
 
-    if (!error) {
-      const item = items.find(i => i.id === itemId)
-      const linkedNames = products
-        .filter(p => linkedProductIds.includes(p.id))
-        .map(p => p.name)
-        .join(', ')
-
-      if (!isAvailable) {
-        showToast(`🔴 "${item?.name}" is out — auto-marked sold out in POS: ${linkedNames}`)
-      } else {
-        showToast(`✅ "${item?.name}" restocked — POS products available again: ${linkedNames}`)
-      }
+    if (isAvailable) {
+      // Restocked: remove the out-of-stock override row so it shows as available
+      await supabase
+        .from('branch_menu_availability')
+        .delete()
+        .eq('branch_id', branchId)
+        .in('product_id', linkedProductIds)
+      showToast(`✅ "${item?.name}" restocked — POS products available again: ${linkedNames}`)
+    } else {
+      // Out: upsert an override row marking each linked product unavailable at this branch
+      await supabase
+        .from('branch_menu_availability')
+        .upsert(
+          linkedProductIds.map(pid => ({
+            branch_id: branchId,
+            product_id: pid,
+            is_available: false,
+            updated_at: new Date().toISOString(),
+          })),
+          { onConflict: 'branch_id,product_id' }
+        )
+      showToast(`🔴 "${item?.name}" is out — auto-marked sold out in POS: ${linkedNames}`)
     }
   }
 
@@ -358,27 +369,33 @@ export default function FranchiserInventoryClient({
       setSaving(prev => ({ ...prev, [`m_${product.id}`]: false }))
     }
 
-    // ── Sync this product's own is_available based on its ending ──
-    // Ending = starting + additional - sold (sold comes from POS transactions)
+    // ── Sync this product's own branch availability based on its ending ──
+    // Uses branch_menu_availability (same table as Menu Availability page)
     const mergedLog = { ...newLog, [field]: typeof parsed === 'number' ? parsed : newLog[field as keyof MenuLog] }
     const start  = mergedLog.starting_stock ?? null
-    if (start !== null) {
+    if (start !== null && branchId) {
       const add    = mergedLog.additional_stock ?? 0
       const sold   = soldMap[product.id] ?? 0
       const ending = Math.max(0, start + add - sold)
       const isAvailable = ending > 0
 
-      const { error } = await supabase
-        .from('products')
-        .update({ is_available: isAvailable })
-        .eq('id', product.id)
-
-      if (!error) {
-        if (!isAvailable) {
-          showToast(`🔴 "${product.name}" ending = 0 — marked sold out in POS`)
-        } else {
-          showToast(`✅ "${product.name}" restocked — available again in POS`)
-        }
+      if (isAvailable) {
+        // Remove the override so the product shows as available at this branch
+        await supabase
+          .from('branch_menu_availability')
+          .delete()
+          .eq('branch_id', branchId)
+          .eq('product_id', product.id)
+        showToast(`✅ "${product.name}" restocked — available again in POS`)
+      } else {
+        // Upsert override: mark this product unavailable at this branch
+        await supabase
+          .from('branch_menu_availability')
+          .upsert(
+            { branch_id: branchId, product_id: product.id, is_available: false, updated_at: new Date().toISOString() },
+            { onConflict: 'branch_id,product_id' }
+          )
+        showToast(`🔴 "${product.name}" ending = 0 — marked sold out in POS`)
       }
     }
   }

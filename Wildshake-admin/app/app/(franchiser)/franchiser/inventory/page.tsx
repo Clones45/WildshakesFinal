@@ -115,8 +115,8 @@ export default async function FranchiserInventoryPage() {
             existingLog.used_stock = usedQty
           }
 
-          // ── Auto-sync POS availability based on food item ending ──────
-          // Ending = starting + additional - used
+          // ── Auto-sync branch availability via branch_menu_availability ──────
+          // This is the same table the Menu Availability page uses
           const start = existingLog?.starting_stock ?? null
           if (start !== null) {
             const add    = existingLog?.additional_stock ?? 0
@@ -124,31 +124,58 @@ export default async function FranchiserInventoryPage() {
             const ending = Math.max(0, start + add - used)
             const isAvailable = ending > 0
 
-            await supabase
-              .from('products')
-              .update({ is_available: isAvailable })
-              .in('id', linkedProductIds)
+            if (isAvailable) {
+              // Restocked: remove override rows so products show as available
+              await supabase
+                .from('branch_menu_availability')
+                .delete()
+                .eq('branch_id', branchId)
+                .in('product_id', linkedProductIds)
+            } else {
+              // Out: upsert override rows marking products unavailable at this branch
+              await supabase
+                .from('branch_menu_availability')
+                .upsert(
+                  linkedProductIds.map(pid => ({
+                    branch_id: branchId,
+                    product_id: pid,
+                    is_available: false,
+                    updated_at: new Date().toISOString(),
+                  })),
+                  { onConflict: 'branch_id,product_id' }
+                )
+            }
           }
         }
       }
     }
 
-    // ── Sync menu item (product) availability from menu_item_daily_logs ──────
-    // For each product that has a log entry today, compute ending and set is_available
+    // ── Sync menu item product availability from menu_item_daily_logs ──────
+    // Uses branch_menu_availability so it appears in Menu Availability page and POS
     if (menuLogs && products) {
       for (const mLog of menuLogs) {
         const start = mLog.starting_stock ?? null
-        if (start === null) continue  // no starting set — don't touch availability
+        if (start === null) continue
 
         const add    = mLog.additional_stock ?? 0
         const sold   = soldMap[mLog.product_id] ?? 0
         const ending = Math.max(0, start + add - sold)
         const isAvailable = ending > 0
 
-        await supabase
-          .from('products')
-          .update({ is_available: isAvailable })
-          .eq('id', mLog.product_id)
+        if (isAvailable) {
+          await supabase
+            .from('branch_menu_availability')
+            .delete()
+            .eq('branch_id', branchId)
+            .eq('product_id', mLog.product_id)
+        } else {
+          await supabase
+            .from('branch_menu_availability')
+            .upsert(
+              { branch_id: branchId, product_id: mLog.product_id, is_available: false, updated_at: new Date().toISOString() },
+              { onConflict: 'branch_id,product_id' }
+            )
+        }
       }
     }
   }
