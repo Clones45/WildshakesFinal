@@ -36,6 +36,31 @@ const leftRight = (left: string, right: string): string => {
 
 const divider = '-'.repeat(W)
 
+/**
+ * Wraps `text` to fit within `maxWidth` columns.
+ * Continuation lines are prefixed with `indent` (default 5 spaces to align
+ * with the text after "[Nx] ").
+ */
+function wordWrap(text: string, maxWidth: number = W, indent: string = '     '): string[] {
+    if (text.length <= maxWidth) return [text]
+    const words = text.split(' ')
+    const lines: string[] = []
+    let current = ''
+    for (const word of words) {
+        const next = current ? `${current} ${word}` : word
+        if (next.length <= maxWidth) {
+            current = next
+        } else {
+            if (current) lines.push(current)
+            // Start continuation with indent, but if word itself overflows, hard-slice it
+            const indented = indent + word
+            current = indented.length <= maxWidth ? indented : indented.slice(0, maxWidth)
+        }
+    }
+    if (current) lines.push(current)
+    return lines
+}
+
 // ── Base64 & Logo Helpers ───────────────────────────────────────────────────
 
 function uint8ToBase64(bytes: Uint8Array): string {
@@ -161,12 +186,31 @@ export function buildReceiptText(
 
     const itemLines = activeItems.flatMap(item => {
         const rows: string[] = []
-        rows.push(leftRight(item.productName.slice(0, W - 10), `P${item.subtotal.toFixed(2)}`))
+        const priceStr = `P${item.subtotal.toFixed(2)}`
+
+        // Word-wrap the full product name (includes variant, e.g. "Caramel Machiato · Hot")
+        const nameLines = wordWrap(item.productName, W)
+
+        // Try to fit the price on the same line as the last name line
+        const lastName = nameLines[nameLines.length - 1]
+        if (lastName.length + 1 + priceStr.length <= W) {
+            nameLines[nameLines.length - 1] = leftRight(lastName, priceStr)
+        } else {
+            // Price on its own right-aligned line
+            nameLines.push(' '.repeat(Math.max(0, W - priceStr.length)) + priceStr)
+        }
+        rows.push(...nameLines)
+
+        // Qty × unit price sub-line
         rows.push(`  ${item.quantity}x x P${item.unitPrice.toFixed(2)}`)
+
+        // Notes — also word-wrapped
         if ((item as any).notes)
-            rows.push(`  Note: ${(item as any).notes}`.slice(0, W))
+            wordWrap(`  Note: ${(item as any).notes}`, W, '        ').forEach(l => rows.push(l))
+
         return rows
     })
+
 
     const orderTypeLabel = transaction.orderType === 'take-out' ? 'Take-out' : 'Dine-in'
 
@@ -283,9 +327,12 @@ export async function printKitchenTicket(
         divider,
         ...normalizedItems.flatMap((item) => {
             const label = `[${item.quantity}x] ${item.name}`
-            const rows: string[] = [label.slice(0, W)]
-            if (item.variant) rows.push(`  Flavor: ${item.variant}`.slice(0, W))
-            if (item.notes)   rows.push(`  Note: ${item.notes}`.slice(0, W))
+            // Word-wrap long product names (e.g. "Chicken Wings Solo (Any Flavor)")
+            const rows: string[] = wordWrap(label)
+            // Variant on its own indented line (size, pearls, Hot/Cold, etc.)
+            if (item.variant) wordWrap(`  > ${item.variant}`, W, '    ').forEach(l => rows.push(l))
+            // Notes indented below
+            if (item.notes)   wordWrap(`  Note: ${item.notes}`, W, '        ').forEach(l => rows.push(l))
             return rows
         }),
         divider,
