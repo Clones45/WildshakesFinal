@@ -114,10 +114,26 @@ export default async function FranchiserInventoryPage() {
               .eq('id', existingLog.id)
             existingLog.used_stock = usedQty
           }
+
+          // ── Auto-sync POS availability based on food item ending ──────
+          // Ending = starting + additional - used
+          const start = existingLog?.starting_stock ?? null
+          if (start !== null) {
+            const add    = existingLog?.additional_stock ?? 0
+            const used   = usedQty
+            const ending = Math.max(0, start + add - used)
+            const isAvailable = ending > 0
+
+            await supabase
+              .from('products')
+              .update({ is_available: isAvailable })
+              .in('id', linkedProductIds)
+          }
         }
       }
     }
   }
+
 
   return (
     <FranchiserInventoryClient

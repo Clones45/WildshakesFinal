@@ -208,6 +208,43 @@ export default function FranchiserInventoryClient({
     return getStockStatus(log?.ending_stock ?? null, i.min_stock_level) === 'out'
   }).length
 
+  /* ── Auto-sync POS product availability from food item ending ─── */
+  async function syncProductAvailability(itemId: string, updatedLog: DailyLog) {
+    const linkedProductIds = links
+      .filter(l => l.inventory_item_id === itemId)
+      .map(l => l.product_id)
+    if (linkedProductIds.length === 0) return
+
+    const start = updatedLog.starting_stock ?? null
+    if (start === null) return  // no starting stock set yet — don't touch availability
+
+    const add  = updatedLog.additional_stock ?? 0
+    const used = updatedLog.used_stock ?? 0
+    const ending = Math.max(0, start + add - used)
+
+    const isAvailable = ending > 0
+
+    // Update all linked products in the POS products table
+    const { error } = await supabase
+      .from('products')
+      .update({ is_available: isAvailable })
+      .in('id', linkedProductIds)
+
+    if (!error) {
+      const item = items.find(i => i.id === itemId)
+      const linkedNames = products
+        .filter(p => linkedProductIds.includes(p.id))
+        .map(p => p.name)
+        .join(', ')
+
+      if (!isAvailable) {
+        showToast(`🔴 "${item?.name}" is out — auto-marked sold out in POS: ${linkedNames}`)
+      } else {
+        showToast(`✅ "${item?.name}" restocked — POS products available again: ${linkedNames}`)
+      }
+    }
+  }
+
   /* ── Save food item field ──────────────────────────────────────── */
   async function saveField(
     item: InventoryItem,
@@ -262,6 +299,10 @@ export default function FranchiserInventoryClient({
     } finally {
       setSaving(prev => ({ ...prev, [item.id]: false }))
     }
+
+    // After saving, sync POS product availability based on new ending
+    const currentLog = logs[item.id] ?? newLog
+    await syncProductAvailability(item.id, { ...currentLog, [field]: typeof parsed === 'number' ? parsed : currentLog[field] })
   }
 
   /* ── Save menu item field ──────────────────────────────────────── */
