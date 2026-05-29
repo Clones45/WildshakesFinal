@@ -115,6 +115,50 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
       .eq('is_available', false),
   ])
 
+  // ── Inventory (read-only view for master admin) ────────────────────────────
+  const todayStr = new Date().toISOString().split('T')[0]
+  const dateStart = `${todayStr}T00:00:00.000Z`
+  const dateEnd   = `${todayStr}T23:59:59.999Z`
+
+  const [
+    { data: invCategories },
+    { data: invItems },
+    { data: invLogs },
+    { data: menuItemLogs },
+    { data: foodMenuLinks },
+    { data: txItemsForInv },
+  ] = await Promise.all([
+    supabase.from('inventory_categories').select('id, name, sheet_type, sort_order').order('sheet_type').order('sort_order'),
+    supabase.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order').eq('is_active', true).order('sort_order'),
+    supabase.from('daily_inventory_logs')
+      .select('id, inventory_item_id, starting_stock, additional_stock, used_stock, ending_stock, notes')
+      .in('branch_id', safeBranchIds)
+      .eq('log_date', todayStr),
+    supabase.from('menu_item_daily_logs')
+      .select('id, product_id, starting_stock, additional_stock, notes')
+      .in('branch_id', safeBranchIds)
+      .eq('log_date', todayStr),
+    supabase.from('food_item_menu_links').select('inventory_item_id, product_id'),
+    supabase.from('transaction_items')
+      .select('product_id, quantity, cancelled, transactions!inner(branch_id, status, created_at)')
+      .in('transactions.branch_id', safeBranchIds)
+      .gte('transactions.created_at', dateStart)
+      .lte('transactions.created_at', dateEnd),
+  ])
+
+  // Build sold/cancelled/voided maps for today
+  const invSoldMap: Record<string, number> = {}
+  const invCancelledMap: Record<string, number> = {}
+  const invVoidedMap: Record<string, number> = {}
+  for (const ti of txItemsForInv || []) {
+    const pid = ti.product_id
+    const tx = (ti as any).transactions
+    const qty = Number(ti.quantity ?? 0)
+    if (tx?.status === 'voided')  invVoidedMap[pid]    = (invVoidedMap[pid]    ?? 0) + qty
+    else if (ti.cancelled)        invCancelledMap[pid] = (invCancelledMap[pid] ?? 0) + qty
+    else                          invSoldMap[pid]      = (invSoldMap[pid]      ?? 0) + qty
+  }
+
   const todayRevenue = (todayTx || []).reduce((s, t) => s + Number(t.total_amount), 0)
   const todayOrders  = (todayTx || []).length
 
@@ -158,7 +202,7 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
       <FranchiseDetailClient
         franchise={franchise}
         branches={(branches || []) as Parameters<typeof FranchiseDetailClient>[0]['branches']}
-        activeTab={tab as 'dashboard' | 'sales' | 'transactions' | 'staff' | 'stock'}
+        activeTab={tab as Parameters<typeof FranchiseDetailClient>[0]['activeTab']}
         // Dashboard data
         todayRevenue={todayRevenue}
         todayOrders={todayOrders}
@@ -174,6 +218,16 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
         // Stock data (read-only view of franchisee's menu overrides)
         allProducts={(allProducts || []) as Parameters<typeof FranchiseDetailClient>[0]['allProducts']}
         stockOverrides={(stockOverrides || []) as Parameters<typeof FranchiseDetailClient>[0]['stockOverrides']}
+        // Inventory data (read-only)
+        invCategories={(invCategories || []) as Parameters<typeof FranchiseDetailClient>[0]['invCategories']}
+        invItems={(invItems || []) as Parameters<typeof FranchiseDetailClient>[0]['invItems']}
+        invLogs={(invLogs || []) as Parameters<typeof FranchiseDetailClient>[0]['invLogs']}
+        menuItemLogs={(menuItemLogs || []) as Parameters<typeof FranchiseDetailClient>[0]['menuItemLogs']}
+        foodMenuLinks={(foodMenuLinks || []) as Parameters<typeof FranchiseDetailClient>[0]['foodMenuLinks']}
+        invSoldMap={invSoldMap}
+        invCancelledMap={invCancelledMap}
+        invVoidedMap={invVoidedMap}
+        invProducts={(allProducts || []) as Parameters<typeof FranchiseDetailClient>[0]['invProducts']}
       />
     </div>
   )

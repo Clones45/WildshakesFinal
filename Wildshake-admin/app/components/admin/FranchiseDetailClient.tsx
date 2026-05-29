@@ -20,11 +20,17 @@ interface ChartPoint { label: string; revenue: number; isToday: boolean }
 interface TopItem { name: string; category: string; qty: number; revenue: number }
 interface StockProduct { id: string; name: string; category: string; price: number; image_url: string | null }
 interface StockOverride { product_id: string; is_available: boolean; branch_id: string }
+// Inventory interfaces
+interface InvCategory { id: string; name: string; sheet_type: string; sort_order: number }
+interface InvItem { id: string; category_id: string; name: string; unit: string; min_stock_level: number | null; sort_order: number }
+interface InvLog { id: string; inventory_item_id: string; starting_stock: number | null; additional_stock: number | null; used_stock: number | null; ending_stock: number | null; notes: string | null }
+interface MenuItemLog { id: string; product_id: string; starting_stock: number | null; additional_stock: number | null; notes: string | null }
+interface FoodMenuLink { inventory_item_id: string; product_id: string }
 
 interface Props {
   franchise: { id: string; name: string; owner_name: string; owner_email: string; region: string | null; status: string; created_at: string }
   branches: Branch[]
-  activeTab: 'dashboard' | 'sales' | 'transactions' | 'staff' | 'stock'
+  activeTab: 'dashboard' | 'sales' | 'transactions' | 'staff' | 'stock' | 'inventory'
   todayRevenue: number; todayOrders: number
   chartData: ChartPoint[]
   payBreakdown: Record<string, number>
@@ -34,6 +40,16 @@ interface Props {
   staff: StaffMember[]
   allProducts: StockProduct[]
   stockOverrides: StockOverride[]
+  // Inventory (read-only)
+  invCategories: InvCategory[]
+  invItems: InvItem[]
+  invLogs: InvLog[]
+  menuItemLogs: MenuItemLog[]
+  foodMenuLinks: FoodMenuLink[]
+  invSoldMap: Record<string, number>
+  invCancelledMap: Record<string, number>
+  invVoidedMap: Record<string, number>
+  invProducts: StockProduct[]
 }
 
 const TABS = [
@@ -42,6 +58,7 @@ const TABS = [
   { id: 'transactions', label: '🧾 Transactions' },
   { id: 'staff',        label: '👥 Staff' },
   { id: 'stock',        label: '🍹 Stock' },
+  { id: 'inventory',    label: '📦 Inventory' },
 ] as const
 
 const PAY_LABELS: Record<string, string> = { cash: '💵 Cash', gcash: '📱 GCash', maya: '🟣 Maya', bank_transfer: '🏦 Bank', other: '📎 Other' }
@@ -51,6 +68,8 @@ export default function FranchiseDetailClient({
   todayRevenue, todayOrders, chartData, payBreakdown, topItemsList,
   salesTransactions, transactions, staff,
   allProducts, stockOverrides,
+  invCategories, invItems, invLogs, menuItemLogs, foodMenuLinks,
+  invSoldMap, invCancelledMap, invVoidedMap, invProducts,
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -59,6 +78,7 @@ export default function FranchiseDetailClient({
   const [salesPeriod, setSalesPeriod] = useState('30')
   const [stockSearch, setStockSearch] = useState('')
   const [stockFilter, setStockFilter] = useState<'all' | 'available' | 'out'>('all')
+  const [invSheet, setInvSheet] = useState<'food_items' | 'menu_items' | 'commissary'>('menu_items')
 
   const changeTab = (t: typeof tab) => {
     setTab(t)
@@ -409,6 +429,189 @@ export default function FranchiseDetailClient({
                 </tbody>
               </table>
             </div>
+          </div>
+        )
+      })()}
+
+      {/* ── INVENTORY TAB ── */}
+      {tab === 'inventory' && (() => {
+        // Build lookup maps
+        const logByItemId: Record<string, InvLog> = {}
+        for (const l of invLogs) logByItemId[l.inventory_item_id] = l
+
+        const mLogByProductId: Record<string, MenuItemLog> = {}
+        for (const l of menuItemLogs) mLogByProductId[l.product_id] = l
+
+        const productById: Record<string, StockProduct> = {}
+        for (const p of invProducts) productById[p.id] = p
+
+        // Filter items by current sub-sheet
+        const sheetCategories = invCategories.filter(c => c.sheet_type === invSheet)
+        const catIds = new Set(sheetCategories.map(c => c.id))
+        const sheetItems = invItems.filter(i => catIds.has(i.category_id))
+
+        // For menu_items sheet, use products directly
+        const menuProducts = invProducts  // all POS products used as menu items
+
+        const sheetLabels: Record<string, string> = {
+          food_items: '🥩 Food Items',
+          menu_items: '🍹 Menu Items',
+          commissary: '🏭 Commissary',
+        }
+
+        return (
+          <div>
+            {/* Header row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {(['menu_items', 'food_items', 'commissary'] as const).map(s => (
+                  <button key={s} onClick={() => setInvSheet(s)} style={{
+                    padding: '0.45rem 1rem', borderRadius: 'var(--radius-pill)', border: '1px solid',
+                    borderColor: invSheet === s ? 'var(--color-primary)' : 'var(--color-border)',
+                    background: invSheet === s ? 'rgba(74,124,89,0.15)' : 'transparent',
+                    color: invSheet === s ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
+                    fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
+                  }}>
+                    {sheetLabels[s]}
+                  </button>
+                ))}
+              </div>
+              <div style={{ padding: '0.35rem 0.75rem', background: 'rgba(74,124,89,0.08)', borderRadius: 8, fontSize: '0.72rem', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
+                🔒 Read-only — today’s snapshot
+              </div>
+            </div>
+
+            {/* MENU ITEMS sheet */}
+            {invSheet === 'menu_items' && (
+              <div className="table-wrapper">
+                <div className="table-header">
+                  <p className="table-title">Menu Items — Today</p>
+                  <span className="badge badge-muted">{menuProducts.length} items</span>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Category</th>
+                      <th style={{ textAlign: 'center' }}>Starting</th>
+                      <th style={{ textAlign: 'center' }}>Additional</th>
+                      <th style={{ textAlign: 'center' }}>Sold</th>
+                      <th style={{ textAlign: 'center' }}>Cancelled</th>
+                      <th style={{ textAlign: 'center' }}>Voided</th>
+                      <th style={{ textAlign: 'center' }}>Ending</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {menuProducts.length === 0 ? (
+                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No menu items found.</td></tr>
+                    ) : menuProducts.map(p => {
+                      const mLog = mLogByProductId[p.id]
+                      const start = mLog?.starting_stock ?? null
+                      const add   = mLog?.additional_stock ?? 0
+                      const sold      = invSoldMap[p.id] ?? 0
+                      const cancelled = invCancelledMap[p.id] ?? 0
+                      const voided    = invVoidedMap[p.id] ?? 0
+                      const ending = start !== null ? Math.max(0, start + add - sold) : null
+                      const isOut = ending !== null && ending === 0
+                      return (
+                        <tr key={p.id} style={{ opacity: isOut ? 0.7 : 1 }}>
+                          <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</td>
+                          <td style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>{p.category}</td>
+                          <td style={{ textAlign: 'center', fontSize: '0.85rem' }}>{start ?? <span style={{ color: 'var(--color-text-dim)' }}>—</span>}</td>
+                          <td style={{ textAlign: 'center', fontSize: '0.85rem', color: add > 0 ? 'var(--color-success)' : undefined }}>{add || '—'}</td>
+                          <td style={{ textAlign: 'center', fontSize: '0.85rem', color: sold > 0 ? 'var(--color-accent)' : undefined }}>{sold || '—'}</td>
+                          <td style={{ textAlign: 'center', fontSize: '0.85rem', color: cancelled > 0 ? 'var(--color-warning)' : undefined }}>{cancelled || '—'}</td>
+                          <td style={{ textAlign: 'center', fontSize: '0.85rem', color: voided > 0 ? 'var(--color-danger-light)' : undefined }}>{voided || '—'}</td>
+                          <td style={{ textAlign: 'center', fontSize: '0.85rem', fontWeight: 700, color: isOut ? 'var(--color-danger-light)' : 'var(--color-success)' }}>
+                            {ending !== null ? ending : <span style={{ color: 'var(--color-text-dim)' }}>—</span>}
+                          </td>
+                          <td>
+                            {ending === null
+                              ? <span className="badge badge-muted">No log</span>
+                              : isOut
+                                ? <span className="badge badge-danger">Out</span>
+                                : <span className="badge badge-success">OK</span>
+                            }
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* FOOD ITEMS / COMMISSARY sheets */}
+            {(invSheet === 'food_items' || invSheet === 'commissary') && (() => {
+              if (sheetCategories.length === 0) return (
+                <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>No {sheetLabels[invSheet]} categories found.</div>
+              )
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  {sheetCategories.map(cat => {
+                    const catItemList = sheetItems.filter(i => i.category_id === cat.id)
+                    if (catItemList.length === 0) return null
+                    return (
+                      <div key={cat.id} className="table-wrapper">
+                        <div className="table-header">
+                          <p className="table-title">{cat.name}</p>
+                          <span className="badge badge-muted">{catItemList.length} items</span>
+                        </div>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Item</th>
+                              <th>Unit</th>
+                              <th style={{ textAlign: 'center' }}>Starting</th>
+                              <th style={{ textAlign: 'center' }}>Additional</th>
+                              <th style={{ textAlign: 'center' }}>Used</th>
+                              <th style={{ textAlign: 'center' }}>Ending</th>
+                              <th>Status</th>
+                              <th>Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {catItemList.map(item => {
+                              const log = logByItemId[item.id]
+                              const start  = log?.starting_stock ?? null
+                              const add    = log?.additional_stock ?? 0
+                              const used   = log?.used_stock ?? 0
+                              const ending = start !== null ? Math.max(0, start + add - used) : null
+                              const min    = item.min_stock_level ?? 0
+                              const isLow  = ending !== null && min > 0 && ending <= min
+                              const isOut  = ending !== null && ending === 0
+                              return (
+                                <tr key={item.id} style={{ opacity: isOut ? 0.65 : 1 }}>
+                                  <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.name}</td>
+                                  <td style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>{item.unit}</td>
+                                  <td style={{ textAlign: 'center', fontSize: '0.85rem' }}>{start ?? <span style={{ color: 'var(--color-text-dim)' }}>—</span>}</td>
+                                  <td style={{ textAlign: 'center', fontSize: '0.85rem', color: add > 0 ? 'var(--color-success)' : undefined }}>{add || '—'}</td>
+                                  <td style={{ textAlign: 'center', fontSize: '0.85rem', color: used > 0 ? 'var(--color-warning)' : undefined }}>{used || '—'}</td>
+                                  <td style={{ textAlign: 'center', fontSize: '0.85rem', fontWeight: 700,
+                                    color: isOut ? 'var(--color-danger-light)' : isLow ? 'var(--color-warning)' : 'var(--color-success)' }}>
+                                    {ending !== null ? ending : <span style={{ color: 'var(--color-text-dim)' }}>—</span>}
+                                  </td>
+                                  <td>
+                                    {ending === null
+                                      ? <span className="badge badge-muted">No log</span>
+                                      : isOut ? <span className="badge badge-danger">Out</span>
+                                      : isLow ? <span className="badge badge-warning">Low</span>
+                                      : <span className="badge badge-success">OK</span>
+                                    }
+                                  </td>
+                                  <td style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', maxWidth: 180 }}>{log?.notes || '—'}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </div>
         )
       })()}
