@@ -12,6 +12,7 @@ interface Transaction {
   reference_number: string | null; bank_name: string | null; discount_type: string
   discount_amount: number; created_at: string; void_reason: string | null
   table_number: string | null
+  delivery_platform: 'foodpanda' | 'grab' | null
   users: { name: string } | null
   branches: { name: string } | null
   transaction_items: TxItem[]
@@ -96,6 +97,14 @@ export default function FranchiseDetailClient({
   const salesPay: Record<string, number> = {}
   filteredSales.forEach(t => { salesPay[t.payment_method] = (salesPay[t.payment_method] || 0) + Number(t.total_amount) })
   const maxPay = Math.max(...Object.values(salesPay), 1)
+
+  // Delivery breakdown (from transactions prop which has delivery_platform)
+  const deliveryCutoff = new Date(Date.now() - parseInt(salesPeriod) * 24 * 60 * 60 * 1000)
+  const deliveryTxs = transactions.filter(tx => tx.status === 'completed' && new Date(tx.created_at) >= deliveryCutoff && tx.delivery_platform)
+  const foodpandaRevenue = deliveryTxs.filter(tx => tx.delivery_platform === 'foodpanda').reduce((s, tx) => s + Number(tx.total_amount), 0)
+  const grabRevenue = deliveryTxs.filter(tx => tx.delivery_platform === 'grab').reduce((s, tx) => s + Number(tx.total_amount), 0)
+  const foodpandaOrders = deliveryTxs.filter(tx => tx.delivery_platform === 'foodpanda').length
+  const grabOrders = deliveryTxs.filter(tx => tx.delivery_platform === 'grab').length
 
   return (
     <div>
@@ -221,42 +230,63 @@ export default function FranchiseDetailClient({
           )}
         </div>
       )}
-
       {/* ── SALES TAB ── */}
       {tab === 'sales' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-            <select className="form-select" style={{ width: 'auto' }} value={salesPeriod} onChange={e => setSalesPeriod(e.target.value)}>
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
-            </select>
-          </div>
-          <div className="stat-grid">
-            <div className="stat-card card-glow"><div className="stat-card-icon green">💰</div><p className="stat-card-label">Gross Revenue</p><p className="stat-card-value">₱{salesRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p><p className="stat-card-trend neutral">{filteredSales.length} transactions</p></div>
-            <div className="stat-card card-glow"><div className="stat-card-icon blue">📉</div><p className="stat-card-label">Net Revenue</p><p className="stat-card-value">₱{(salesRevenue - salesDiscount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p><p className="stat-card-trend neutral">After ₱{salesDiscount.toFixed(2)} discounts</p></div>
-            <div className="stat-card card-glow"><div className="stat-card-icon gold">📊</div><p className="stat-card-label">Avg Order</p><p className="stat-card-value">₱{filteredSales.length > 0 ? (salesRevenue / filteredSales.length).toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '0.00'}</p><p className="stat-card-trend neutral">Per transaction</p></div>
-          </div>
-          <div className="chart-card" style={{ marginTop: '1.25rem' }}>
-            <p className="chart-title">Payment Method Breakdown</p>
-            {Object.keys(salesPay).length === 0 ? <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No data</div> : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {Object.entries(salesPay).sort(([,a],[,b]) => b-a).map(([method, amount]) => {
-                  const pct = salesRevenue > 0 ? (amount / salesRevenue) * 100 : 0
-                  return (
-                    <div key={method}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{PAY_LABELS[method] || method}</span>
-                        <span style={{ fontSize: '0.82rem', color: 'var(--color-accent)', fontWeight: 700 }}>₱{amount.toLocaleString('en-PH', { minimumFractionDigits: 0 })} ({pct.toFixed(0)}%)</span>
+        <>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+              <select className="form-select" style={{ width: 'auto' }} value={salesPeriod} onChange={e => setSalesPeriod(e.target.value)}>
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+              </select>
+            </div>
+            <div className="stat-grid">
+              <div className="stat-card card-glow"><div className="stat-card-icon green">💰</div><p className="stat-card-label">Gross Revenue</p><p className="stat-card-value">₱{salesRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p><p className="stat-card-trend neutral">{filteredSales.length} transactions</p></div>
+              <div className="stat-card card-glow"><div className="stat-card-icon blue">📉</div><p className="stat-card-label">Net Revenue</p><p className="stat-card-value">₱{(salesRevenue - salesDiscount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p><p className="stat-card-trend neutral">After ₱{salesDiscount.toFixed(2)} discounts</p></div>
+              <div className="stat-card card-glow"><div className="stat-card-icon gold">📊</div><p className="stat-card-label">Avg Order</p><p className="stat-card-value">₱{filteredSales.length > 0 ? (salesRevenue / filteredSales.length).toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '0.00'}</p><p className="stat-card-trend neutral">Per transaction</p></div>
+            </div>
+            <div className="chart-card" style={{ marginTop: '1.25rem' }}>
+              <p className="chart-title">Payment Method Breakdown</p>
+              {Object.keys(salesPay).length === 0 ? <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No data</div> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {Object.entries(salesPay).sort(([,a],[,b]) => b-a).map(([method, amount]) => {
+                    const pct = salesRevenue > 0 ? (amount / salesRevenue) * 100 : 0
+                    return (
+                      <div key={method}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{PAY_LABELS[method] || method}</span>
+                          <span style={{ fontSize: '0.82rem', color: 'var(--color-accent)', fontWeight: 700 }}>₱{amount.toLocaleString('en-PH', { minimumFractionDigits: 0 })} ({pct.toFixed(0)}%)</span>
+                        </div>
+                        <div className="stock-bar"><div className="stock-bar-fill good" style={{ width: `${(amount/maxPay)*100}%` }} /></div>
                       </div>
-                      <div className="stock-bar"><div className="stock-bar-fill good" style={{ width: `${(amount/maxPay)*100}%` }} /></div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+
+          {/* Delivery Breakdown */}
+          {(foodpandaOrders > 0 || grabOrders > 0) && (
+            <div className="chart-card" style={{ marginTop: '1.25rem' }}>
+              <p className="chart-title">🛵 Delivery Platform Breakdown</p>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                <div className="stat-card card-glow" style={{ flex: 1, minWidth: 140, border: '1px solid rgba(232,0,94,0.3)', background: 'rgba(232,0,94,0.06)' }}>
+                  <div className="stat-card-icon" style={{ background: 'rgba(232,0,94,0.15)', fontSize: '1.3rem' }}>🐼</div>
+                  <p className="stat-card-label">FoodPanda Revenue</p>
+                  <p className="stat-card-value" style={{ color: '#e8005e' }}>₱{foodpandaRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+                  <p className="stat-card-trend neutral">{foodpandaOrders} order{foodpandaOrders !== 1 ? 's' : ''}</p>
+                </div>
+                <div className="stat-card card-glow" style={{ flex: 1, minWidth: 140, border: '1px solid rgba(0,177,79,0.3)', background: 'rgba(0,177,79,0.06)' }}>
+                  <div className="stat-card-icon" style={{ background: 'rgba(0,177,79,0.15)', fontSize: '1.3rem' }}>🟢</div>
+                  <p className="stat-card-label">Grab Revenue</p>
+                  <p className="stat-card-trend neutral">{grabOrders} order{grabOrders !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* ── TRANSACTIONS TAB ── */}
@@ -267,10 +297,10 @@ export default function FranchiseDetailClient({
             <span className="badge badge-muted">{transactions.length} records</span>
           </div>
           <table>
-            <thead><tr><th>Date</th><th>Branch</th><th>Cashier</th><th>Method</th><th>Status</th><th>Amount</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>Branch</th><th>Cashier</th><th>Method</th><th>Platform</th><th>Status</th><th>Amount</th><th></th></tr></thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2rem' }}>No transactions yet</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2rem' }}>No transactions yet</td></tr>
               ) : transactions.map(tx => (
                 <>
                   <tr key={tx.id} onClick={() => setTxExpanded(txExpanded === tx.id ? null : tx.id)} style={{ cursor: 'pointer' }}>
@@ -281,13 +311,22 @@ export default function FranchiseDetailClient({
                     <td style={{ fontSize: '0.8rem' }}>{tx.branches?.name || '—'}</td>
                     <td style={{ fontSize: '0.8rem' }}>{tx.users?.name || '—'}</td>
                     <td><span style={{ fontSize: '0.75rem' }}>{PAY_LABELS[tx.payment_method] || tx.payment_method}</span></td>
+                    <td>
+                      {tx.delivery_platform === 'foodpanda' && (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(232,0,94,0.15)', color: '#e8005e', border: '1px solid rgba(232,0,94,0.3)' }}>🐼 FoodPanda</span>
+                      )}
+                      {tx.delivery_platform === 'grab' && (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,177,79,0.15)', color: '#00b14f', border: '1px solid rgba(0,177,79,0.3)' }}>🟢 Grab</span>
+                      )}
+                      {!tx.delivery_platform && <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>—</span>}
+                    </td>
                     <td><span className={`badge badge-${tx.status === 'completed' ? 'success' : tx.status === 'voided' ? 'danger' : 'warning'}`}>{tx.status}</span></td>
                     <td style={{ fontWeight: 700, color: tx.status === 'voided' ? 'var(--color-danger-light)' : 'var(--color-accent)' }}>₱{Number(tx.total_amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
                     <td><button className="btn btn-ghost btn-sm">{txExpanded === tx.id ? '▲' : '▼'}</button></td>
                   </tr>
                   {txExpanded === tx.id && (
                     <tr key={`${tx.id}-exp`} style={{ background: 'rgba(74,124,89,0.04)' }}>
-                      <td colSpan={7} style={{ padding: '0.75rem 1.25rem' }}>
+                      <td colSpan={8} style={{ padding: '0.75rem 1.25rem' }}>
                         {tx.void_reason && <div style={{ marginBottom: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(220,53,69,0.08)', borderRadius: 6, fontSize: '0.8rem', color: 'var(--color-danger-light)', border: '1px solid rgba(220,53,69,0.2)' }}>🚫 Void Reason: {tx.void_reason}</div>}
                         {tx.bank_name && <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>🏦 Bank: {tx.bank_name}{tx.reference_number && ` · Ref …${tx.reference_number}`}</div>}
                         {!tx.bank_name && tx.reference_number && <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>🔢 Ref …{tx.reference_number}</div>}

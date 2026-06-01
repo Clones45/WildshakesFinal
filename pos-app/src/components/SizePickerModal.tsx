@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Product } from '../lib/supabase'
+import { getDeliveryPrice } from '../lib/deliveryPricing'
 
 export interface SizeOption {
     sizeLabel: string   // "Regular" | "Petite" | "Grande"
@@ -12,6 +13,7 @@ interface SizePickerModalProps {
     options: SizeOption[]
     onSelect: (product: Product, sizeLabel: string) => void
     onClose: () => void
+    deliveryPlatform?: 'foodpanda' | 'grab'
 }
 
 const SIZE_INFO: Record<string, { oz: string; desc: string; color: string }> = {
@@ -19,7 +21,7 @@ const SIZE_INFO: Record<string, { oz: string; desc: string; color: string }> = {
     Grande:  { oz: '22 oz', desc: 'Large',  color: '#5b21b6' },
 }
 
-export function SizePickerModal({ baseName, emoji, options, onSelect, onClose }: SizePickerModalProps) {
+export function SizePickerModal({ baseName, emoji, options, onSelect, onClose, deliveryPlatform }: SizePickerModalProps) {
     return (
         <AnimatePresence>
             <motion.div
@@ -142,14 +144,28 @@ export function SizePickerModal({ baseName, emoji, options, onSelect, onClose }:
                                         }}>
                                             Sold Out
                                         </span>
-                                    ) : (
-                                        <span style={{
-                                            fontWeight: 900, fontSize: '1.15rem',
-                                            color: info.color, letterSpacing: '-0.02em',
-                                        }}>
-                                            ₱{opt.product.price.toFixed(2)}
-                                        </span>
-                                    )}
+                                    ) : (() => {
+                                        const delPrice = deliveryPlatform
+                                            ? getDeliveryPrice(opt.product.name, opt.sizeLabel)
+                                            : null
+                                        const showDel = delPrice !== null && delPrice !== opt.product.price
+                                        return (
+                                            <div style={{ textAlign: 'right' }}>
+                                                <span style={{
+                                                    fontWeight: 900, fontSize: '1.15rem',
+                                                    color: info.color, letterSpacing: '-0.02em',
+                                                    display: 'block',
+                                                }}>
+                                                    ₱{(delPrice ?? opt.product.price).toFixed(2)}
+                                                </span>
+                                                {showDel && (
+                                                    <span style={{ fontSize: '0.68rem', color: '#9ca3af', textDecoration: 'line-through', display: 'block' }}>
+                                                        ₱{opt.product.price.toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )
+                                    })()}
                                 </motion.button>
                             )
                         })}

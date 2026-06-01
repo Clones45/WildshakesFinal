@@ -31,6 +31,7 @@ interface Tx {
   created_at: string
   void_reason: string | null
   table_number: string | null
+  delivery_platform: 'foodpanda' | 'grab' | null
   users: { name: string } | null
   branches: { name: string } | null
   transaction_items: TxItem[]
@@ -212,6 +213,16 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                       <span className={`badge badge-${tx.status === 'completed' ? 'success' : tx.status === 'voided' ? 'danger' : 'warning'}`}>
                         {tx.status}
                       </span>
+                      {tx.delivery_platform === 'foodpanda' && (
+                        <div style={{ marginTop: 4 }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: 'rgba(232,0,94,0.15)', color: '#e8005e', border: '1px solid rgba(232,0,94,0.3)' }}>🐼 FoodPanda</span>
+                        </div>
+                      )}
+                      {tx.delivery_platform === 'grab' && (
+                        <div style={{ marginTop: 4 }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: 'rgba(0,177,79,0.15)', color: '#00b14f', border: '1px solid rgba(0,177,79,0.3)' }}>🟢 Grab</span>
+                        </div>
+                      )}
                     </td>
                     <td>
                       <button className="btn btn-ghost btn-sm">

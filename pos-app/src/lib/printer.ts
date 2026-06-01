@@ -214,6 +214,24 @@ export function buildReceiptText(
 
     const orderTypeLabel = transaction.orderType === 'take-out' ? 'Take-out' : 'Dine-in'
 
+    // ── Delivery platform banner lines ────────────────────────────────────────
+    const deliveryBannerLines: string[] = []
+    if ((transaction as any).deliveryPlatform === 'foodpanda') {
+        deliveryBannerLines.push(
+            '================================',
+            center('*** FOODPANDA ORDER ***'),
+            center('   DELIVERY - FOODPANDA   '),
+            '================================',
+        )
+    } else if ((transaction as any).deliveryPlatform === 'grab') {
+        deliveryBannerLines.push(
+            '================================',
+            center('***   GRAB ORDER    ***'),
+            center('     DELIVERY - GRAB      '),
+            '================================',
+        )
+    }
+
     const subtotal = transaction.totalAmount + transaction.discountAmount
 
     const totalLines: string[] = []
@@ -227,6 +245,8 @@ export function buildReceiptText(
         totalLines.push(leftRight('Ref#', transaction.referenceNumber))
 
     return [
+        // ── Delivery banner (if applicable) ──
+        ...deliveryBannerLines,
         // ── Branch & Employee (logo is prepended by printReceipt as ESC/POS bitmap) ──
         center(branchName),
         ...(branchLocation ? [center(branchLocation)] : []),
@@ -300,7 +320,8 @@ export async function printKitchenTicket(
     orderItems: CartItem[] | HeldOrder['items'],
     tableNumber: string | null,
     orderId: string,
-    createdAt: string
+    createdAt: string,
+    deliveryPlatform?: 'foodpanda' | 'grab' | null,
 ): Promise<void> {
     const timeStr = new Date(createdAt).toLocaleTimeString('en-PH', {
         hour: '2-digit',
@@ -318,7 +339,26 @@ export async function printKitchenTicket(
             notes: (item.notes ?? '') as string,
         }))
 
+    // Build delivery banner if applicable
+    const deliveryLines: string[] = []
+    if (deliveryPlatform === 'foodpanda') {
+        deliveryLines.push(
+            '================================',
+            center('*** FOODPANDA ORDER ***'),
+            center('   DELIVERY - FOODPANDA   '),
+            '================================',
+        )
+    } else if (deliveryPlatform === 'grab') {
+        deliveryLines.push(
+            '================================',
+            center('***   GRAB ORDER    ***'),
+            center('     DELIVERY - GRAB      '),
+            '================================',
+        )
+    }
+
     const lines: string[] = [
+        ...deliveryLines,
         center('*** KITCHEN TICKET ***'),
         divider,
         leftRight('Table:', tableNumber || 'Takeout / None'),

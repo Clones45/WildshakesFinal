@@ -53,6 +53,8 @@ interface CartState {
     setReferenceNumber: (ref: string) => void
     setBankName: (bank: string) => void
     setResumedHold: (id: string | null, ref: string | null, tableNumber?: string | null) => void
+    setDeliveryPlatform: (platform: 'foodpanda' | 'grab' | null) => void
+    deliveryPlatform: 'foodpanda' | 'grab' | null
     reset: () => void
     clearCart: () => void  // Clear items only (keep discount/payment settings)
 }
@@ -68,6 +70,7 @@ const initialState = {
     resumedHoldId: null as string | null,
     resumedHoldRef: null as string | null,
     resumedTableNumber: null as string | null,
+    deliveryPlatform: null as 'foodpanda' | 'grab' | null,
 }
 
 export const useCartStore = create<CartState>()((set, get) => ({
@@ -132,6 +135,8 @@ export const useCartStore = create<CartState>()((set, get) => ({
     setBankName: (bank) => set({ bankName: bank }),
 
     setResumedHold: (id, ref, tableNumber = null) => set({ resumedHoldId: id, resumedHoldRef: ref, resumedTableNumber: tableNumber }),
+
+    setDeliveryPlatform: (platform) => set({ deliveryPlatform: platform }),
 
     reset: () => set({ ...initialState }),
 

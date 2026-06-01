@@ -1,14 +1,16 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import { getDeliveryPrice } from '../lib/deliveryPricing'
 
 export type PearlOption = 'Regular Pearls' | 'Add-on Pearls' | 'No Pearls'
 
 interface PearlsPickerModalProps {
     baseName: string        // e.g. "Caramel Machiato"
     sizeLabel: string       // e.g. "Grande"
-    basePrice: number       // price of the chosen size variant
+    basePrice: number       // price of the chosen size variant (normal price)
     emoji: string
     onSelect: (pearl: PearlOption, finalPrice: number) => void
     onClose: () => void
+    deliveryPlatform?: 'foodpanda' | 'grab'
 }
 
 const PEARL_OPTIONS: { option: PearlOption; addonPrice: number; icon: string; desc: string; color: string }[] = [
@@ -35,7 +37,11 @@ const PEARL_OPTIONS: { option: PearlOption; addonPrice: number; icon: string; de
     },
 ]
 
-export function PearlsPickerModal({ baseName, sizeLabel, basePrice, emoji, onSelect, onClose }: PearlsPickerModalProps) {
+export function PearlsPickerModal({ baseName, sizeLabel, basePrice, emoji, onSelect, onClose, deliveryPlatform }: PearlsPickerModalProps) {
+    // When in delivery mode, use the delivery base price for this size
+    const effectiveBase = deliveryPlatform
+        ? (getDeliveryPrice(baseName, sizeLabel) ?? basePrice)
+        : basePrice
     return (
         <AnimatePresence>
             <motion.div
@@ -88,7 +94,7 @@ export function PearlsPickerModal({ baseName, sizeLabel, basePrice, emoji, onSel
                             textTransform: 'uppercase', color: '#7c3aed',
                             background: '#ede9fe', padding: '3px 10px', borderRadius: '999px',
                         }}>
-                            {sizeLabel} · ₱{basePrice.toFixed(2)}
+                            {sizeLabel} · ₱{effectiveBase.toFixed(2)}
                         </span>
                         <p style={{ margin: '10px 0 0', fontSize: '0.82rem', color: '#6b7280', fontWeight: 600 }}>
                             Choose your pearl option
@@ -98,7 +104,7 @@ export function PearlsPickerModal({ baseName, sizeLabel, basePrice, emoji, onSel
                     {/* Pearl options */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {PEARL_OPTIONS.map(({ option, addonPrice, icon, desc, color }) => {
-                            const finalPrice = basePrice + addonPrice
+                            const finalPrice = effectiveBase + addonPrice
                             return (
                                 <motion.button
                                     key={option}

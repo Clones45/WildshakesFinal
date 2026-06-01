@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Product } from '../lib/supabase'
 import { useCartStore } from '../store/cartStore'
-import { Search, Coffee, Loader2, AlertTriangle, Plus, RefreshCw } from 'lucide-react'
+import { Search, Coffee, Loader2, AlertTriangle, Plus, RefreshCw, Bike } from 'lucide-react'
 import { SizePickerModal, type SizeOption } from './SizePickerModal'
 import { FlavorPickerModal, requiresFriesFlavor, type FriesFlavor } from './FlavorPickerModal'
 import { PearlsPickerModal, type PearlOption } from './PearlsPickerModal'
 import { CoffeePickerModal, type CoffeeOption } from './CoffeePickerModal'
+import { getDeliveryPrice } from '../lib/deliveryPricing'
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     // Exact category values from Wildshakes products table
@@ -37,10 +38,11 @@ interface ProductGridProps {
     isLoading: boolean
     menuError?: string | null
     onReload?: () => void
+    deliveryPlatform?: 'foodpanda' | 'grab' | null
+    onDeliveryTabClick?: () => void
 }
 
 // ─── Size-picker categories ───────────────────────────────────────────────────
-// These are the category names that are size variants for Fruitshakes / Milkshakes
 const SHAKE_SIZE_CATEGORIES = new Set([
     'Fruitshakes Petite', 'Fruitshakes Grande',
     'Milkshakes Petite', 'Milkshakes Grande',
@@ -50,7 +52,6 @@ const SHAKE_SIZE_CATEGORIES = new Set([
 const COFFEE_CATEGORIES = new Set(['Coffee Hot', 'Coffee Iced'])
 
 // ── Category consolidation ────────────────────────────────────────────────────
-// Merge sub-categories into parent labels in the tab bar
 const MERGE_MAP: Record<string, string> = {
     'Fruitshakes Petite': 'Fruitshakes',
     'Fruitshakes Grande': 'Fruitshakes',
@@ -102,17 +103,51 @@ function getCoffeeOptions(tappedProduct: Product, allProducts: Product[]): Coffe
     const hotProduct  = allProducts.find(p => p.name === tappedProduct.name && p.category === 'Coffee Hot')
     const coldProduct = allProducts.find(p => p.name === tappedProduct.name && p.category === 'Coffee Iced')
 
-    if (!hotProduct) return null // should always have a hot
-    if (!coldProduct) return null // only hot available — no picker needed (handled below)
+    if (!hotProduct) return null
+    if (!coldProduct) return null
 
-    const options: CoffeeOption[] = [
+    return [
         { label: 'Hot',  product: hotProduct },
         { label: 'Cold', product: coldProduct },
     ]
-    return options
 }
 
-export function ProductGrid({ products, categories, isLoading, menuError, onReload }: ProductGridProps) {
+// ─── Delivery platform style helpers ─────────────────────────────────────────
+const PLATFORM_CONFIG = {
+    foodpanda: {
+        label: 'FoodPanda',
+        emoji: '🐼',
+        color: '#e8005e',
+        bgClass: 'bg-pink-600/10',
+        borderClass: 'border-pink-500/40',
+        textClass: 'text-pink-400',
+        bannerBg: 'linear-gradient(135deg, rgba(232,0,94,0.18), rgba(232,0,94,0.06))',
+        bannerBorder: 'rgba(232,0,94,0.4)',
+    },
+    grab: {
+        label: 'Grab',
+        emoji: '🟢',
+        color: '#00b14f',
+        bgClass: 'bg-green-600/10',
+        borderClass: 'border-green-500/40',
+        textClass: 'text-green-400',
+        bannerBg: 'linear-gradient(135deg, rgba(0,177,79,0.18), rgba(0,177,79,0.06))',
+        bannerBorder: 'rgba(0,177,79,0.4)',
+    },
+} as const
+
+/** Get the display price for a product: delivery override if in delivery mode, else normal price */
+function getDisplayPrice(product: Product, deliveryPlatform: 'foodpanda' | 'grab' | null): number {
+    if (!deliveryPlatform) return product.price
+    // For size-based, the override is applied per-size in the size picker.
+    // For regular products return the flat delivery price.
+    if (SHAKE_SIZE_CATEGORIES.has(product.category) || COFFEE_CATEGORIES.has(product.category)) {
+        return product.price // shown via size/coffee picker
+    }
+    return getDeliveryPrice(product.name) ?? product.price
+}
+
+export function ProductGrid({ products, categories, isLoading, menuError, onReload, deliveryPlatform, onDeliveryTabClick }: ProductGridProps) {
     const [activeCategory, setActiveCategory] = useState<string>('All')
     const [search, setSearch] = useState('')
     const { addItem, items } = useCartStore()
@@ -126,6 +161,8 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
     const [flavorPicker, setFlavorPicker] = useState<Product | null>(null)
     // Coffee picker (Hot/Cold)
     const [coffeePicker, setCoffeePicker] = useState<{ product: Product; options: CoffeeOption[] } | null>(null)
+
+    const platformCfg = deliveryPlatform ? PLATFORM_CONFIG[deliveryPlatform] : null
 
     // ─── Tap handlers ─────────────────────────────────────────────────────────
 
@@ -142,8 +179,8 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                 setCoffeePicker({ product, options: coffeeOpts })
                 return
             }
-            // Only hot available (e.g. Espresso Shot) — add directly as Hot
-            addItem(product, 'Hot')
+            const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, 'Hot') ?? undefined : undefined
+            addItem(product, 'Hot', deliveryOverride)
             setFlashId(product.id)
             setTimeout(() => setFlashId(null), 350)
             return
@@ -154,14 +191,16 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             setSizePicker({ product, options: sizeOptions })
             return
         }
-        // 4. Regular product — add directly
-        addItem(product)
+        // 4. Regular product — add with delivery price override if applicable
+        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name) ?? undefined : undefined
+        addItem(product, undefined, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
     }
 
     const handleFlavorSelect = (product: Product, flavor: FriesFlavor) => {
-        addItem(product, flavor)
+        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name) ?? undefined : undefined
+        addItem(product, flavor, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
         setFlavorPicker(null)
@@ -179,16 +218,28 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
         if (!pearlsPicker) return
         const { sizedProduct, sizeLabel } = pearlsPicker
         const combinedVariant = `${sizeLabel} · ${pearl}`
-        const overridePrice = finalPrice !== sizedProduct.price ? finalPrice : undefined
+
+        // In delivery mode: get delivery base price for this size, then apply pearl delta
+        let effectiveFinalPrice = finalPrice
+        if (deliveryPlatform) {
+            const deliveryBase = getDeliveryPrice(sizedProduct.name, sizeLabel)
+            if (deliveryBase !== null) {
+                const pearlDelta = finalPrice - sizedProduct.price // e.g. +25 for add-on pearls
+                effectiveFinalPrice = deliveryBase + pearlDelta
+            }
+        }
+
+        const overridePrice = effectiveFinalPrice !== sizedProduct.price ? effectiveFinalPrice : undefined
         addItem(sizedProduct, combinedVariant, overridePrice)
         setFlashId(sizedProduct.id)
         setTimeout(() => setFlashId(null), 350)
         setPearlsPicker(null)
     }
 
-    // After coffee temp selection → add directly
+    // After coffee temp selection → add with delivery override
     const handleCoffeeSelect = (product: Product, tempLabel: 'Hot' | 'Cold') => {
-        addItem(product, tempLabel)
+        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, tempLabel) ?? undefined : undefined
+        addItem(product, tempLabel, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
         setCoffeePicker(null)
@@ -207,7 +258,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             if (!seen.has(label)) { seen.add(label); result.push(label) }
         }
         return result
-    })()]
+    })(), 'FoodPanda & Grab']  // Delivery tab always last
 
     // ─── Product filtering & deduplication ────────────────────────────────────
 
@@ -230,10 +281,9 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                     other.is_available !== false
                 )
             }
-            // For coffee: show card if the Hot variant (representative) is available
-            // (iced variant is shown inside the picker)
+            // For coffee: hide iced from grid — shown in picker
             if (COFFEE_CATEGORIES.has(p.category)) {
-                if (p.category === 'Coffee Iced') return false // hide iced from grid — shown in picker
+                if (p.category === 'Coffee Iced') return false
                 return p.is_available !== false
             }
             return p.is_available !== false
@@ -262,6 +312,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
 
     const categoryCount = (cat: string) => {
         if (cat === 'All') return [...new Set(products.map(p => p.name))].length
+        if (cat === 'FoodPanda & Grab') return null // special tab — no count shown
         const subCats = MERGED_SUB_CATS[cat]
         if (subCats) {
             return [...new Set(products.filter(p => subCats.includes(p.category)).map(p => p.name))].length
@@ -289,6 +340,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                     options={sizePicker.options}
                     onSelect={handleSizeSelect}
                     onClose={() => setSizePicker(null)}
+                    deliveryPlatform={deliveryPlatform ?? undefined}
                 />
             )}
             {/* Pearls picker modal (after size selection) */}
@@ -300,6 +352,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                     emoji={pearlsPicker.emoji}
                     onSelect={handlePearlSelect}
                     onClose={() => setPearlsPicker(null)}
+                    deliveryPlatform={deliveryPlatform ?? undefined}
                 />
             )}
             {/* Coffee picker modal (Hot / Cold) */}
@@ -309,7 +362,27 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                     options={coffeePicker.options}
                     onSelect={handleCoffeeSelect}
                     onClose={() => setCoffeePicker(null)}
+                    deliveryPlatform={deliveryPlatform ?? undefined}
                 />
+            )}
+
+            {/* ── Delivery mode banner ── */}
+            {platformCfg && (
+                <motion.div
+                    initial={{ opacity: 0, y: -12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mx-4 mt-3 mb-0 px-4 py-2.5 rounded-2xl border flex items-center gap-3"
+                    style={{ background: platformCfg.bannerBg, borderColor: platformCfg.bannerBorder }}
+                >
+                    <span className="text-2xl">{platformCfg.emoji}</span>
+                    <div className="flex-1">
+                        <p className="font-extrabold text-sm leading-tight" style={{ color: platformCfg.color }}>
+                            {platformCfg.label} Delivery Menu
+                        </p>
+                        <p className="text-[11px] text-gray-400 leading-tight">Delivery prices active — tap any item to add</p>
+                    </div>
+                    <Bike size={18} style={{ color: platformCfg.color, opacity: 0.7 }} />
+                </motion.div>
             )}
 
             {/* Search bar */}
@@ -340,8 +413,41 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             {/* Category tabs */}
             <div className="px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-none">
                 {allCategories.map((cat) => {
+                    const isDeliveryTab = cat === 'FoodPanda & Grab'
                     const isActive = activeCategory === cat
                     const count = categoryCount(cat)
+
+                    if (isDeliveryTab) {
+                        // Special delivery tab — always styled with delivery colors
+                        const isDeliveryActive = !!deliveryPlatform
+                        return (
+                            <button
+                                key={cat}
+                                onClick={() => {
+                                    if (onDeliveryTabClick) onDeliveryTabClick()
+                                }}
+                                className="category-tab flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+                                style={{
+                                    background: isDeliveryActive
+                                        ? (deliveryPlatform === 'foodpanda'
+                                            ? 'linear-gradient(135deg, #e8005e, #c0004d)'
+                                            : 'linear-gradient(135deg, #00b14f, #008a3c)')
+                                        : 'linear-gradient(135deg, rgba(232,0,94,0.15), rgba(0,177,79,0.15))',
+                                    border: isDeliveryActive
+                                        ? 'none'
+                                        : '1px solid rgba(232,0,94,0.3)',
+                                    color: isDeliveryActive ? '#fff' : '#e8005e',
+                                    fontWeight: 700,
+                                    padding: '0.35rem 0.875rem',
+                                    borderRadius: '9999px',
+                                }}
+                            >
+                                <span>{isDeliveryActive ? PLATFORM_CONFIG[deliveryPlatform!].emoji : '🛵'}</span>
+                                <span>{isDeliveryActive ? PLATFORM_CONFIG[deliveryPlatform!].label : 'FoodPanda & Grab'}</span>
+                            </button>
+                        )
+                    }
+
                     return (
                         <button
                             key={cat}
@@ -350,12 +456,14 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                         >
                             <span>{cat === 'All' ? '🍽️' : CATEGORY_EMOJIS[cat] ?? '📋'}</span>
                             <span>{cat}</span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive
-                                    ? 'bg-white/30 text-white'
-                                    : 'bg-brand-100 text-brand-500'
-                                }`}>
-                                {count}
-                            </span>
+                            {count !== null && (
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive
+                                        ? 'bg-white/30 text-white'
+                                        : 'bg-brand-100 text-brand-500'
+                                    }`}>
+                                    {count}
+                                </span>
+                            )}
                         </button>
                     )
                 })}
@@ -408,6 +516,10 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                 const inCart = cartQty > 0
                                 const isFlashing = flashId === product.id
 
+                                // Displayed price
+                                const displayPrice = getDisplayPrice(product, deliveryPlatform ?? null)
+                                const isPriceOverridden = deliveryPlatform && displayPrice !== product.price
+
                                 return (
                                     <motion.button
                                         key={product.id}
@@ -434,7 +546,6 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
 
                                         {/* Category tag */}
                                         <span className="absolute top-2 right-2 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-500/15 text-brand-600 font-semibold leading-tight max-w-[80px] text-right truncate">
-                                            {/* Show "Coffee" for both hot/iced in the tag */}
                                             {COFFEE_CATEGORIES.has(product.category) ? 'Coffee' : product.category}
                                         </span>
 
@@ -448,9 +559,16 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                         </p>
 
                                         <div className="flex items-center justify-between mt-auto pt-1">
-                                            <span className="text-brand-600 font-bold text-base">
-                                                ₱{product.price.toFixed(2)}
-                                            </span>
+                                            <div className="flex flex-col">
+                                                <span className="text-brand-600 font-bold text-base">
+                                                    ₱{displayPrice.toFixed(2)}
+                                                </span>
+                                                {isPriceOverridden && !isShake && !isCoffee && (
+                                                    <span className="text-[10px] text-gray-400 line-through leading-none">
+                                                        ₱{product.price.toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <motion.div
                                                 whileTap={{ scale: 0.85 }}
                                                 className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all ${inCart

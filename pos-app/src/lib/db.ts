@@ -24,6 +24,7 @@ export interface LocalTransaction {
     status: string
     source: string
     tableNumber?: string      // Table number if order came from a held order
+    deliveryPlatform?: 'foodpanda' | 'grab'  // Set for FoodPanda / Grab delivery orders
     voidReason?: string       // Populated when status = 'voided'
     voidedBy?: string         // Manager user ID who authorised the void
     items: LocalTransactionItem[]
@@ -160,6 +161,16 @@ export class WildshakesDB extends Dexie {
 
         // Version 7 — orderType (dine-in / take-out); no new indexes needed
         this.version(7).stores({
+            transactions: 'localRef, syncStatus, branchId, createdAt',
+            localHeldOrders: 'localId, syncStatus, branchId, createdAt',
+            localAuditLogs: 'localId, syncStatus, createdAt',
+            products: 'id, category, name',
+            branches: 'id',
+            users: 'id, branch_id, pin_code, qr_access_token, role',
+        })
+
+        // Version 8 — deliveryPlatform ('foodpanda' | 'grab'); no new indexes needed
+        this.version(8).stores({
             transactions: 'localRef, syncStatus, branchId, createdAt',
             localHeldOrders: 'localId, syncStatus, branchId, createdAt',
             localAuditLogs: 'localId, syncStatus, createdAt',

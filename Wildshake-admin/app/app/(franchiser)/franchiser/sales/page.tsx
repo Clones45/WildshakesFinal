@@ -26,7 +26,7 @@ export default async function FranchiserSalesPage() {
   const [{ data: transactions }, { data: topItems }] = await Promise.all([
     supabase
       .from('transactions')
-      .select('total_amount, discount_amount, payment_method, status, created_at')
+      .select('total_amount, discount_amount, payment_method, status, delivery_platform, created_at')
       .in('branch_id', safeBranchIds)
       .eq('status', 'completed')
       .gte('created_at', ninetyDaysAgo)

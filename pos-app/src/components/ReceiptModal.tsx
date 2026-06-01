@@ -90,6 +90,7 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
     const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     const paymentLabel = transaction.paymentMethod.replace(/_/g, ' ')
     const orderType = transaction.orderType ?? 'dine-in'
+    const deliveryPlatform = (transaction as any).deliveryPlatform as 'foodpanda' | 'grab' | undefined
     const shortRef = transaction.localRef.slice(-8).toUpperCase()
 
     return (
@@ -120,6 +121,30 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                             <h2 className="text-lg font-bold text-white">Payment Complete!</h2>
                             <p className="text-gray-400 text-xs mt-0.5">{branch?.name} · {timeStr}</p>
                         </div>
+
+                        {/* ── Delivery platform banner ── */}
+                        {deliveryPlatform === 'foodpanda' && (
+                            <div className="flex items-center justify-center gap-2 px-4 py-3 border-b border-surface-600"
+                                style={{ background: 'linear-gradient(135deg, rgba(232,0,94,0.25), rgba(232,0,94,0.10))' }}>
+                                <span className="text-2xl">🐼</span>
+                                <div className="text-center">
+                                    <p className="font-extrabold text-sm leading-tight" style={{ color: '#e8005e' }}>FOODPANDA ORDER</p>
+                                    <p className="text-xs text-gray-400 leading-tight">Delivery Platform</p>
+                                </div>
+                                <span className="text-2xl">🐼</span>
+                            </div>
+                        )}
+                        {deliveryPlatform === 'grab' && (
+                            <div className="flex items-center justify-center gap-2 px-4 py-3 border-b border-surface-600"
+                                style={{ background: 'linear-gradient(135deg, rgba(0,177,79,0.25), rgba(0,177,79,0.10))' }}>
+                                <span className="text-2xl">🟢</span>
+                                <div className="text-center">
+                                    <p className="font-extrabold text-sm leading-tight" style={{ color: '#00b14f' }}>GRAB ORDER</p>
+                                    <p className="text-xs text-gray-400 leading-tight">Delivery Platform</p>
+                                </div>
+                                <span className="text-2xl">🟢</span>
+                            </div>
+                        )}
 
                         {/* ── Receipt body — styled like actual thermal receipt ── */}
                         <div className="px-5 py-4 font-mono text-xs max-h-80 overflow-y-auto">

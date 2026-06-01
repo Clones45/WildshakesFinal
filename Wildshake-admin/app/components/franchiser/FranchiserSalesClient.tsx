@@ -7,6 +7,7 @@ interface Tx {
   discount_amount: number
   payment_method: string
   status: string
+  delivery_platform: 'foodpanda' | 'grab' | null
   created_at: string
 }
 
@@ -40,6 +41,12 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
     payBreakdown[t.payment_method] = (payBreakdown[t.payment_method] || 0) + Number(t.total_amount)
   }
   const maxPay = Math.max(...Object.values(payBreakdown), 1)
+
+  // Delivery platform breakdown
+  const foodpandaRevenue = filtered.filter(t => t.delivery_platform === 'foodpanda').reduce((s, t) => s + Number(t.total_amount), 0)
+  const grabRevenue = filtered.filter(t => t.delivery_platform === 'grab').reduce((s, t) => s + Number(t.total_amount), 0)
+  const foodpandaOrders = filtered.filter(t => t.delivery_platform === 'foodpanda').length
+  const grabOrders = filtered.filter(t => t.delivery_platform === 'grab').length
 
   // Daily revenue chart (last N days)
   const days = parseInt(period)
@@ -211,6 +218,27 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
           )}
         </div>
       </div>
+
+      {/* Delivery Breakdown */}
+      {(foodpandaOrders > 0 || grabOrders > 0) && (
+        <div className="chart-card" style={{ marginTop: '1.25rem' }}>
+          <p className="chart-title">🛵 Delivery Platform Breakdown</p>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div className="stat-card card-glow" style={{ flex: 1, minWidth: 140, border: '1px solid rgba(232,0,94,0.3)', background: 'rgba(232,0,94,0.06)' }}>
+              <div className="stat-card-icon" style={{ background: 'rgba(232,0,94,0.15)', fontSize: '1.3rem' }}>🐼</div>
+              <p className="stat-card-label">FoodPanda Revenue</p>
+              <p className="stat-card-value" style={{ color: '#e8005e' }}>₱{foodpandaRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+              <p className="stat-card-trend neutral">{foodpandaOrders} order{foodpandaOrders !== 1 ? 's' : ''}</p>
+            </div>
+            <div className="stat-card card-glow" style={{ flex: 1, minWidth: 140, border: '1px solid rgba(0,177,79,0.3)', background: 'rgba(0,177,79,0.06)' }}>
+              <div className="stat-card-icon" style={{ background: 'rgba(0,177,79,0.15)', fontSize: '1.3rem' }}>🟢</div>
+              <p className="stat-card-label">Grab Revenue</p>
+              <p className="stat-card-value" style={{ color: '#00b14f' }}>₱{grabRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+              <p className="stat-card-trend neutral">{grabOrders} order{grabOrders !== 1 ? 's' : ''}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top Items + Daily Table */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: '1.25rem', marginTop: '1.25rem' }}>

@@ -32,6 +32,7 @@ interface TxRow {
     void_reason: string | null
     cashier_id: string | null
     cashier_name?: string
+    delivery_platform: 'foodpanda' | 'grab' | null
     created_at: string
 }
 
@@ -111,7 +112,7 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
 
             let query = supabase
                 .from('transactions')
-                .select('id, total_amount, payment_method, reference_number, bank_name, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, created_at')
+                .select('id, total_amount, payment_method, reference_number, bank_name, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, delivery_platform, created_at')
                 .eq('branch_id', branch.id)
                 .neq('status', 'pending')         // exclude held orders
                 .gte('created_at', fromDate.toISOString())
@@ -353,6 +354,19 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                                         {isDiscounted && (
                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs font-bold">
                                                                 <Tag size={10} /> {tx.discount_type}
+                                                            </span>
+                                                        )}
+                                                        {/* Delivery platform badge */}
+                                                        {tx.delivery_platform === 'foodpanda' && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
+                                                                style={{ background: 'rgba(232,0,94,0.15)', border: '1px solid rgba(232,0,94,0.35)', color: '#e8005e' }}>
+                                                                🐼 FoodPanda
+                                                            </span>
+                                                        )}
+                                                        {tx.delivery_platform === 'grab' && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
+                                                                style={{ background: 'rgba(0,177,79,0.15)', border: '1px solid rgba(0,177,79,0.35)', color: '#00b14f' }}>
+                                                                🟢 Grab
                                                             </span>
                                                         )}
                                                     </div>

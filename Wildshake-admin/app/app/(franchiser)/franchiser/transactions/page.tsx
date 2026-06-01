@@ -26,7 +26,7 @@ export default async function FranchiserTransactionsPage() {
     .select(`
       id, local_ref, total_amount, discount_type, discount_amount,
       payment_method, status, reference_number, bank_name, table_number,
-      created_at, void_reason,
+      delivery_platform, created_at, void_reason,
       users(name),
       branches(name),
       transaction_items(quantity, unit_price, subtotal, notes, cancelled, products(name, category))

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCartStore } from '../store/cartStore'
-import { Minus, Plus, Tag, ShoppingCart, PauseCircle, Clock, MapPin, Pencil, Ban } from 'lucide-react'
+import { Minus, Plus, Tag, ShoppingCart, PauseCircle, Clock, MapPin, Pencil, Ban, Bike } from 'lucide-react'
 
 interface CartProps {
     onCheckout: () => void
@@ -16,6 +16,7 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
         items, discountType, updateQty, updateNotes, cancelItem,
         subtotal, discountAmount, total,
         resumedHoldId, resumedTableNumber,
+        deliveryPlatform, setDeliveryPlatform,
     } = useCartStore()
 
     const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
@@ -85,6 +86,42 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                     </span>
                     <span className="text-teal-500 text-xs ml-1">— Updating held order</span>
                 </div>
+            )}
+
+            {/* Delivery platform banner */}
+            {deliveryPlatform === 'foodpanda' && (
+                <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="px-5 py-2.5 flex items-center gap-2 border-b"
+                    style={{ background: 'rgba(232,0,94,0.08)', borderColor: 'rgba(232,0,94,0.25)' }}
+                >
+                    <Bike size={14} style={{ color: '#e8005e', flexShrink: 0 }} />
+                    <span className="font-bold text-sm" style={{ color: '#e8005e' }}>🐼 FoodPanda Delivery</span>
+                    <button
+                        onClick={() => setDeliveryPlatform(null)}
+                        className="ml-auto text-[10px] font-bold text-gray-400 hover:text-red-500 transition-colors underline"
+                    >
+                        Exit
+                    </button>
+                </motion.div>
+            )}
+            {deliveryPlatform === 'grab' && (
+                <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="px-5 py-2.5 flex items-center gap-2 border-b"
+                    style={{ background: 'rgba(0,177,79,0.08)', borderColor: 'rgba(0,177,79,0.25)' }}
+                >
+                    <Bike size={14} style={{ color: '#00b14f', flexShrink: 0 }} />
+                    <span className="font-bold text-sm" style={{ color: '#00b14f' }}>🟢 Grab Delivery</span>
+                    <button
+                        onClick={() => setDeliveryPlatform(null)}
+                        className="ml-auto text-[10px] font-bold text-gray-400 hover:text-red-500 transition-colors underline"
+                    >
+                        Exit
+                    </button>
+                </motion.div>
             )}
 
             {/* Cart items */}

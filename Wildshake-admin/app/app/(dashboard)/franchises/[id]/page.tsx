@@ -83,7 +83,7 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
 
     // Recent transactions
     supabase.from('transactions')
-      .select('id, total_amount, status, payment_method, reference_number, bank_name, discount_type, discount_amount, created_at, void_reason, table_number, users(name), branches(name), transaction_items(quantity, unit_price, subtotal, products(name, category))')
+      .select('id, total_amount, status, payment_method, reference_number, bank_name, discount_type, discount_amount, created_at, void_reason, table_number, delivery_platform, users(name), branches(name), transaction_items(quantity, unit_price, subtotal, products(name, category))')
       .in('branch_id', safeBranchIds)
       .neq('status', 'pending')
       .order('created_at', { ascending: false })

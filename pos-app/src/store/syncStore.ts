@@ -129,6 +129,7 @@ async function pushTransaction(local: LocalTransaction) {
                 source: local.source,
                 local_ref: local.localRef,
                 table_number: local.tableNumber ?? null,
+                delivery_platform: local.deliveryPlatform ?? null,
                 void_reason: local.voidReason ?? null,
                 voided_by: local.voidedBy ?? null,
                 created_at: local.createdAt,

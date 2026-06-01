@@ -5,6 +5,7 @@ import {
   createProduct, updateProduct, deleteProduct,
   toggleProductAvailability, updateMenuItemPrice,
 } from '@/lib/actions/menu'
+import { hasDeliveryPrice, getDeliveryPrice } from '@/lib/deliveryPricing'
 
 interface Product {
   id: string
@@ -48,9 +49,21 @@ export default function MenuClient({
 
   const filtered = products.filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
+    if (filterCat === 'delivery') {
+      return matchSearch && hasDeliveryPrice(p.name)
+    }
     const matchCat    = filterCat === 'all' || p.category === filterCat
     return matchSearch && matchCat
   })
+
+  function resolveDeliveryPrice(p: Product) {
+    let qualifier = undefined
+    if (p.category.includes('Petite')) qualifier = 'Petite'
+    else if (p.category.includes('Grande')) qualifier = 'Grande'
+    else if (p.category === 'Coffee Hot') qualifier = 'Hot'
+    else if (p.category === 'Coffee Iced') qualifier = 'Cold'
+    return getDeliveryPrice(p.name, qualifier)
+  }
 
   function openAdd()           { setEditing(null); setFormError(''); setFormSuccess(''); setShowModal(true) }
   function openEdit(p: Product){ setEditing(p);    setFormError(''); setFormSuccess(''); setShowModal(true) }
@@ -159,6 +172,7 @@ export default function MenuClient({
             </div>
             <select className="form-select" style={{ width: 'auto' }} value={filterCat} onChange={e => setFilterCat(e.target.value)}>
               {categories.map(c => <option key={c} value={c}>{c === 'all' ? 'All Categories' : c}</option>)}
+              <option value="delivery">🛵 FoodPanda & Grab Menu</option>
             </select>
           </div>
 
@@ -181,6 +195,11 @@ export default function MenuClient({
                 <p style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem' }}>{p.name}</p>
                 <p style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-accent)', marginBottom: '0.75rem' }}>
                   ₱{Number(p.price).toFixed(2)}
+                  {filterCat === 'delivery' && resolveDeliveryPrice(p) && (
+                     <span style={{ fontSize: '0.85rem', color: '#e8005e', marginLeft: '0.5rem', fontWeight: 700 }}>
+                        (Delivery: ₱{resolveDeliveryPrice(p)})
+                     </span>
+                  )}
                 </p>
                 <div className="flex gap-1">
                   <button className="btn btn-ghost btn-sm" onClick={() => openEdit(p)} style={{ flex: 1 }}>✏️ Edit</button>

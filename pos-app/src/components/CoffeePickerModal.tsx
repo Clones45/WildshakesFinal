@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Product } from '../lib/supabase'
+import { getDeliveryPrice } from '../lib/deliveryPricing'
 
 export interface CoffeeOption {
     label: 'Hot' | 'Cold'
@@ -11,6 +12,7 @@ interface CoffeePickerModalProps {
     options: CoffeeOption[]
     onSelect: (product: Product, tempLabel: 'Hot' | 'Cold') => void
     onClose: () => void
+    deliveryPlatform?: 'foodpanda' | 'grab'
 }
 
 const TEMP_INFO: Record<string, { icon: string; desc: string; color: string; bg: string }> = {
@@ -18,7 +20,7 @@ const TEMP_INFO: Record<string, { icon: string; desc: string; color: string; bg:
     Cold: { icon: '🧊', desc: 'Served iced',   color: '#0369a1', bg: '#e0f2fe' },
 }
 
-export function CoffeePickerModal({ baseName, options, onSelect, onClose }: CoffeePickerModalProps) {
+export function CoffeePickerModal({ baseName, options, onSelect, onClose, deliveryPlatform }: CoffeePickerModalProps) {
     return (
         <AnimatePresence>
             <motion.div
@@ -134,14 +136,25 @@ export function CoffeePickerModal({ baseName, options, onSelect, onClose }: Coff
                                         }}>
                                             Sold Out
                                         </span>
-                                    ) : (
-                                        <span style={{
-                                            fontWeight: 900, fontSize: '1.2rem',
-                                            color: info.color, letterSpacing: '-0.02em',
-                                        }}>
-                                            ₱{opt.product.price.toFixed(2)}
-                                        </span>
-                                    )}
+                                    ) : (() => {
+                                        const tempKey = opt.label as 'Hot' | 'Cold'
+                                        const delPrice = deliveryPlatform
+                                            ? getDeliveryPrice(opt.product.name, tempKey)
+                                            : null
+                                        const showDel = delPrice !== null && delPrice !== opt.product.price
+                                        return (
+                                            <div style={{ textAlign: 'right' }}>
+                                                <span style={{ fontWeight: 900, fontSize: '1.2rem', color: info.color, letterSpacing: '-0.02em', display: 'block' }}>
+                                                    ₱{(delPrice ?? opt.product.price).toFixed(2)}
+                                                </span>
+                                                {showDel && (
+                                                    <span style={{ fontSize: '0.68rem', color: '#9ca3af', textDecoration: 'line-through', display: 'block' }}>
+                                                        ₱{opt.product.price.toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )
+                                    })()}
                                 </motion.button>
                             )
                         })}

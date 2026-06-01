@@ -18,6 +18,7 @@ import { PendingOrders } from '../components/PendingOrders'
 import { HoldModal } from '../components/HoldModal'
 import { StockControlModal } from '../components/StockControlModal'
 import { TransactionsViewGated } from '../components/TransactionsView'
+import { DeliveryPlatformModal } from '../components/DeliveryPlatformModal'
 import { LogOut, Clock, ReceiptText, Lock, Package } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
@@ -25,9 +26,9 @@ import { printKitchenTicket } from '../lib/printer'
 
 export function POSScreen() {
     const { user, branch, logoutCashier, releaseDevice } = useAuthStore()
-    const {
-        items, discountType, discountAmount, total, reset,
+    const { items, discountType, discountAmount, total, reset,
         resumedHoldId, resumedHoldRef, resumedTableNumber,
+        deliveryPlatform, setDeliveryPlatform,
     } = useCartStore()
     const { syncPending, refreshPendingCount } = useSyncStore()
     const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder, deleteHeldOrder } = useHoldStore()
@@ -46,6 +47,7 @@ export function POSScreen() {
     const [showHoldModal, setShowHoldModal] = useState(false)
     const [showTransactions, setShowTransactions] = useState(false)
     const [showStockControl, setShowStockControl] = useState(false)
+    const [showDeliveryPicker, setShowDeliveryPicker] = useState(false)
     const [managerPinCallback, setManagerPinCallback] = useState<() => void>(() => () => { })
     const [lastTransaction, setLastTransaction] = useState<LocalTransaction | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
@@ -190,6 +192,7 @@ export function POSScreen() {
                 source: 'pos',
                 orderType,
                 tableNumber: resumedTableNumber ?? undefined,
+                deliveryPlatform: deliveryPlatform ?? undefined,
                 items: items.map((i) => ({
                     productId: i.product.id,
                     productName: i.variant ? `${i.product.name} · ${i.variant}` : i.product.name,
@@ -261,6 +264,7 @@ export function POSScreen() {
 
     const handleNewOrder = () => {
         reset()
+        setDeliveryPlatform(null)
         setShowReceipt(false)
         setLastTransaction(null)
     }
@@ -366,7 +370,22 @@ export function POSScreen() {
                             style={{ width: 400, height: 400, objectFit: 'contain', opacity: 0.06 }}
                         />
                     </div>
-                    <ProductGrid products={products} categories={categories} isLoading={isLoading} menuError={menuError} onReload={reloadMenu} />
+                    <ProductGrid
+                        products={products}
+                        categories={categories}
+                        isLoading={isLoading}
+                        menuError={menuError}
+                        onReload={reloadMenu}
+                        deliveryPlatform={deliveryPlatform}
+                        onDeliveryTabClick={() => {
+                            if (deliveryPlatform) {
+                                // Already in delivery mode — toggle off
+                                setDeliveryPlatform(null)
+                            } else {
+                                setShowDeliveryPicker(true)
+                            }
+                        }}
+                    />
                 </div>
 
                 {/* Cart panel (30%) */}
@@ -420,6 +439,16 @@ export function POSScreen() {
             <PendingOrders
                 isOpen={showPending}
                 onClose={() => setShowPending(false)}
+            />
+
+            {/* Delivery platform picker */}
+            <DeliveryPlatformModal
+                isOpen={showDeliveryPicker}
+                onSelect={(platform) => {
+                    setDeliveryPlatform(platform)
+                    setShowDeliveryPicker(false)
+                }}
+                onClose={() => setShowDeliveryPicker(false)}
             />
 
             {/* Stock Control */}

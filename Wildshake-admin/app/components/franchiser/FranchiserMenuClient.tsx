@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { hasDeliveryPrice, getDeliveryPrice } from '@/lib/deliveryPricing'
 
 interface Product {
   id: string
@@ -47,15 +48,31 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
   const filtered = useMemo(() => {
     return products.filter(p => {
       const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
-      const matchCat = filterCategory === 'All' || p.category === filterCategory
+      
+      if (filterCategory === 'delivery') {
+         if (!hasDeliveryPrice(p.name)) return false
+      } else {
+         const matchCat = filterCategory === 'All' || p.category === filterCategory
+         if (!matchCat) return false
+      }
+
       const isAvail = availability[p.id] !== false
       const matchStatus =
         filterStatus === 'all' ? true :
         filterStatus === 'available' ? isAvail :
         !isAvail
-      return matchSearch && matchCat && matchStatus
+      return matchSearch && matchStatus
     })
   }, [products, search, filterCategory, filterStatus, availability])
+
+  function resolveDeliveryPrice(p: Product) {
+    let qualifier = undefined
+    if (p.category.includes('Petite')) qualifier = 'Petite'
+    else if (p.category.includes('Grande')) qualifier = 'Grande'
+    else if (p.category === 'Coffee Hot') qualifier = 'Hot'
+    else if (p.category === 'Coffee Iced') qualifier = 'Cold'
+    return getDeliveryPrice(p.name, qualifier)
+  }
 
   const availableCount = products.filter(p => availability[p.id] !== false).length
   const outCount = products.length - availableCount
@@ -186,6 +203,7 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
           }}
         >
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          <option value="delivery">🛵 FoodPanda & Grab Menu</option>
         </select>
         <div style={{ display: 'flex', gap: '0.375rem' }}>
           {(['all', 'available', 'out'] as const).map(f => (
@@ -271,6 +289,11 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
                   </p>
                   <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
                     {product.category} · ₱{Number(product.price).toFixed(0)}
+                    {filterCategory === 'delivery' && resolveDeliveryPrice(product) && (
+                       <span style={{ color: '#e8005e', marginLeft: '0.25rem', fontWeight: 700 }}>
+                          (Delivery: ₱{resolveDeliveryPrice(product)})
+                       </span>
+                    )}
                   </p>
 
                   {/* Toggle */}
