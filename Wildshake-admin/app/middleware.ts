@@ -28,8 +28,9 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Refresh session — do NOT remove this
-  const { data: { user } } = await supabase.auth.getUser()
+  // Use getSession to avoid network request hanging in Edge middleware (Vercel timeout)
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user
 
   const { pathname } = request.nextUrl
 
