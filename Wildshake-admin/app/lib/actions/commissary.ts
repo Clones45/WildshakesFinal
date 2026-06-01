@@ -29,6 +29,7 @@ export async function createCommissaryShipment(formData: FormData) {
 
   if (error) return { error: error.message }
   revalidatePath('/commissary')
+  revalidatePath('/franchiser/inventory')
   return { success: true }
 }
 
@@ -41,6 +42,7 @@ export async function markShipmentSent(shipmentId: string) {
     .eq('id', shipmentId)
   if (error) return { error: error.message }
   revalidatePath('/commissary')
+  revalidatePath('/franchiser/inventory')
   return { success: true }
 }
 
