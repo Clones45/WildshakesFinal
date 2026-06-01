@@ -2,9 +2,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { Product } from '../lib/supabase'
 import { useFriesStockStore } from '../store/friesStockStore'
 
-export type FriesFlavor = 'Cheese' | 'BBQ' | 'Sour Cream'
+export type FriesFlavor = 'Cheese' | 'BBQ' | 'Sour Cream' | 'Salt'
 
-export const FRIES_FLAVORS: FriesFlavor[] = ['Cheese', 'BBQ', 'Sour Cream']
+export const FRIES_FLAVORS: FriesFlavor[] = ['Cheese', 'BBQ', 'Sour Cream', 'Salt']
 
 // Helper to determine if a product name should trigger the flavor picker
 export function requiresFriesFlavor(productName: string): boolean {
@@ -15,6 +15,7 @@ const FLAVOR_INFO: Record<FriesFlavor, { emoji: string; color: string; desc: str
     'Cheese':     { emoji: '🧀', color: '#f59e0b', desc: 'Creamy cheddar seasoning' },
     'BBQ':        { emoji: '🍖', color: '#dc2626', desc: 'Smoky & savory BBQ blend' },
     'Sour Cream': { emoji: '🥛', color: '#6366f1', desc: 'Tangy sour cream & onion' },
+    'Salt':       { emoji: '🧂', color: '#9ca3af', desc: 'Classic salt seasoning' },
 }
 
 interface FlavorPickerModalProps {
