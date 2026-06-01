@@ -65,7 +65,7 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
   function exportCSV() {
     const header = 'Ref,Date,Cashier,Amount,Discount,Payment,Status\n'
     const rows = filtered.map(tx =>
-      `${tx.local_ref || tx.id.slice(0, 8)},${new Date(tx.created_at).toLocaleString()},${tx.users?.name || ''},${tx.total_amount},${tx.discount_amount},${tx.payment_method},${tx.status}`
+      `${(tx.local_ref || tx.reference_number || tx.id).slice(-8).toUpperCase()},${new Date(tx.created_at).toLocaleString()},${tx.users?.name || ''},${tx.total_amount},${tx.discount_amount},${tx.payment_method},${tx.status}`
     ).join('\n')
     const blob = new Blob([header + rows], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -170,7 +170,7 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                     onClick={() => setExpanded(expanded === tx.id ? null : tx.id)}
                   >
                     <td style={{ fontFamily: 'monospace', fontSize: '0.73rem', color: 'var(--color-text-muted)' }}>
-                      {(tx.local_ref || tx.reference_number || tx.id).slice(0, 12).toUpperCase()}
+                      {(tx.local_ref || tx.reference_number || tx.id).slice(-8).toUpperCase()}
                     </td>
                     <td style={{ fontSize: '0.8rem' }}>
                       <div>{new Date(tx.created_at).toLocaleDateString('en-PH')}</div>
