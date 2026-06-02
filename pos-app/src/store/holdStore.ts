@@ -304,7 +304,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                 .update({
                     total_amount: total,
                     cashier_id: user?.id ?? null,
-                    ...(tableRef !== undefined ? { local_ref: tableRef, table_number: tableRef } : {}),
+                    ...(tableRef !== undefined ? { table_number: tableRef } : {}),
                 })
                 .eq('id', id)
             if (txnErr) throw txnErr
