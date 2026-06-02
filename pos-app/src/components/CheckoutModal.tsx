@@ -282,7 +282,7 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
 
     const handleConfirm = async () => {
         if (isDelivery) {
-            await onConfirm(deliveryPlatform, tot, referenceNumber, '', 'pickup')
+            await onConfirm('other', tot, referenceNumber, '', 'pickup')
         } else if (isSplit) {
             const primaryMethod = splits.map(s => s.method).join('+')
             await onConfirm(primaryMethod, splitTotal, '', '', orderType, splits)

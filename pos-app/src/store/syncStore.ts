@@ -37,7 +37,7 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 
         try {
             // ── 1. Sync completed transactions ──────────────────────────────
-            const pendingTx = await db.transactions.where('syncStatus').equals('pending').toArray()
+            const pendingTx = await db.transactions.where('syncStatus').anyOf(['pending', 'failed']).toArray()
             for (const local of pendingTx) {
                 try {
                     await pushTransaction(local)
@@ -122,7 +122,7 @@ async function pushTransaction(local: LocalTransaction) {
                 total_amount: local.totalAmount,
                 discount_type: local.discountType,
                 discount_amount: local.discountAmount,
-                payment_method: local.paymentMethod,
+                payment_method: ['foodpanda', 'grab'].includes(local.paymentMethod) ? 'other' : local.paymentMethod,
                 reference_number: local.referenceNumber ?? null,
                 bank_name: local.bankName ?? null,
                 status: local.status,
