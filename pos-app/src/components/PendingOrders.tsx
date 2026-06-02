@@ -327,17 +327,32 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                                                 {/* Order meta */}
                                                 <div className="flex items-start justify-between">
                                                     <div>
-                                                        {/* Table number — shown from dedicated field, falls back to local_ref */}
-                                                        {(order.table_number ?? order.local_ref) ? (
-                                                            <div className="flex items-center gap-1.5 mb-1">
-                                                                <MapPin size={12} className="text-teal-400" />
-                                                                <span className="text-teal-400 font-bold text-sm">
-                                                                    Table #{order.table_number ?? order.local_ref}
-                                                                </span>
-                                                            </div>
-                                                        ) : (
-                                                            <p className="text-gray-500 text-xs font-mono mb-1">No table assigned</p>
-                                                        )}
+                                                        {(() => {
+                                                            const displayTable = order.table_number || (!order.local_ref?.startsWith('hold-') ? order.local_ref : null)
+                                                            if (displayTable) {
+                                                                return (
+                                                                    <div className="flex items-center gap-1.5 mb-1">
+                                                                        <MapPin size={12} className="text-teal-400" />
+                                                                        <span className="text-teal-400 font-bold text-sm">
+                                                                            Table #{displayTable}
+                                                                        </span>
+                                                                    </div>
+                                                                )
+                                                            }
+                                                            if (order.delivery_platform) {
+                                                                return (
+                                                                    <div className="flex items-center gap-1.5 mb-1">
+                                                                        <span className="text-lg leading-none">
+                                                                            {order.delivery_platform === 'foodpanda' ? '🐼' : '🟢'}
+                                                                        </span>
+                                                                        <span className={`font-bold text-sm ${order.delivery_platform === 'foodpanda' ? 'text-pink-500' : 'text-green-500'}`}>
+                                                                            {order.delivery_platform === 'foodpanda' ? 'Foodpanda' : 'Grab'} Order
+                                                                        </span>
+                                                                    </div>
+                                                                )
+                                                            }
+                                                            return <p className="text-gray-500 text-xs font-mono mb-1">No table assigned</p>
+                                                        })()}
                                                         <p className="text-gray-500 text-xs font-mono">
                                                             {formatTime(order.created_at)} · #{order.id.slice(-4).toUpperCase()}
                                                         </p>
