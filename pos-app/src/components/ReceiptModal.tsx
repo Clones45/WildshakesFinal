@@ -186,10 +186,15 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                         <UtensilsCrossed size={12} />
                                         Dine-in
                                     </span>
-                                ) : (
+                                ) : orderType === 'take-out' ? (
                                     <span className="inline-flex items-center gap-1.5 text-amber-400 font-bold text-xs">
                                         <ShoppingBag size={12} />
                                         Take-out
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 text-indigo-400 font-bold text-xs">
+                                        <ShoppingBag size={12} />
+                                        Pickup
                                     </span>
                                 )}
                             </div>
@@ -257,15 +262,24 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                     <span className="text-white">Total</span>
                                     <span className="text-teal-400">₱{transaction.totalAmount.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between text-gray-400">
-                                    <span className="capitalize">{paymentLabel}</span>
-                                    <span className="text-white">₱{transaction.totalAmount.toFixed(2)}</span>
-                                </div>
-                                {transaction.referenceNumber && (
+                                {deliveryPlatform ? (
                                     <div className="flex justify-between text-gray-400">
-                                        <span>Ref#</span>
-                                        <span className="text-white">{transaction.referenceNumber}</span>
+                                        <span>{deliveryPlatform === 'foodpanda' ? 'Foodpanda Code' : 'Grab Code'}</span>
+                                        <span className="text-white font-bold">{transaction.referenceNumber}</span>
                                     </div>
+                                ) : (
+                                    <>
+                                        <div className="flex justify-between text-gray-400">
+                                            <span className="capitalize">{paymentLabel}</span>
+                                            <span className="text-white">₱{transaction.totalAmount.toFixed(2)}</span>
+                                        </div>
+                                        {transaction.referenceNumber && (
+                                            <div className="flex justify-between text-gray-400">
+                                                <span>Ref#</span>
+                                                <span className="text-white">{transaction.referenceNumber}</span>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
 

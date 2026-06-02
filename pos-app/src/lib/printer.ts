@@ -212,7 +212,7 @@ export function buildReceiptText(
     })
 
 
-    const orderTypeLabel = transaction.orderType === 'take-out' ? 'Take-out' : 'Dine-in'
+    const orderTypeLabel = transaction.orderType === 'take-out' ? 'Take-out' : transaction.orderType === 'pickup' ? 'Pickup' : 'Dine-in'
 
     // ── Delivery platform banner lines ────────────────────────────────────────
     const deliveryBannerLines: string[] = []
@@ -240,9 +240,14 @@ export function buildReceiptText(
         totalLines.push(leftRight(`${transaction.discountType} disc.`, `-P${transaction.discountAmount.toFixed(2)}`))
     totalLines.push(divider)
     totalLines.push(leftRight('TOTAL', `P${transaction.totalAmount.toFixed(2)}`))
-    totalLines.push(leftRight(transaction.paymentMethod.replace(/_/g, ' ').toUpperCase(), `P${transaction.totalAmount.toFixed(2)}`))
-    if (transaction.referenceNumber)
-        totalLines.push(leftRight('Ref#', transaction.referenceNumber))
+    if ((transaction as any).deliveryPlatform) {
+        const platformName = (transaction as any).deliveryPlatform === 'foodpanda' ? 'Foodpanda Code' : 'Grab Code'
+        totalLines.push(leftRight(platformName, transaction.referenceNumber ?? ''))
+    } else {
+        totalLines.push(leftRight(transaction.paymentMethod.replace(/_/g, ' ').toUpperCase(), `P${transaction.totalAmount.toFixed(2)}`))
+        if (transaction.referenceNumber)
+            totalLines.push(leftRight('Ref#', transaction.referenceNumber))
+    }
 
     return [
         // ── Delivery banner (if applicable) ──

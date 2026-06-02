@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { db, type LocalHeldOrder } from '../lib/db'
-import type { CartItem } from './cartStore'
+import { useCartStore, type CartItem } from './cartStore'
 import { useAuthStore } from './authStore'
 import { logAudit } from '../lib/auditLog'
 import { toast } from 'react-hot-toast'
@@ -31,6 +31,7 @@ export interface HeldOrder {
     local_ref: string | null
     table_number: string | null  // dedicated table number column
     isLocal: boolean             // true = only in IndexedDB, not yet synced
+    delivery_platform?: 'foodpanda' | 'grab' | null
     items: HeldOrderItem[]
 }
 
@@ -64,6 +65,7 @@ function localToHeld(local: LocalHeldOrder): HeldOrder {
         created_at: local.createdAt,
         local_ref: local.tableRef,
         table_number: local.tableRef,
+        delivery_platform: local.deliveryPlatform ?? null,
         isLocal: true,
         items: local.items.map((i) => ({
             id: i.productId,
@@ -95,7 +97,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
             if (navigator.onLine) {
                 const { data: txns, error: txnErr } = await supabase
                     .from('transactions')
-                    .select('id, total_amount, created_at, local_ref, table_number')
+                    .select('id, total_amount, created_at, local_ref, table_number, delivery_platform')
                     .eq('status', 'pending')
                     .order('created_at', { ascending: false })
 
@@ -119,6 +121,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                         created_at: String(t.created_at),
                         local_ref: (t.local_ref as string | null) ?? null,
                         table_number: (t.table_number as string | null) ?? null,
+                        delivery_platform: (t.delivery_platform as 'foodpanda' | 'grab' | null) ?? null,
                         isLocal: false,
                         items: ((allItems ?? []) as Record<string, unknown>[])
                             .filter((i) => i.transaction_id === t.id)
@@ -151,6 +154,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
         if (cartItems.length === 0) return null
 
         const { branch, user } = useAuthStore.getState()
+        const { deliveryPlatform } = useCartStore.getState()
         if (!branch?.id) {
             toast.error('No branch selected — please log in again')
             return null
@@ -191,6 +195,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                 totalAmount: total,
                 items: localItems,
                 syncStatus: 'local',
+                deliveryPlatform: deliveryPlatform ?? undefined,
                 createdAt: new Date().toISOString(),
             }
             await db.localHeldOrders.add(localHeld)
@@ -212,6 +217,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                 source: 'pos',
                 local_ref: ref ?? `hold-${localId}`,
                 table_number: ref ?? null,
+                delivery_platform: deliveryPlatform ?? null,
             }
 
             let { data: txn, error: txnErr } = await supabase
@@ -255,6 +261,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                 totalAmount: total,
                 items: localItems,
                 syncStatus: 'local',
+                deliveryPlatform: deliveryPlatform ?? undefined,
                 createdAt: new Date().toISOString(),
             }
             await db.localHeldOrders.add(localHeld)
@@ -417,6 +424,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
                     source: 'pos',
                     local_ref: local.tableRef ?? `hold-${local.localId}`,
                     table_number: local.tableRef ?? null,
+                    delivery_platform: local.deliveryPlatform ?? null,
                 }
 
                 const { data: txn, error: txnErr } = await supabase

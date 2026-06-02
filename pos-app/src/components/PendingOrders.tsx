@@ -173,6 +173,7 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
             // ── 5. Persist the resumed hold reference ────────────────────────
             const tableNum = order.table_number ?? order.local_ref
             setResumedHold(order.id, order.local_ref, tableNum)
+            useCartStore.getState().setDeliveryPlatform(order.delivery_platform ?? null)
             toast.success('Order resumed — add items then Hold or Checkout', { icon: '▶️', duration: 3000 })
             onClose()
         } catch (err) {

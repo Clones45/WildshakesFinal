@@ -20,7 +20,7 @@ export interface LocalTransaction {
     referenceNumber?: string  // Last 6 digits for GCash/Maya, 5 for Bank Transfer
     bankName?: string         // For bank_transfer: BDO, BPI, Metrobank, etc.
     splitPayments?: SplitPaymentEntry[]  // Populated for split payment transactions
-    orderType?: 'dine-in' | 'take-out'   // Set at checkout
+    orderType?: 'dine-in' | 'take-out' | 'pickup'   // Set at checkout
     status: string
     source: string
     tableNumber?: string      // Table number if order came from a held order
@@ -54,6 +54,7 @@ export interface LocalHeldOrder {
     syncStatus: 'local' | 'synced' | 'failed'
     createdAt: string
     supabaseId?: string       // Supabase transactions.id after sync
+    deliveryPlatform?: 'foodpanda' | 'grab' // Set for FoodPanda / Grab delivery orders
 }
 
 // ─── Offline Audit Log ─────────────────────────────────────────────────────

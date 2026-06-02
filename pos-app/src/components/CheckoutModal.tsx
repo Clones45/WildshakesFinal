@@ -9,7 +9,7 @@ import {
 interface CheckoutModalProps {
     isOpen: boolean
     onClose: () => void
-    onConfirm: (method: string, tendered: number, referenceNumber: string, bankName: string, orderType: 'dine-in' | 'take-out', splits?: SplitEntry[]) => Promise<void>
+    onConfirm: (method: string, tendered: number, referenceNumber: string, bankName: string, orderType: 'dine-in' | 'take-out' | 'pickup', splits?: SplitEntry[]) => Promise<void>
     isProcessing: boolean
 }
 
@@ -227,14 +227,14 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
     const {
         paymentMethod, setPaymentMethod,
         cashTendered, referenceNumber, bankName,
-        total, items,
+        total, items, deliveryPlatform,
     } = useCartStore()
 
     const tot = total()
 
     const [isSplit, setIsSplit] = useState(false)
     const [splits, setSplits] = useState<SplitEntry[]>([])
-    const [orderType, setOrderType] = useState<'dine-in' | 'take-out'>('dine-in')
+    const [orderType, setOrderType] = useState<'dine-in' | 'take-out' | 'pickup'>(deliveryPlatform ? 'pickup' : 'dine-in')
 
     const newEntry = useCallback((): SplitEntry => ({
         id: crypto.randomUUID(),
@@ -271,14 +271,19 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
     const requiredDigits = isGcashMaya ? 6 : 5
     const refValid = referenceNumber.length === requiredDigits
     const bankValid = isBank ? bankName.length > 0 : true
+    const isDelivery = !!deliveryPlatform
+    const deliveryValid = referenceNumber.length > 0
+
     const singleValid = !isProcessing && (
-        paymentMethod === 'cash' ? cashTendered >= tot : refValid && bankValid
+        isDelivery ? deliveryValid : (paymentMethod === 'cash' ? cashTendered >= tot : refValid && bankValid)
     )
 
     const canConfirm = !isProcessing && (isSplit ? splitValid : singleValid)
 
     const handleConfirm = async () => {
-        if (isSplit) {
+        if (isDelivery) {
+            await onConfirm(deliveryPlatform, tot, referenceNumber, '', 'pickup')
+        } else if (isSplit) {
             const primaryMethod = splits.map(s => s.method).join('+')
             await onConfirm(primaryMethod, splitTotal, '', '', orderType, splits)
         } else {
@@ -321,31 +326,42 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                         </div>
 
                         <div className="overflow-y-auto flex-1 p-6 space-y-5">
-                        {/* Dine-in / Take-out */}
+                        {/* Order Type */}
                         <div>
                             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Order Type</p>
-                            <div className="grid grid-cols-2 gap-2">
-                                <button
-                                    onClick={() => setOrderType('dine-in')}
-                                    className={`py-3 rounded-xl border font-bold text-sm transition-all ${
-                                        orderType === 'dine-in'
-                                            ? 'bg-teal-500/15 border-teal-500/50 text-teal-400'
-                                            : 'bg-surface-700 border-surface-500 text-gray-500 hover:border-surface-400'
-                                    }`}
-                                >
-                                    🍽️ Dine-in
-                                </button>
-                                <button
-                                    onClick={() => setOrderType('take-out')}
-                                    className={`py-3 rounded-xl border font-bold text-sm transition-all ${
-                                        orderType === 'take-out'
-                                            ? 'bg-amber-500/15 border-amber-500/50 text-amber-400'
-                                            : 'bg-surface-700 border-surface-500 text-gray-500 hover:border-surface-400'
-                                    }`}
-                                >
-                                    🥡 Take-out
-                                </button>
-                            </div>
+                            {isDelivery ? (
+                                <div className="grid grid-cols-1 gap-2">
+                                    <button
+                                        disabled
+                                        className="py-3 rounded-xl border font-bold text-sm bg-indigo-500/15 border-indigo-500/50 text-indigo-400"
+                                    >
+                                        🛍️ Pickup ({deliveryPlatform === 'foodpanda' ? 'Foodpanda' : 'Grab'})
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => setOrderType('dine-in')}
+                                        className={`py-3 rounded-xl border font-bold text-sm transition-all ${
+                                            orderType === 'dine-in'
+                                                ? 'bg-teal-500/15 border-teal-500/50 text-teal-400'
+                                                : 'bg-surface-700 border-surface-500 text-gray-500 hover:border-surface-400'
+                                        }`}
+                                    >
+                                        🍽️ Dine-in
+                                    </button>
+                                    <button
+                                        onClick={() => setOrderType('take-out')}
+                                        className={`py-3 rounded-xl border font-bold text-sm transition-all ${
+                                            orderType === 'take-out'
+                                                ? 'bg-amber-500/15 border-amber-500/50 text-amber-400'
+                                                : 'bg-surface-700 border-surface-500 text-gray-500 hover:border-surface-400'
+                                        }`}
+                                    >
+                                        🥡 Take-out
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {/* Total */}
@@ -354,79 +370,97 @@ export function CheckoutModal({ isOpen, onClose, onConfirm, isProcessing }: Chec
                             <p className="text-5xl font-extrabold text-teal-400">₱{tot.toFixed(2)}</p>
                         </div>
 
-                            {/* Split toggle */}
-                            <button
-                                onClick={handleToggleSplit}
-                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition-all ${
-                                    isSplit
-                                        ? 'bg-violet-500/15 border-violet-500/40 text-violet-400'
-                                        : 'bg-surface-700 border-surface-500 text-gray-400 hover:border-violet-500/30 hover:text-violet-400'
-                                }`}
-                            >
-                                <SplitSquareVertical size={16} />
-                                {isSplit ? 'Split Payment ON — tap to use single payment' : 'Split Payment (Cash + Card / E-Wallet)'}
-                            </button>
-
-                            <AnimatePresence mode="wait">
-                                {isSplit ? (
-                                    <motion.div key="split" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                                        {/* Running totals */}
-                                        <div className="flex justify-between items-center text-xs font-semibold px-1">
-                                            <span className="text-gray-400">Collected: <span className="text-white">₱{splitTotal.toFixed(2)}</span></span>
-                                            {splitRemaining > 0
-                                                ? <span className="text-amber-400">Remaining: ₱{splitRemaining.toFixed(2)}</span>
-                                                : <span className="text-green-400 flex items-center gap-1"><Check size={12} />Covered</span>
-                                            }
+                            {isDelivery ? (
+                                <div className="space-y-3 pt-2 border-t border-surface-600">
+                                    <div>
+                                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Delivery Rider Receipt Code <span className="text-red-400">*</span></p>
+                                        <p className="text-xs text-gray-500 mb-2">Enter the transaction code provided by the {deliveryPlatform} rider.</p>
+                                        <div className="relative">
+                                            <input type="text" autoFocus value={referenceNumber}
+                                                onChange={e => useCartStore.getState().setReferenceNumber(e.target.value)}
+                                                placeholder="e.g. FP-12345"
+                                                className={`input-field text-lg font-bold w-full text-center transition-all ${referenceNumber.length > 0 ? 'border-green-500/50 bg-green-500/5' : ''}`} />
+                                            {referenceNumber.length > 0 && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute right-3 top-1/2 -translate-y-1/2"><Check size={18} className="text-green-400" /></motion.div>}
                                         </div>
-
-                                        {/* Split rows */}
-                                        {splits.map((entry, idx) => {
-                                            const othersTotal = splits.filter(e => e.id !== entry.id).reduce((s, e) => s + e.amount, 0)
-                                            const remForThis = parseFloat((tot - othersTotal).toFixed(2))
-                                            return (
-                                                <div key={entry.id}>
-                                                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1.5 px-1">Payment {idx + 1}</p>
-                                                    <SplitRow
-                                                        entry={entry}
-                                                        remainingAfterOthers={remForThis > 0 ? remForThis : 0}
-                                                        onChange={patch => updateSplit(entry.id, patch)}
-                                                        onRemove={() => removeSplit(entry.id)}
-                                                    />
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Split toggle */}
+                                    <button
+                                        onClick={handleToggleSplit}
+                                        className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition-all ${
+                                            isSplit
+                                                ? 'bg-violet-500/15 border-violet-500/40 text-violet-400'
+                                                : 'bg-surface-700 border-surface-500 text-gray-400 hover:border-violet-500/30 hover:text-violet-400'
+                                        }`}
+                                    >
+                                        <SplitSquareVertical size={16} />
+                                        {isSplit ? 'Split Payment ON — tap to use single payment' : 'Split Payment (Cash + Card / E-Wallet)'}
+                                    </button>
+        
+                                    <AnimatePresence mode="wait">
+                                        {isSplit ? (
+                                            <motion.div key="split" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+                                                {/* Running totals */}
+                                                <div className="flex justify-between items-center text-xs font-semibold px-1">
+                                                    <span className="text-gray-400">Collected: <span className="text-white">₱{splitTotal.toFixed(2)}</span></span>
+                                                    {splitRemaining > 0
+                                                        ? <span className="text-amber-400">Remaining: ₱{splitRemaining.toFixed(2)}</span>
+                                                        : <span className="text-green-400 flex items-center gap-1"><Check size={12} />Covered</span>
+                                                    }
                                                 </div>
-                                            )
-                                        })}
-
-                                        {/* Add another split */}
-                                        <button onClick={addSplit}
-                                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-surface-500 text-gray-500 hover:border-brand-500/40 hover:text-brand-400 text-sm font-semibold transition-all">
-                                            <Plus size={15} /> Add Another Payment Method
-                                        </button>
-                                    </motion.div>
-                                ) : (
-                                    <motion.div key="single" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
-                                        {/* Method selector */}
-                                        <div>
-                                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Payment Method</p>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {PAYMENT_METHODS.map(m => (
-                                                    <button key={m.id} onClick={() => setPaymentMethod(m.id as never)}
-                                                        className={`py-3 px-4 rounded-xl border flex items-center gap-2.5 transition-all ${paymentMethod === m.id ? `${m.bg} ${m.color} font-bold` : 'border-surface-500 bg-surface-700 text-gray-500 hover:border-surface-400'}`}>
-                                                        {m.image ? <img src={m.image} alt={m.label} className="w-5 h-5 object-contain" /> : m.icon && <m.icon size={18} />}
-                                                        <span className="text-sm font-semibold">{m.label}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {/* Dynamic fields */}
-                                        <AnimatePresence mode="wait">
-                                            <motion.div key={paymentMethod} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                                                <SingleMethodFields method={paymentMethod} tot={tot} />
+        
+                                                {/* Split rows */}
+                                                {splits.map((entry, idx) => {
+                                                    const othersTotal = splits.filter(e => e.id !== entry.id).reduce((s, e) => s + e.amount, 0)
+                                                    const remForThis = parseFloat((tot - othersTotal).toFixed(2))
+                                                    return (
+                                                        <div key={entry.id}>
+                                                            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1.5 px-1">Payment {idx + 1}</p>
+                                                            <SplitRow
+                                                                entry={entry}
+                                                                remainingAfterOthers={remForThis > 0 ? remForThis : 0}
+                                                                onChange={patch => updateSplit(entry.id, patch)}
+                                                                onRemove={() => removeSplit(entry.id)}
+                                                            />
+                                                        </div>
+                                                    )
+                                                })}
+        
+                                                {/* Add another split */}
+                                                <button onClick={addSplit}
+                                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-surface-500 text-gray-500 hover:border-brand-500/40 hover:text-brand-400 text-sm font-semibold transition-all">
+                                                    <Plus size={15} /> Add Another Payment Method
+                                                </button>
                                             </motion.div>
-                                        </AnimatePresence>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+                                        ) : (
+                                            <motion.div key="single" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
+                                                {/* Method selector */}
+                                                <div>
+                                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Payment Method</p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {PAYMENT_METHODS.map(m => (
+                                                            <button key={m.id} onClick={() => setPaymentMethod(m.id as never)}
+                                                                className={`py-3 px-4 rounded-xl border flex items-center gap-2.5 transition-all ${paymentMethod === m.id ? `${m.bg} ${m.color} font-bold` : 'border-surface-500 bg-surface-700 text-gray-500 hover:border-surface-400'}`}>
+                                                                {m.image ? <img src={m.image} alt={m.label} className="w-5 h-5 object-contain" /> : m.icon && <m.icon size={18} />}
+                                                                <span className="text-sm font-semibold">{m.label}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+        
+                                                {/* Dynamic fields */}
+                                                <AnimatePresence mode="wait">
+                                                    <motion.div key={paymentMethod} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                                                        <SingleMethodFields method={paymentMethod} tot={tot} />
+                                                    </motion.div>
+                                                </AnimatePresence>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </>
+                            )}
                         </div>
 
                         {/* Confirm */}

@@ -151,7 +151,7 @@ export function POSScreen() {
     }
 
     // ─── Checkout logic ──────────────────────────────────────────────────────────
-    const handleCheckout = async (method: string, tendered: number, refNumber: string, bank: string, orderType: 'dine-in' | 'take-out', splits?: SplitEntry[]) => {
+    const handleCheckout = async (method: string, tendered: number, refNumber: string, bank: string, orderType: 'dine-in' | 'take-out' | 'pickup', splits?: SplitEntry[]) => {
         if (items.length === 0) return
         setIsProcessing(true)
 
@@ -164,7 +164,7 @@ export function POSScreen() {
         await processCheckout(method, tendered, refNumber, bank, orderType, splits)
     }
 
-    const processCheckout = async (method: string, _tendered: number, refNumber: string, bank: string, orderType: 'dine-in' | 'take-out', splits?: SplitEntry[]) => {
+    const processCheckout = async (method: string, _tendered: number, refNumber: string, bank: string, orderType: 'dine-in' | 'take-out' | 'pickup', splits?: SplitEntry[]) => {
         setIsProcessing(true)
         try {
             const localRef = uuidv4()
