@@ -4,11 +4,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
 export async function createFranchise(formData: FormData) {
-  const name        = formData.get('name') as string
-  const ownerName   = formData.get('owner_name') as string
-  const ownerEmail  = formData.get('owner_email') as string
-  const region      = formData.get('region') as string
-  const password    = formData.get('password') as string
+  const name               = formData.get('name') as string
+  const ownerName          = formData.get('owner_name') as string
+  const ownerEmail         = formData.get('owner_email') as string
+  const region             = formData.get('region') as string
+  const password           = formData.get('password') as string
+  const parent_commissary_id = (formData.get('parent_commissary_id') as string) || null
 
   if (!name || !ownerName || !ownerEmail || !password) {
     return { error: 'All fields are required.' }
@@ -19,7 +20,14 @@ export async function createFranchise(formData: FormData) {
   // ── Step 1: Create the franchise record ──────────────────────────────────
   const { data: franchise, error: franchiseError } = await admin
     .from('franchises')
-    .insert({ name, owner_name: ownerName, owner_email: ownerEmail, region, status: 'active' })
+    .insert({
+      name,
+      owner_name: ownerName,
+      owner_email: ownerEmail,
+      region,
+      status: 'active',
+      parent_commissary_id,
+    })
     .select()
     .single()
 
@@ -33,6 +41,7 @@ export async function createFranchise(formData: FormData) {
     app_metadata: {
       role: 'franchisee',
       franchise_id: franchise.id,
+      ...(parent_commissary_id ? { parent_commissary_id } : {}),
     },
     user_metadata: {
       full_name: ownerName,

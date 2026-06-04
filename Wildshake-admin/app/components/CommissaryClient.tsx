@@ -31,7 +31,7 @@ interface DailyLog {
   starting_stock: number | null; additional_stock: number | null
   used_stock: number | null; ending_stock: number | null; notes: string | null
 }
-interface InventoryItem { id: string; category_id: string; name: string; unit: string | null; min_stock_level: number; is_active: boolean }
+interface InventoryItem { id: string; category_id: string; name: string; unit: string | null; min_stock_level: number; is_active: boolean; tagged_to_commissary_id?: string | null }
 
 interface Props {
   branches: Branch[]
@@ -44,6 +44,7 @@ interface Props {
   inventory: { id: string; current_stock: number; safety_level: number; ingredients: { id: string; name: string; unit_of_measure: string } | null; branches: { id: string; name: string } | null }[]
   inventoryCategories: { id: string; name: string; sheet_type: string }[]
   inventoryItems: InventoryItem[]
+  commissaryBranches: { id: string; name: string; region?: string | null }[]
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -66,8 +67,9 @@ function fmt(n: number | null) { return n === null ? '—' : String(n) }
 
 export default function CommissaryClient({
   branches, franchises, commCategories, commItems, shipments, todayLogs,
-  ingredients, inventory, inventoryCategories, inventoryItems,
+  ingredients, inventory, inventoryCategories, inventoryItems, commissaryBranches,
 }: Props) {
+  const commBranchMap = Object.fromEntries((commissaryBranches || []).map(c => [c.id, c]))
   const [tab, setTab] = useState<'stock' | 'shipments' | 'catalog'>('stock')
   const [modal, setModal] = useState<'shipment' | 'ingredient' | 'stock_level' | 'inventory_item' | null>(null)
   const [formError, setFormError]     = useState('')
@@ -559,18 +561,30 @@ export default function CommissaryClient({
                         <th>Item Name</th>
                         <th>Unit</th>
                         <th>Min Stock</th>
+                        <th>Tagged To</th>
                         <th>Status</th>
                         <th>Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {catItems.length === 0 ? (
-                        <tr><td colSpan={5} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-text-muted)' }}>No items in this category.</td></tr>
-                      ) : catItems.map(item => (
+                        <tr><td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-text-muted)' }}>No items in this category.</td></tr>
+                      ) : catItems.map(item => {
+                        const taggedComm = item.tagged_to_commissary_id ? commBranchMap[item.tagged_to_commissary_id] : null
+                        return (
                         <tr key={item.id}>
                           <td style={{ fontWeight: 600 }}>{item.name}</td>
                           <td style={{ color: 'var(--color-text-muted)' }}>{item.unit || '—'}</td>
                           <td>{item.min_stock_level || '—'}</td>
+                          <td>
+                            {taggedComm ? (
+                              <span className="badge badge-muted" style={{ fontSize: '0.7rem' }}>
+                                🏭 {taggedComm.name}
+                              </span>
+                            ) : (
+                              <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>🌐 Global</span>
+                            )}
+                          </td>
                           <td>
                             <span className={`badge ${item.is_active ? 'badge-success' : 'badge-danger'}`}>
                               {item.is_active ? 'Active' : 'Hidden'}
@@ -582,7 +596,7 @@ export default function CommissaryClient({
                             </button>
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
@@ -703,6 +717,18 @@ export default function CommissaryClient({
                     <label className="form-label">Min Stock Level</label>
                     <input name="min_stock_level" type="number" step="0.5" className="form-input" defaultValue={0} />
                   </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Tag to Commissary (optional)</label>
+                  <select name="tagged_to_commissary_id" className="form-select">
+                    <option value="">🌐 Global — visible to all</option>
+                    {(commissaryBranches || []).map(c => (
+                      <option key={c.id} value={c.id}>🏭 {c.name}{c.region ? ` (${c.region})` : ''}</option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                    Tagged items are only visible to that commissary and its franchisees.
+                  </p>
                 </div>
               </div>
               <div className="modal-footer">

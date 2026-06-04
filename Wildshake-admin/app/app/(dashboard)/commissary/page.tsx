@@ -14,6 +14,7 @@ export default async function CommissaryPage() {
     { data: todayLogs },
     { data: ingredients },
     { data: inventory },
+    { data: commissaryBranches },
   ] = await Promise.all([
     // All active branches with franchise info
     supabase
@@ -29,22 +30,22 @@ export default async function CommissaryPage() {
       .eq('status', 'active')
       .order('name'),
 
-    // ALL inventory categories (all sheet types: commissary, commissary_home, food, food_2, production, coffee_general, shake)
+    // ALL inventory categories
     supabase
       .from('inventory_categories')
       .select('id, name, sheet_type, sort_order')
       .order('sheet_type')
       .order('sort_order'),
 
-    // ALL active inventory items
+    // ALL active inventory items — include tagged_to_commissary_id
     supabase
       .from('inventory_items')
-      .select('id, category_id, name, unit, min_stock_level, sort_order, is_active')
+      .select('id, category_id, name, unit, min_stock_level, sort_order, is_active, tagged_to_commissary_id')
       .eq('is_active', true)
       .order('category_id')
       .order('sort_order'),
 
-    // All shipments (new system with inventory_item_id + legacy with ingredient_id)
+    // All shipments
     supabase
       .from('commissary_shipments')
       .select(`
@@ -74,6 +75,13 @@ export default async function CommissaryPage() {
       .from('inventory')
       .select('id, current_stock, safety_level, ingredients(id, name, unit_of_measure), branches(id, name)')
       .order('current_stock'),
+
+    // Commissary branches for item tagging dropdown
+    supabase
+      .from('commissary_branches')
+      .select('id, name, region')
+      .eq('status', 'active')
+      .order('name'),
   ])
 
   return (
@@ -88,6 +96,7 @@ export default async function CommissaryPage() {
       inventory={(inventory || []) as unknown as Parameters<typeof CommissaryClient>[0]['inventory']}
       inventoryCategories={allCategories || []}
       inventoryItems={(allItems || []) as Parameters<typeof CommissaryClient>[0]['inventoryItems']}
+      commissaryBranches={commissaryBranches || []}
     />
   )
 }

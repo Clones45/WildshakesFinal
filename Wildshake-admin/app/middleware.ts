@@ -41,6 +41,9 @@ export async function middleware(request: NextRequest) {
       if (role === 'franchisee') {
         return NextResponse.redirect(new URL('/franchiser/dashboard', request.url))
       }
+      if (role === 'commissary') {
+        return NextResponse.redirect(new URL('/commissary-portal/dashboard', request.url))
+      }
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
     return supabaseResponse
@@ -57,6 +60,13 @@ export async function middleware(request: NextRequest) {
   if (role === 'franchisee') {
     if (!pathname.startsWith('/franchiser')) {
       return NextResponse.redirect(new URL('/franchiser/dashboard', request.url))
+    }
+    return supabaseResponse
+  }
+
+  if (role === 'commissary') {
+    if (!pathname.startsWith('/commissary-portal')) {
+      return NextResponse.redirect(new URL('/commissary-portal/dashboard', request.url))
     }
     return supabaseResponse
   }
