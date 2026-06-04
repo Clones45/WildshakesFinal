@@ -76,19 +76,12 @@ export default async function CommissaryPage() {
       .order('current_stock'),
   ])
 
-  // Commissary categories (CSL + Home) for the stock tab subset
-  const commCategories = (allCategories || []).filter(c =>
-    c.sheet_type === 'commissary' || c.sheet_type === 'commissary_home'
-  )
-  const commCatIds = new Set(commCategories.map(c => c.id))
-  const commItemsFiltered = (allItems || []).filter(i => commCatIds.has(i.category_id))
-
   return (
     <CommissaryClient
       branches={(branches || []) as unknown as Parameters<typeof CommissaryClient>[0]['branches']}
       franchises={(franchises || []) as Parameters<typeof CommissaryClient>[0]['franchises']}
-      commCategories={commCategories as Parameters<typeof CommissaryClient>[0]['commCategories']}
-      commItems={commItemsFiltered as Parameters<typeof CommissaryClient>[0]['commItems']}
+      commCategories={(allCategories || []) as Parameters<typeof CommissaryClient>[0]['commCategories']}
+      commItems={(allItems || []) as Parameters<typeof CommissaryClient>[0]['commItems']}
       shipments={(shipments || []) as unknown as Parameters<typeof CommissaryClient>[0]['shipments']}
       todayLogs={(todayLogs || []) as Parameters<typeof CommissaryClient>[0]['todayLogs']}
       ingredients={ingredients || []}
