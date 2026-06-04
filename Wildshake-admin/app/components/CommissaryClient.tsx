@@ -79,9 +79,23 @@ export default function CommissaryClient({
   const [sheetFilter, setSheetFilter]       = useState<string>('all')
   const [stockFilter, setStockFilter]       = useState<'all' | 'low' | 'out'>('all')
 
+  // Sheet type labels
+  const SHEET_LABELS: Record<string, string> = {
+    commissary: '🏭 Commissary (CSL)',
+    commissary_home: '🏠 Commissary Home',
+    food: '🍝 Food',
+    food_2: '🍕 Food 2',
+    production: '⚙️ Production',
+    coffee_general: '☕ Coffee & General',
+    shake: '🥤 Shake',
+  }
+
   // Shipments tab filters
   const [shipStatus, setShipStatus] = useState<string>('all')
   const [shipBranch, setShipBranch] = useState<string>('all')
+
+  // Catalog tab filter
+  const [catalogSheet, setCatalogSheet] = useState<string>('all')
 
   /* ── Build lookup maps ─────────────────────────────────────────── */
   const catById = Object.fromEntries(commCategories.map(c => [c.id, c]))
@@ -243,8 +257,13 @@ export default function CommissaryClient({
               value={sheetFilter} onChange={e => setSheetFilter(e.target.value)}
             >
               <option value="all">All Sheets</option>
-              <option value="commissary">Commissary (CSL)</option>
-              <option value="commissary_home">Commissary Home</option>
+              <option value="commissary">🏭 Commissary (CSL)</option>
+              <option value="commissary_home">🏠 Commissary Home</option>
+              <option value="food">🍝 Food</option>
+              <option value="food_2">🍕 Food 2</option>
+              <option value="production">⚙️ Production</option>
+              <option value="coffee_general">☕ Coffee & General</option>
+              <option value="shake">🥤 Shake</option>
             </select>
             <div style={{ display: 'flex', gap: '0.375rem' }}>
               {(['all', 'low', 'out'] as const).map(f => (
@@ -335,7 +354,7 @@ export default function CommissaryClient({
                             <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.name}</td>
                             <td>
                               <span className="badge badge-muted" style={{ fontSize: '0.65rem' }}>
-                                {cat?.sheet_type === 'commissary_home' ? '🏠' : '🏭'} {cat?.name}
+                                {SHEET_LABELS[cat?.sheet_type ?? '']?.split(' ')[0] ?? '📦'} {cat?.name}
                               </span>
                             </td>
                             <td style={{ textAlign: 'center', fontSize: '0.85rem' }}>{fmt(log?.starting_stock ?? null)}</td>
@@ -506,16 +525,31 @@ export default function CommissaryClient({
             <p className="text-sm text-muted">Manage the commissary items that appear on franchiser inventory sheets.</p>
           </div>
 
+          {/* Sheet type filter for catalog */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            {['all', 'commissary', 'commissary_home', 'food', 'food_2', 'production', 'coffee_general', 'shake'].map(st => (
+              <button key={st} onClick={() => setCatalogSheet(st)} style={{
+                padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid',
+                borderColor: catalogSheet === st ? 'var(--color-primary)' : 'var(--color-border)',
+                background: catalogSheet === st ? 'rgba(74,124,89,0.12)' : 'var(--color-surface)',
+                color: catalogSheet === st ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
+                fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+              }}>
+                {st === 'all' ? '📋 All' : SHEET_LABELS[st]}
+              </button>
+            ))}
+          </div>
+
           {/* Group by category */}
           {inventoryCategories
-            .filter(c => c.sheet_type === 'commissary' || c.sheet_type === 'commissary_home')
+            .filter(c => catalogSheet === 'all' || c.sheet_type === catalogSheet)
             .map(cat => {
               const catItems = inventoryItems.filter(i => i.category_id === cat.id)
               return (
                 <div key={cat.id} className="table-wrapper" style={{ marginBottom: '1.25rem' }}>
                   <div className="table-header">
                     <p className="table-title">
-                      {cat.sheet_type === 'commissary_home' ? '🏠' : '🏭'} {cat.name}
+                      {SHEET_LABELS[cat.sheet_type]?.split(' ')[0] ?? '📦'} {cat.name}
                     </p>
                     <span className="badge badge-muted">{catItems.length} items</span>
                   </div>
@@ -556,7 +590,7 @@ export default function CommissaryClient({
             })
           }
 
-          {inventoryCategories.filter(c => c.sheet_type === 'commissary' || c.sheet_type === 'commissary_home').length === 0 && (
+          {inventoryCategories.filter(c => catalogSheet === 'all' || c.sheet_type === catalogSheet).length === 0 && (
             <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>
               No commissary categories found. Add items using the ➕ Add Item button above.
             </div>
