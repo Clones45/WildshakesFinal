@@ -109,6 +109,16 @@ export default function CommissaryClient({
   const logMap: Record<string, DailyLog> = {}
   for (const l of todayLogs) logMap[logKey(l.branch_id, l.inventory_item_id)] = l
 
+  // Tag lookup: inventoryItem.id -> commissary branch name (or null = global)
+  const commItemTagMap: Record<string, string | null> = Object.fromEntries(
+    inventoryItems.map(i => [
+      i.id,
+      i.tagged_to_commissary_id
+        ? ((commissaryBranches || []).find(c => c.id === i.tagged_to_commissary_id)?.name ?? null)
+        : null,
+    ])
+  )
+
   /* ── Filtered branches for stock view ─────────────────────────── */
   const visibleBranches = selectedBranch === 'all' ? branches : branches.filter(b => b.id === selectedBranch)
 
@@ -242,19 +252,6 @@ export default function CommissaryClient({
           {/* Filters */}
           <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <select
-              className="form-select" style={{ width: 'auto', minWidth: 200 }}
-              value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}
-            >
-              <option value="all">All Branches</option>
-              {franchises.map(f => (
-                <optgroup key={f.id} label={f.name}>
-                  {branches.filter(b => b.franchise_id === f.id).map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            <select
               className="form-select" style={{ width: 'auto' }}
               value={sheetFilter} onChange={e => setSheetFilter(e.target.value)}
             >
@@ -338,6 +335,7 @@ export default function CommissaryClient({
                     <thead>
                       <tr>
                         <th>Item</th>
+                        <th>Tagged</th>
                         <th>Category</th>
                         <th style={{ textAlign: 'center' }}>Starting</th>
                         <th style={{ textAlign: 'center' }}>Additional</th>
@@ -354,6 +352,18 @@ export default function CommissaryClient({
                         return (
                           <tr key={item.id} style={{ opacity: status === 'out' ? 0.7 : 1 }}>
                             <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.name}</td>
+                            <td>
+                              {(() => {
+                                const tagName = commItemTagMap[item.id]
+                                return tagName ? (
+                                  <span className="badge badge-muted" style={{ fontSize: '0.65rem', whiteSpace: 'nowrap' }}>
+                                    🏭 {tagName}
+                                  </span>
+                                ) : (
+                                  <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>🌐 Global</span>
+                                )
+                              })()}
+                            </td>
                             <td>
                               <span className="badge badge-muted" style={{ fontSize: '0.65rem' }}>
                                 {SHEET_LABELS[cat?.sheet_type ?? '']?.split(' ')[0] ?? '📦'} {cat?.name}
