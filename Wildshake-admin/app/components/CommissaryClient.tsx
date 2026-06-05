@@ -5,7 +5,7 @@ import {
   createCommissaryShipment, markShipmentSent, cancelShipment,
   logShipment, updateShipmentStatus, createIngredient, setInventoryLevel,
 } from '@/lib/actions/commissary'
-import { createInventoryItem, updateInventoryItemStatus } from '@/lib/actions/inventorySetup'
+import { createInventoryItem, updateInventoryItemStatus, setInventoryItemTags } from '@/lib/actions/inventorySetup'
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface Branch {
@@ -31,7 +31,8 @@ interface DailyLog {
   starting_stock: number | null; additional_stock: number | null
   used_stock: number | null; ending_stock: number | null; notes: string | null
 }
-interface InventoryItem { id: string; category_id: string; name: string; unit: string | null; min_stock_level: number; is_active: boolean; tagged_to_commissary_id?: string | null }
+interface InventoryItem { id: string; category_id: string; name: string; unit: string | null; min_stock_level: number; is_active: boolean }
+interface ItemTag { id: string; inventory_item_id: string; entity_type: 'branch' | 'commissary'; entity_id: string }
 
 interface Props {
   branches: Branch[]
@@ -45,6 +46,7 @@ interface Props {
   inventoryCategories: { id: string; name: string; sheet_type: string }[]
   inventoryItems: InventoryItem[]
   commissaryBranches: { id: string; name: string; region?: string | null }[]
+  itemTags: ItemTag[]
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -67,14 +69,21 @@ function fmt(n: number | null) { return n === null ? '—' : String(n) }
 
 export default function CommissaryClient({
   branches, franchises, commCategories, commItems, shipments, todayLogs,
-  ingredients, inventory, inventoryCategories, inventoryItems, commissaryBranches,
+  ingredients, inventory, inventoryCategories, inventoryItems, commissaryBranches, itemTags,
 }: Props) {
   const commBranchMap = Object.fromEntries((commissaryBranches || []).map(c => [c.id, c]))
+  const branchNameMap = Object.fromEntries(branches.map(b => [b.id, b.name]))
+  const commNameMap   = Object.fromEntries((commissaryBranches || []).map(c => [c.id, c.name]))
   const [tab, setTab] = useState<'stock' | 'shipments' | 'catalog'>('stock')
-  const [modal, setModal] = useState<'shipment' | 'ingredient' | 'stock_level' | 'inventory_item' | null>(null)
+  const [modal, setModal] = useState<'shipment' | 'ingredient' | 'stock_level' | 'inventory_item' | 'manage_tags' | null>(null)
   const [formError, setFormError]     = useState('')
   const [formSuccess, setFormSuccess] = useState('')
   const [isPending, startTransition]  = useTransition()
+
+  // Tag management modal state
+  const [tagEditItemId, setTagEditItemId]     = useState<string | null>(null)
+  const [tagEditItemName, setTagEditItemName] = useState('')
+  const [tagSelections, setTagSelections]     = useState<Record<string, boolean>>({})
 
   // Stock tab filters
   const [selectedBranch, setSelectedBranch] = useState<string>('all')
@@ -109,15 +118,20 @@ export default function CommissaryClient({
   const logMap: Record<string, DailyLog> = {}
   for (const l of todayLogs) logMap[logKey(l.branch_id, l.inventory_item_id)] = l
 
-  // Tag lookup: inventoryItem.id -> commissary branch name (or null = global)
-  const commItemTagMap: Record<string, string | null> = Object.fromEntries(
-    inventoryItems.map(i => [
-      i.id,
-      i.tagged_to_commissary_id
-        ? ((commissaryBranches || []).find(c => c.id === i.tagged_to_commissary_id)?.name ?? null)
-        : null,
-    ])
-  )
+  // Many-to-many tag lookup: itemId -> array of tag labels
+  const itemTagsMap: Record<string, { labels: string[]; tags: ItemTag[] }> = {}
+  for (const tag of (itemTags || [])) {
+    if (!itemTagsMap[tag.inventory_item_id]) {
+      itemTagsMap[tag.inventory_item_id] = { labels: [], tags: [] }
+    }
+    const entry = itemTagsMap[tag.inventory_item_id]
+    entry.tags.push(tag)
+    if (tag.entity_type === 'branch') {
+      entry.labels.push(`🏪 ${branchNameMap[tag.entity_id] ?? 'Branch'}`)
+    } else {
+      entry.labels.push(`🏭 ${commNameMap[tag.entity_id] ?? 'Commissary'}`)
+    }
+  }
 
   /* ── Filtered branches for stock view ─────────────────────────── */
   const visibleBranches = selectedBranch === 'all' ? branches : branches.filter(b => b.id === selectedBranch)
@@ -191,6 +205,36 @@ export default function CommissaryClient({
       if (r.error) { setFormError(r.error); return }
       setFormSuccess('Item added!'); setTimeout(closeModal, 1500)
     })
+  }
+
+  function openTagModal(itemId: string, itemName: string) {
+    const existing = (itemTags || []).filter(t => t.inventory_item_id === itemId)
+    const sel: Record<string, boolean> = {}
+    for (const t of existing) sel[`${t.entity_type}::${t.entity_id}`] = true
+    setTagEditItemId(itemId)
+    setTagEditItemName(itemName)
+    setTagSelections(sel)
+    openModal('manage_tags')
+  }
+
+  async function handleSaveTags() {
+    if (!tagEditItemId) return
+    const tags: { entity_type: 'branch' | 'commissary'; entity_id: string }[] = []
+    for (const [key, checked] of Object.entries(tagSelections)) {
+      if (!checked) continue
+      const [entityType, entityId] = key.split('::')
+      tags.push({ entity_type: entityType as 'branch' | 'commissary', entity_id: entityId })
+    }
+    startTransition(async () => {
+      const r = await setInventoryItemTags(tagEditItemId, tags)
+      if (r.error) { setFormError(r.error); return }
+      setFormSuccess('Tags saved!')
+      setTimeout(closeModal, 1200)
+    })
+  }
+
+  function toggleTag(key: string) {
+    setTagSelections(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
   async function handleToggleItem(id: string, current: boolean) {
@@ -354,13 +398,16 @@ export default function CommissaryClient({
                             <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.name}</td>
                             <td>
                               {(() => {
-                                const tagName = commItemTagMap[item.id]
-                                return tagName ? (
-                                  <span className="badge badge-muted" style={{ fontSize: '0.65rem', whiteSpace: 'nowrap' }}>
-                                    🏭 {tagName}
-                                  </span>
-                                ) : (
-                                  <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>🌐 Global</span>
+                                const entry = itemTagsMap[item.id]
+                                if (!entry || entry.labels.length === 0) {
+                                  return <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>🌐 All</span>
+                                }
+                                return (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem' }}>
+                                    {entry.labels.map((l, i) => (
+                                      <span key={i} className="badge badge-muted" style={{ fontSize: '0.62rem', whiteSpace: 'nowrap' }}>{l}</span>
+                                    ))}
+                                  </div>
                                 )
                               })()}
                             </td>
@@ -580,19 +627,22 @@ export default function CommissaryClient({
                       {catItems.length === 0 ? (
                         <tr><td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-text-muted)' }}>No items in this category.</td></tr>
                       ) : catItems.map(item => {
-                        const taggedComm = item.tagged_to_commissary_id ? commBranchMap[item.tagged_to_commissary_id] : null
+                        const entry = itemTagsMap[item.id]
+                        const tagLabels = entry?.labels || []
                         return (
                         <tr key={item.id}>
                           <td style={{ fontWeight: 600 }}>{item.name}</td>
                           <td style={{ color: 'var(--color-text-muted)' }}>{item.unit || '—'}</td>
                           <td>{item.min_stock_level || '—'}</td>
                           <td>
-                            {taggedComm ? (
-                              <span className="badge badge-muted" style={{ fontSize: '0.7rem' }}>
-                                🏭 {taggedComm.name}
-                              </span>
+                            {tagLabels.length === 0 ? (
+                              <span className="badge badge-success" style={{ fontSize: '0.68rem' }}>🌐 All</span>
                             ) : (
-                              <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>🌐 Global</span>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem' }}>
+                                {tagLabels.map((l, i) => (
+                                  <span key={i} className="badge badge-muted" style={{ fontSize: '0.62rem', whiteSpace: 'nowrap' }}>{l}</span>
+                                ))}
+                              </div>
                             )}
                           </td>
                           <td>
@@ -601,9 +651,14 @@ export default function CommissaryClient({
                             </span>
                           </td>
                           <td>
-                            <button className="btn btn-ghost btn-sm" onClick={() => handleToggleItem(item.id, item.is_active)} disabled={isPending}>
-                              {item.is_active ? 'Hide' : 'Show'}
-                            </button>
+                            <div className="flex gap-1">
+                              <button className="btn btn-ghost btn-sm" onClick={() => openTagModal(item.id, item.name)} disabled={isPending}>
+                                🏷️ Tags
+                              </button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => handleToggleItem(item.id, item.is_active)} disabled={isPending}>
+                                {item.is_active ? 'Hide' : 'Show'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       )})}
@@ -728,18 +783,9 @@ export default function CommissaryClient({
                     <input name="min_stock_level" type="number" step="0.5" className="form-input" defaultValue={0} />
                   </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Tag to Commissary (optional)</label>
-                  <select name="tagged_to_commissary_id" className="form-select">
-                    <option value="">🌐 Global — visible to all</option>
-                    {(commissaryBranches || []).map(c => (
-                      <option key={c.id} value={c.id}>🏭 {c.name}{c.region ? ` (${c.region})` : ''}</option>
-                    ))}
-                  </select>
-                  <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-                    Tagged items are only visible to that commissary and its franchisees.
-                  </p>
-                </div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                  After creating the item, use the 🏷️ Tags button in Item Catalog to assign branches/commissaries.
+                </p>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-ghost" onClick={closeModal}>Cancel</button>
@@ -748,6 +794,86 @@ export default function CommissaryClient({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Tag Management Modal */}
+      {modal === 'manage_tags' && tagEditItemId && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+            <div className="modal-header">
+              <div>
+                <p className="modal-title">🏷️ Manage Tags</p>
+                <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>{tagEditItemName}</p>
+              </div>
+              <button className="modal-close" onClick={closeModal}>✕</button>
+            </div>
+            {formError   && <div className="alert alert-danger">{formError}</div>}
+            {formSuccess && <div className="alert alert-success">✅ {formSuccess}</div>}
+            <div className="modal-body">
+              <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
+                Select which branches and/or commissary branches should see this item. If nothing is selected, the item is visible to <strong>all</strong>.
+              </p>
+
+              {/* Commissary Branches */}
+              {(commissaryBranches || []).length > 0 && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--color-text)' }}>🏭 Commissary Branches</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    {(commissaryBranches || []).map(c => {
+                      const key = `commissary::${c.id}`
+                      return (
+                        <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.4rem 0.6rem', borderRadius: 'var(--radius-sm)', background: tagSelections[key] ? 'rgba(74,124,89,0.12)' : 'transparent', border: '1px solid', borderColor: tagSelections[key] ? 'var(--color-primary)' : 'var(--color-border)', transition: 'all 0.15s' }}>
+                          <input type="checkbox" checked={!!tagSelections[key]} onChange={() => toggleTag(key)} style={{ accentColor: 'var(--color-primary)' }} />
+                          <span style={{ fontSize: '0.82rem', fontWeight: tagSelections[key] ? 700 : 400 }}>🏭 {c.name}{c.region ? ` (${c.region})` : ''}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Franchise Branches */}
+              {franchises.map(f => {
+                const fBranches = branches.filter(b => b.franchise_id === f.id)
+                if (fBranches.length === 0) return null
+                return (
+                  <div key={f.id} style={{ marginBottom: '1rem' }}>
+                    <p style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--color-text)' }}>🏪 {f.name}</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {fBranches.map(b => {
+                        const key = `branch::${b.id}`
+                        return (
+                          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.4rem 0.6rem', borderRadius: 'var(--radius-sm)', background: tagSelections[key] ? 'rgba(74,124,89,0.12)' : 'transparent', border: '1px solid', borderColor: tagSelections[key] ? 'var(--color-primary)' : 'var(--color-border)', transition: 'all 0.15s' }}>
+                            <input type="checkbox" checked={!!tagSelections[key]} onChange={() => toggleTag(key)} style={{ accentColor: 'var(--color-primary)' }} />
+                            <span style={{ fontSize: '0.82rem', fontWeight: tagSelections[key] ? 700 : 400 }}>🏪 {b.name}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* Summary */}
+              {(() => {
+                const count = Object.values(tagSelections).filter(Boolean).length
+                return (
+                  <div style={{ padding: '0.6rem 0.875rem', background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.2)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--color-warning)', marginTop: '0.5rem' }}>
+                    {count === 0
+                      ? '🌐 No tags selected — item will be visible to ALL branches and commissaries.'
+                      : `🏷️ ${count} tag${count !== 1 ? 's' : ''} selected — only tagged entities will see this item.`}
+                  </div>
+                )
+              })()}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-ghost" onClick={closeModal}>Cancel</button>
+              <button type="button" className="btn btn-primary" disabled={isPending} onClick={handleSaveTags}>
+                {isPending ? <><span className="loading-spinner" /> Saving…</> : '💾 Save Tags'}
+              </button>
+            </div>
           </div>
         </div>
       )}

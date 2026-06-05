@@ -15,6 +15,7 @@ export default async function CommissaryPage() {
     { data: ingredients },
     { data: inventory },
     { data: commissaryBranches },
+    { data: itemTags },
   ] = await Promise.all([
     // All active branches with franchise info
     supabase
@@ -37,10 +38,10 @@ export default async function CommissaryPage() {
       .order('sheet_type')
       .order('sort_order'),
 
-    // ALL active inventory items — include tagged_to_commissary_id
+    // ALL active inventory items
     supabase
       .from('inventory_items')
-      .select('id, category_id, name, unit, min_stock_level, sort_order, is_active, tagged_to_commissary_id')
+      .select('id, category_id, name, unit, min_stock_level, sort_order, is_active')
       .eq('is_active', true)
       .order('category_id')
       .order('sort_order'),
@@ -76,12 +77,17 @@ export default async function CommissaryPage() {
       .select('id, current_stock, safety_level, ingredients(id, name, unit_of_measure), branches(id, name)')
       .order('current_stock'),
 
-    // Commissary branches for item tagging dropdown
+    // Commissary branches for tagging
     supabase
       .from('commissary_branches')
       .select('id, name, region')
       .eq('status', 'active')
       .order('name'),
+
+    // Many-to-many item tags
+    supabase
+      .from('inventory_item_tags')
+      .select('id, inventory_item_id, entity_type, entity_id'),
   ])
 
   return (
@@ -97,6 +103,7 @@ export default async function CommissaryPage() {
       inventoryCategories={allCategories || []}
       inventoryItems={(allItems || []) as Parameters<typeof CommissaryClient>[0]['inventoryItems']}
       commissaryBranches={commissaryBranches || []}
+      itemTags={(itemTags || []) as Parameters<typeof CommissaryClient>[0]['itemTags']}
     />
   )
 }

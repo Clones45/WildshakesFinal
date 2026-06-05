@@ -27,11 +27,32 @@ export default async function FranchiserInventoryPage() {
     .order('sheet_type')
     .order('sort_order')
 
-  const { data: items } = await supabase
+  const { data: allItems } = await supabase
     .from('inventory_items')
     .select('id, category_id, name, unit, min_stock_level, sort_order')
     .eq('is_active', true)
     .order('sort_order')
+
+  // ── Tag-based filtering: only show items tagged to this branch or untagged (global) ──
+  const { data: myBranchTags } = branchId
+    ? await supabase
+        .from('inventory_item_tags')
+        .select('inventory_item_id')
+        .eq('entity_type', 'branch')
+        .eq('entity_id', branchId)
+    : { data: [] }
+
+  const { data: allTagRows } = await supabase
+    .from('inventory_item_tags')
+    .select('inventory_item_id')
+
+  const myTaggedItemIds = new Set((myBranchTags || []).map(t => t.inventory_item_id))
+  const allTaggedItemIds = new Set((allTagRows || []).map(r => r.inventory_item_id))
+
+  // Items visible to this branch = tagged to it OR not tagged to anything (global)
+  const items = (allItems || []).filter(item =>
+    myTaggedItemIds.has(item.id) || !allTaggedItemIds.has(item.id)
+  )
 
   const { data: todayLogs } = branchId
     ? await supabase

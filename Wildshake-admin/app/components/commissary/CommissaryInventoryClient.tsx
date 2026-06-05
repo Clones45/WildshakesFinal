@@ -9,7 +9,6 @@ interface InventoryItem {
   unit: string | null
   min_stock_level: number | null
   is_active: boolean
-  tagged_to_commissary_id: string | null
   category_id: string
 }
 interface DailyLog {
@@ -52,10 +51,8 @@ export default function CommissaryInventoryClient({
   const [sheetFilter, setSheetFilter]       = useState('all')
   const [search, setSearch]                 = useState('')
 
-  // Tagged items = items tagged to this commissary OR globally available (null)
-  const visibleItems = inventoryItems.filter(i =>
-    i.tagged_to_commissary_id === null || i.tagged_to_commissary_id === commissaryId
-  )
+  // Items are already filtered server-side via junction table
+  const visibleItems = inventoryItems
 
   const searchedItems = visibleItems.filter(i =>
     i.name.toLowerCase().includes(search.toLowerCase())

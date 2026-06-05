@@ -11,10 +11,9 @@ export default async function CommissaryInventoryPage() {
   const [
     { data: commissary },
     { data: franchises },
-    { data: branches },
     { data: categories },
-    { data: inventoryItems },
     { data: todayLogs },
+    { data: myTags },
   ] = await Promise.all([
     supabase
       .from('commissary_branches')
@@ -29,35 +28,25 @@ export default async function CommissaryInventoryPage() {
       .eq('status', 'active'),
 
     supabase
-      .from('branches')
-      .select('id, name, franchise_id')
-      .in(
-        'franchise_id',
-        // subquery via filter — we'll do it in JS
-        ['placeholder'] // will replace below
-      ),
-
-    supabase
       .from('inventory_categories')
       .select('id, name, sheet_type, sort_order')
       .order('sheet_type')
       .order('sort_order'),
 
-    // Items visible to this commissary
-    supabase
-      .from('inventory_items')
-      .select('id, name, unit, min_stock_level, is_active, category_id, tagged_to_commissary_id')
-      .eq('is_active', true)
-      .or(`tagged_to_commissary_id.is.null,tagged_to_commissary_id.eq.${commissaryId}`)
-      .order('name'),
-
     supabase
       .from('daily_inventory_logs')
       .select('id, branch_id, inventory_item_id, log_date, starting_stock, additional_stock, used_stock, ending_stock')
       .eq('log_date', today),
+
+    // Tags for this commissary
+    supabase
+      .from('inventory_item_tags')
+      .select('inventory_item_id')
+      .eq('entity_type', 'commissary')
+      .eq('entity_id', commissaryId),
   ])
 
-  // Fetch branches properly scoped to this commissary's franchisees
+  // Fetch branches for this commissary's franchisees
   const franchiseIds = (franchises || []).map(f => f.id)
   const { data: scopedBranches } = franchiseIds.length > 0
     ? await supabase
@@ -67,12 +56,30 @@ export default async function CommissaryInventoryPage() {
         .eq('status', 'active')
     : { data: [] }
 
+  // Get all items then filter based on tags
+  const { data: allItems } = await supabase
+    .from('inventory_items')
+    .select('id, name, unit, min_stock_level, is_active, category_id')
+    .eq('is_active', true)
+    .order('name')
+
+  // Determine which items are tagged to this commissary, and which have no tags (global)
+  const myTaggedItemIds = new Set((myTags || []).map(t => t.inventory_item_id))
+  const { data: allTaggedRows } = await supabase
+    .from('inventory_item_tags')
+    .select('inventory_item_id')
+  const allTaggedIds = new Set((allTaggedRows || []).map(r => r.inventory_item_id))
+
+  const visibleItems = (allItems || []).filter(item =>
+    myTaggedItemIds.has(item.id) || !allTaggedIds.has(item.id)
+  )
+
   return (
     <CommissaryInventoryClient
       commissaryId={commissaryId}
       commissaryName={commissary?.name ?? ''}
       categories={categories || []}
-      inventoryItems={(inventoryItems || []) as Parameters<typeof CommissaryInventoryClient>[0]['inventoryItems']}
+      inventoryItems={visibleItems as Parameters<typeof CommissaryInventoryClient>[0]['inventoryItems']}
       franchises={franchises || []}
       branches={scopedBranches || []}
       todayLogs={(todayLogs || []) as Parameters<typeof CommissaryInventoryClient>[0]['todayLogs']}
