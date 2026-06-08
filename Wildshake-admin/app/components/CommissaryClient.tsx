@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useRef, useEffect } from 'react'
 import {
   createCommissaryShipment, markShipmentSent, cancelShipment,
   logShipment, updateShipmentStatus, createIngredient, setInventoryLevel,
@@ -75,15 +75,13 @@ export default function CommissaryClient({
   const branchNameMap = Object.fromEntries(branches.map(b => [b.id, b.name]))
   const commNameMap   = Object.fromEntries((commissaryBranches || []).map(c => [c.id, c.name]))
   const [tab, setTab] = useState<'stock' | 'shipments' | 'catalog'>('stock')
-  const [modal, setModal] = useState<'shipment' | 'ingredient' | 'stock_level' | 'inventory_item' | 'manage_tags' | null>(null)
+  const [modal, setModal] = useState<'shipment' | 'ingredient' | 'stock_level' | 'inventory_item' | null>(null)
   const [formError, setFormError]     = useState('')
   const [formSuccess, setFormSuccess] = useState('')
   const [isPending, startTransition]  = useTransition()
 
-  // Tag management modal state
-  const [tagEditItemId, setTagEditItemId]     = useState<string | null>(null)
-  const [tagEditItemName, setTagEditItemName] = useState('')
-  const [tagSelections, setTagSelections]     = useState<Record<string, boolean>>({})
+  // Local copy of tags so inline edits reflect immediately
+  const [localTags, setLocalTags] = useState<ItemTag[]>(itemTags || [])
 
   // Stock tab filters
   const [selectedBranch, setSelectedBranch] = useState<string>('all')
@@ -118,9 +116,9 @@ export default function CommissaryClient({
   const logMap: Record<string, DailyLog> = {}
   for (const l of todayLogs) logMap[logKey(l.branch_id, l.inventory_item_id)] = l
 
-  // Many-to-many tag lookup: itemId -> array of tag labels
+  // Many-to-many tag lookup: itemId -> array of tag labels (built from localTags)
   const itemTagsMap: Record<string, { labels: string[]; tags: ItemTag[] }> = {}
-  for (const tag of (itemTags || [])) {
+  for (const tag of localTags) {
     if (!itemTagsMap[tag.inventory_item_id]) {
       itemTagsMap[tag.inventory_item_id] = { labels: [], tags: [] }
     }
@@ -131,6 +129,137 @@ export default function CommissaryClient({
     } else {
       entry.labels.push(`🏭 ${commNameMap[tag.entity_id] ?? 'Commissary'}`)
     }
+  }
+
+  /* ── Inline Tag Picker Component ─────────────────────────────── */
+  function InlineTagPicker({ itemId }: { itemId: string }) {
+    const [open, setOpen] = useState(false)
+    const ref = useRef<HTMLDivElement>(null)
+    const [saving, setSaving] = useState(false)
+
+    // Current tags for this item
+    const currentTags = localTags.filter(t => t.inventory_item_id === itemId)
+    const checkedKeys = new Set(currentTags.map(t => `${t.entity_type}::${t.entity_id}`))
+
+    // Close on outside click
+    useEffect(() => {
+      if (!open) return
+      function handleClick(e: MouseEvent) {
+        if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      }
+      document.addEventListener('mousedown', handleClick)
+      return () => document.removeEventListener('mousedown', handleClick)
+    }, [open])
+
+    async function handleToggle(entityType: 'branch' | 'commissary', entityId: string) {
+      const key = `${entityType}::${entityId}`
+      const isChecked = checkedKeys.has(key)
+
+      // Optimistically update local state
+      let newTags: ItemTag[]
+      if (isChecked) {
+        newTags = localTags.filter(t => !(t.inventory_item_id === itemId && t.entity_type === entityType && t.entity_id === entityId))
+      } else {
+        newTags = [...localTags, { id: `temp-${Date.now()}`, inventory_item_id: itemId, entity_type: entityType, entity_id: entityId }]
+      }
+      setLocalTags(newTags)
+
+      // Build the full tag list for this item and save
+      const itemNewTags = newTags
+        .filter(t => t.inventory_item_id === itemId)
+        .map(t => ({ entity_type: t.entity_type, entity_id: t.entity_id }))
+
+      setSaving(true)
+      startTransition(async () => {
+        await setInventoryItemTags(itemId, itemNewTags)
+        setSaving(false)
+      })
+    }
+
+    const entry = itemTagsMap[itemId]
+    const tagLabels = entry?.labels || []
+
+    return (
+      <div ref={ref} style={{ position: 'relative' }}>
+        {/* Clickable tag display */}
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          style={{
+            display: 'flex', flexWrap: 'wrap', gap: '0.2rem', alignItems: 'center',
+            background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)',
+            padding: '0.25rem 0.5rem', cursor: 'pointer', minWidth: 80, minHeight: 28,
+            transition: 'border-color 0.15s',
+            borderColor: open ? 'var(--color-primary)' : 'var(--color-border)',
+          }}
+        >
+          {tagLabels.length === 0 ? (
+            <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>＋ Assign…</span>
+          ) : (
+            tagLabels.map((l, i) => (
+              <span key={i} className="badge badge-muted" style={{ fontSize: '0.6rem', whiteSpace: 'nowrap', padding: '1px 5px' }}>{l}</span>
+            ))
+          )}
+          {saving && <span className="loading-spinner" style={{ width: 12, height: 12, marginLeft: 4 }} />}
+        </button>
+
+        {/* Dropdown */}
+        {open && (
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, zIndex: 100,
+            background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            padding: '0.5rem', minWidth: 220, maxHeight: 320, overflowY: 'auto',
+            marginTop: '0.25rem',
+          }}>
+            {/* Commissary Branches */}
+            {(commissaryBranches || []).length > 0 && (
+              <>
+                <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--color-text-muted)', padding: '0.2rem 0.4rem', margin: 0 }}>🏭 Commissary</p>
+                {(commissaryBranches || []).map(c => {
+                  const key = `commissary::${c.id}`
+                  const checked = checkedKeys.has(key)
+                  return (
+                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.4rem', cursor: 'pointer', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', background: checked ? 'rgba(74,124,89,0.1)' : 'transparent' }}>
+                      <input type="checkbox" checked={checked} onChange={() => handleToggle('commissary', c.id)} style={{ accentColor: 'var(--color-primary)' }} />
+                      {c.name}{c.region ? ` (${c.region})` : ''}
+                    </label>
+                  )
+                })}
+              </>
+            )}
+
+            {/* Franchise Branches */}
+            {franchises.map(f => {
+              const fBranches = branches.filter(b => b.franchise_id === f.id)
+              if (fBranches.length === 0) return null
+              return (
+                <div key={f.id} style={{ marginTop: '0.35rem' }}>
+                  <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--color-text-muted)', padding: '0.2rem 0.4rem', margin: 0 }}>🏪 {f.name}</p>
+                  {fBranches.map(b => {
+                    const key = `branch::${b.id}`
+                    const checked = checkedKeys.has(key)
+                    return (
+                      <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.4rem', cursor: 'pointer', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', background: checked ? 'rgba(74,124,89,0.1)' : 'transparent' }}>
+                        <input type="checkbox" checked={checked} onChange={() => handleToggle('branch', b.id)} style={{ accentColor: 'var(--color-primary)' }} />
+                        {b.name}
+                      </label>
+                    )
+                  })}
+                </div>
+              )
+            })}
+
+            {/* Hint */}
+            <p style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', padding: '0.4rem 0.4rem 0.15rem', margin: 0, borderTop: '1px solid var(--color-border)', marginTop: '0.35rem' }}>
+              {checkedKeys.size === 0
+                ? 'No tags — visible to all branches.'
+                : `${checkedKeys.size} selected — only these see this item.`}
+            </p>
+          </div>
+        )}
+      </div>
+    )
   }
 
   /* ── Filtered branches for stock view ─────────────────────────── */
@@ -207,35 +336,7 @@ export default function CommissaryClient({
     })
   }
 
-  function openTagModal(itemId: string, itemName: string) {
-    const existing = (itemTags || []).filter(t => t.inventory_item_id === itemId)
-    const sel: Record<string, boolean> = {}
-    for (const t of existing) sel[`${t.entity_type}::${t.entity_id}`] = true
-    setTagEditItemId(itemId)
-    setTagEditItemName(itemName)
-    setTagSelections(sel)
-    openModal('manage_tags')
-  }
-
-  async function handleSaveTags() {
-    if (!tagEditItemId) return
-    const tags: { entity_type: 'branch' | 'commissary'; entity_id: string }[] = []
-    for (const [key, checked] of Object.entries(tagSelections)) {
-      if (!checked) continue
-      const [entityType, entityId] = key.split('::')
-      tags.push({ entity_type: entityType as 'branch' | 'commissary', entity_id: entityId })
-    }
-    startTransition(async () => {
-      const r = await setInventoryItemTags(tagEditItemId, tags)
-      if (r.error) { setFormError(r.error); return }
-      setFormSuccess('Tags saved!')
-      setTimeout(closeModal, 1200)
-    })
-  }
-
-  function toggleTag(key: string) {
-    setTagSelections(prev => ({ ...prev, [key]: !prev[key] }))
-  }
+  // (Tag modal removed — tagging is now inline in the table)
 
   async function handleToggleItem(id: string, current: boolean) {
     startTransition(async () => { await updateInventoryItemStatus(id, !current) })
@@ -397,19 +498,7 @@ export default function CommissaryClient({
                           <tr key={item.id} style={{ opacity: status === 'out' ? 0.7 : 1 }}>
                             <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.name}</td>
                             <td>
-                              {(() => {
-                                const entry = itemTagsMap[item.id]
-                                if (!entry || entry.labels.length === 0) {
-                                  return <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>🌐 All</span>
-                                }
-                                return (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem' }}>
-                                    {entry.labels.map((l, i) => (
-                                      <span key={i} className="badge badge-muted" style={{ fontSize: '0.62rem', whiteSpace: 'nowrap' }}>{l}</span>
-                                    ))}
-                                  </div>
-                                )
-                              })()}
+                              <InlineTagPicker itemId={item.id} />
                             </td>
                             <td>
                               <span className="badge badge-muted" style={{ fontSize: '0.65rem' }}>
@@ -635,15 +724,7 @@ export default function CommissaryClient({
                           <td style={{ color: 'var(--color-text-muted)' }}>{item.unit || '—'}</td>
                           <td>{item.min_stock_level || '—'}</td>
                           <td>
-                            {tagLabels.length === 0 ? (
-                              <span className="badge badge-success" style={{ fontSize: '0.68rem' }}>🌐 All</span>
-                            ) : (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem' }}>
-                                {tagLabels.map((l, i) => (
-                                  <span key={i} className="badge badge-muted" style={{ fontSize: '0.62rem', whiteSpace: 'nowrap' }}>{l}</span>
-                                ))}
-                              </div>
-                            )}
+                            <InlineTagPicker itemId={item.id} />
                           </td>
                           <td>
                             <span className={`badge ${item.is_active ? 'badge-success' : 'badge-danger'}`}>
@@ -651,14 +732,9 @@ export default function CommissaryClient({
                             </span>
                           </td>
                           <td>
-                            <div className="flex gap-1">
-                              <button className="btn btn-ghost btn-sm" onClick={() => openTagModal(item.id, item.name)} disabled={isPending}>
-                                🏷️ Tags
-                              </button>
-                              <button className="btn btn-ghost btn-sm" onClick={() => handleToggleItem(item.id, item.is_active)} disabled={isPending}>
-                                {item.is_active ? 'Hide' : 'Show'}
-                              </button>
-                            </div>
+                            <button className="btn btn-ghost btn-sm" onClick={() => handleToggleItem(item.id, item.is_active)} disabled={isPending}>
+                              {item.is_active ? 'Hide' : 'Show'}
+                            </button>
                           </td>
                         </tr>
                       )})}
@@ -784,7 +860,7 @@ export default function CommissaryClient({
                   </div>
                 </div>
                 <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-                  After creating the item, use the 🏷️ Tags button in Item Catalog to assign branches/commissaries.
+                  After creating the item, use the inline tag picker in the Item Catalog to assign branches/commissaries.
                 </p>
               </div>
               <div className="modal-footer">
@@ -798,85 +874,7 @@ export default function CommissaryClient({
         </div>
       )}
 
-      {/* Tag Management Modal */}
-      {modal === 'manage_tags' && tagEditItemId && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
-            <div className="modal-header">
-              <div>
-                <p className="modal-title">🏷️ Manage Tags</p>
-                <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>{tagEditItemName}</p>
-              </div>
-              <button className="modal-close" onClick={closeModal}>✕</button>
-            </div>
-            {formError   && <div className="alert alert-danger">{formError}</div>}
-            {formSuccess && <div className="alert alert-success">✅ {formSuccess}</div>}
-            <div className="modal-body">
-              <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
-                Select which branches and/or commissary branches should see this item. If nothing is selected, the item is visible to <strong>all</strong>.
-              </p>
-
-              {/* Commissary Branches */}
-              {(commissaryBranches || []).length > 0 && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <p style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--color-text)' }}>🏭 Commissary Branches</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                    {(commissaryBranches || []).map(c => {
-                      const key = `commissary::${c.id}`
-                      return (
-                        <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.4rem 0.6rem', borderRadius: 'var(--radius-sm)', background: tagSelections[key] ? 'rgba(74,124,89,0.12)' : 'transparent', border: '1px solid', borderColor: tagSelections[key] ? 'var(--color-primary)' : 'var(--color-border)', transition: 'all 0.15s' }}>
-                          <input type="checkbox" checked={!!tagSelections[key]} onChange={() => toggleTag(key)} style={{ accentColor: 'var(--color-primary)' }} />
-                          <span style={{ fontSize: '0.82rem', fontWeight: tagSelections[key] ? 700 : 400 }}>🏭 {c.name}{c.region ? ` (${c.region})` : ''}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Franchise Branches */}
-              {franchises.map(f => {
-                const fBranches = branches.filter(b => b.franchise_id === f.id)
-                if (fBranches.length === 0) return null
-                return (
-                  <div key={f.id} style={{ marginBottom: '1rem' }}>
-                    <p style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--color-text)' }}>🏪 {f.name}</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                      {fBranches.map(b => {
-                        const key = `branch::${b.id}`
-                        return (
-                          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.4rem 0.6rem', borderRadius: 'var(--radius-sm)', background: tagSelections[key] ? 'rgba(74,124,89,0.12)' : 'transparent', border: '1px solid', borderColor: tagSelections[key] ? 'var(--color-primary)' : 'var(--color-border)', transition: 'all 0.15s' }}>
-                            <input type="checkbox" checked={!!tagSelections[key]} onChange={() => toggleTag(key)} style={{ accentColor: 'var(--color-primary)' }} />
-                            <span style={{ fontSize: '0.82rem', fontWeight: tagSelections[key] ? 700 : 400 }}>🏪 {b.name}</span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-
-              {/* Summary */}
-              {(() => {
-                const count = Object.values(tagSelections).filter(Boolean).length
-                return (
-                  <div style={{ padding: '0.6rem 0.875rem', background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.2)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--color-warning)', marginTop: '0.5rem' }}>
-                    {count === 0
-                      ? '🌐 No tags selected — item will be visible to ALL branches and commissaries.'
-                      : `🏷️ ${count} tag${count !== 1 ? 's' : ''} selected — only tagged entities will see this item.`}
-                  </div>
-                )
-              })()}
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="btn btn-ghost" onClick={closeModal}>Cancel</button>
-              <button type="button" className="btn btn-primary" disabled={isPending} onClick={handleSaveTags}>
-                {isPending ? <><span className="loading-spinner" /> Saving…</> : '💾 Save Tags'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Tag management is now inline — no modal needed */}
     </>
   )
 }
