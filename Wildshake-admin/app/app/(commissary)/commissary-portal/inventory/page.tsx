@@ -80,8 +80,14 @@ export default async function CommissaryInventoryPage() {
       commissaryName={commissary?.name ?? ''}
       categories={categories || []}
       inventoryItems={visibleItems as Parameters<typeof CommissaryInventoryClient>[0]['inventoryItems']}
-      franchises={franchises || []}
-      branches={scopedBranches || []}
+      franchises={[
+        { id: 'self', name: '🏭 My Commissary' },
+        ...(franchises || [])
+      ]}
+      branches={[
+        { id: commissaryId, name: commissary?.name ?? 'Main Stock', franchise_id: 'self' },
+        ...(scopedBranches || [])
+      ]}
       todayLogs={(todayLogs || []) as Parameters<typeof CommissaryInventoryClient>[0]['todayLogs']}
     />
   )
