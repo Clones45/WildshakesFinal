@@ -267,11 +267,10 @@ export default function CommissaryClient({
 
   /* ── Stock stats ───────────────────────────────────────────────── */
   const commCatIds = new Set(commCategories.map(c => c.id))
-  const totalCombos = visibleBranches.length * commItems.length
   let outCount = 0, lowCount = 0
-  for (const b of visibleBranches) {
+  for (const comm of commissaryBranches) {
     for (const item of commItems) {
-      const l = logMap[logKey(b.id, item.id)]
+      const l = logMap[logKey(comm.id, item.id)]
       const start = l?.starting_stock ?? null
       const end = start !== null ? Math.max(0, (start) + (l?.additional_stock ?? 0) - (l?.used_stock ?? 0)) : null
       const min = item.min_stock_level ?? 0
@@ -424,23 +423,20 @@ export default function CommissaryClient({
             </div>
           </div>
 
-          {/* Stock table — group by branch */}
-          {visibleBranches.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>No active branches found.</div>
-          ) : visibleBranches.map(branch => {
-            const franchise = franchises.find(f => f.id === branch.franchise_id)
+          {/* Stock table — group by commissary */}
+          {commissaryBranches.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>No active commissaries found.</div>
+          ) : commissaryBranches.map(comm => {
             const cats = commCategories.filter(c => sheetFilter === 'all' || c.sheet_type === sheetFilter)
             const rows: { item: CommItem; log: DailyLog | undefined; ending: number | null; status: string }[] = []
 
             for (const cat of cats) {
               const catItems = commItems.filter(i => {
                 if (i.category_id !== cat.id) return false
-                const tags = itemTagsMap[i.id]?.tags || []
-                if (tags.length === 0) return true
-                return tags.some(t => t.entity_id === branch.id)
+                return true
               })
               for (const item of catItems) {
-                const log = logMap[logKey(branch.id, item.id)]
+                const log = logMap[logKey(comm.id, item.id)]
                 const start = log?.starting_stock ?? null
                 const add   = log?.additional_stock ?? 0
                 const used  = log?.used_stock ?? 0
@@ -456,7 +452,7 @@ export default function CommissaryClient({
             if (rows.length === 0 && stockFilter !== 'all') return null
 
             return (
-              <div key={branch.id} className="card" style={{ marginBottom: '1.25rem', padding: 0, overflow: 'hidden' }}>
+              <div key={comm.id} className="card" style={{ marginBottom: '1.25rem', padding: 0, overflow: 'hidden' }}>
                 {/* Branch header */}
                 <div style={{
                   padding: '0.85rem 1.25rem',
@@ -465,8 +461,8 @@ export default function CommissaryClient({
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
                   <div>
-                    <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>🏪 {branch.name}</span>
-                    {franchise && <span style={{ marginLeft: '0.6rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{franchise.name}</span>}
+                    <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>🏭 {comm.name}</span>
+                    {comm.region && <span style={{ marginLeft: '0.6rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{comm.region}</span>}
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     {rows.filter(r => r.status === 'out').length > 0 && (
