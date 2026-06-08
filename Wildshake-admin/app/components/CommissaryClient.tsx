@@ -433,7 +433,12 @@ export default function CommissaryClient({
             const rows: { item: CommItem; log: DailyLog | undefined; ending: number | null; status: string }[] = []
 
             for (const cat of cats) {
-              const catItems = commItems.filter(i => i.category_id === cat.id)
+              const catItems = commItems.filter(i => {
+                if (i.category_id !== cat.id) return false
+                const tags = itemTagsMap[i.id]?.tags || []
+                if (tags.length === 0) return true
+                return tags.some(t => t.entity_id === branch.id)
+              })
               for (const item of catItems) {
                 const log = logMap[logKey(branch.id, item.id)]
                 const start = log?.starting_stock ?? null

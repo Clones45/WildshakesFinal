@@ -71,8 +71,16 @@ export default async function CommissaryInventoryPage() {
   const allTaggedIds = new Set((allTaggedRows || []).map(r => r.inventory_item_id))
 
   const visibleItems = (allItems || []).filter(item =>
-    myTaggedItemIds.has(item.id) || !allTaggedIds.has(item.id)
+    myTaggedItemIds.has(item.id)
   )
+
+  const visibleItemIds = visibleItems.map(i => i.id)
+  const { data: itemTags } = visibleItemIds.length > 0
+    ? await supabase
+        .from('inventory_item_tags')
+        .select('id, inventory_item_id, entity_type, entity_id')
+        .in('inventory_item_id', visibleItemIds)
+    : { data: [] }
 
   return (
     <CommissaryInventoryClient
@@ -89,6 +97,7 @@ export default async function CommissaryInventoryPage() {
         ...(scopedBranches || [])
       ]}
       todayLogs={(todayLogs || []) as Parameters<typeof CommissaryInventoryClient>[0]['todayLogs']}
+      itemTags={itemTags || []}
     />
   )
 }

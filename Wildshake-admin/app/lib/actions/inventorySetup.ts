@@ -62,3 +62,38 @@ export async function setInventoryItemTags(
   revalidatePath('/commissary')
   return { success: true }
 }
+
+/**
+ * Safely replace tags for an inventory item ONLY within a specific scope of entities.
+ * This prevents Commissary Managers from accidentally deleting Master Admin tags.
+ */
+export async function setScopedItemTags(
+  itemId: string,
+  scopeEntityIds: string[],
+  newEntityIds: string[]
+) {
+  const supabase = await createClient()
+
+  if (scopeEntityIds.length > 0) {
+    const { error: delError } = await supabase
+      .from('inventory_item_tags')
+      .delete()
+      .eq('inventory_item_id', itemId)
+      .eq('entity_type', 'branch')
+      .in('entity_id', scopeEntityIds)
+    if (delError) return { error: delError.message }
+  }
+
+  if (newEntityIds.length > 0) {
+    const insertData = newEntityIds.map(id => ({
+      inventory_item_id: itemId,
+      entity_type: 'branch',
+      entity_id: id
+    }))
+    const { error: insError } = await supabase.from('inventory_item_tags').insert(insertData)
+    if (insError) return { error: insError.message }
+  }
+
+  revalidatePath('/commissary-portal/inventory')
+  return { success: true }
+}

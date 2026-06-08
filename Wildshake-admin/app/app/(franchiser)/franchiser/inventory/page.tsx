@@ -49,9 +49,9 @@ export default async function FranchiserInventoryPage() {
   const myTaggedItemIds = new Set((myBranchTags || []).map(t => t.inventory_item_id))
   const allTaggedItemIds = new Set((allTagRows || []).map(r => r.inventory_item_id))
 
-  // Items visible to this branch = tagged to it OR not tagged to anything (global)
+  // Items visible to this branch = ONLY items explicitly tagged to it
   const items = (allItems || []).filter(item =>
-    myTaggedItemIds.has(item.id) || !allTaggedItemIds.has(item.id)
+    myTaggedItemIds.has(item.id)
   )
 
   const { data: todayLogs } = branchId
