@@ -570,6 +570,14 @@ export default function FranchiserInventoryClient({
           <button className="btn btn-ghost btn-sm" onClick={copyFromYesterday}>
             📋 Copy Yesterday's Ending
           </button>
+          <a
+            href="/franchiser/inventory/import"
+            className="btn btn-ghost btn-sm"
+            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+              border: '1px solid rgba(212,175,55,0.4)', color: 'var(--color-accent)' }}
+          >
+            📥 Import Recipes
+          </a>
         </div>
       </div>
 
