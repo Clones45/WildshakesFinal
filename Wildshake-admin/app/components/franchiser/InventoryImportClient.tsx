@@ -93,10 +93,22 @@ function parseInventoryCSV(raw: string): ParsedLink[] {
     return result
   }
 
-  if (lines.length < 5) return []
+  // Find the header row by locating a cell that literally reads "Items" —
+  // its column position tells us where the ingredient-name column is (this
+  // shifts between sheets: column A on some exports, column B on others).
+  let headerRowIdx = -1
+  let itemCol = -1
+  for (let r = 0; r < Math.min(lines.length, 10); r++) {
+    const row = parseCsvLine(lines[r])
+    const c = row.findIndex(cell => cell.trim().toLowerCase() === 'items')
+    if (c !== -1) { headerRowIdx = r; itemCol = c; break }
+  }
+  if (headerRowIdx === -1 || headerRowIdx === 0) return []
 
-  const categoryRow = parseCsvLine(lines[2])   // Row 3 (0-indexed: 2)
-  const headerRow   = parseCsvLine(lines[3])    // Row 4 (0-indexed: 3)
+  const categoryRow = parseCsvLine(lines[headerRowIdx - 1])
+  const headerRow   = parseCsvLine(lines[headerRowIdx])
+  const unitCol      = itemCol + 1
+  const firstMenuCol = itemCol + 2
 
   // Build a column → category map
   // Category label spans from where it appears until the next non-empty label
@@ -109,14 +121,14 @@ function parseInventoryCSV(raw: string): ParsedLink[] {
 
   const links: ParsedLink[] = []
 
-  for (let r = 4; r < lines.length; r++) {
+  for (let r = headerRowIdx + 1; r < lines.length; r++) {
     const row = parseCsvLine(lines[r])
-    const ingredientName = row[0]?.trim()
+    const ingredientName = row[itemCol]?.trim()
     if (!ingredientName) continue
 
-    const unitSize = row[1] ? parseFloat(row[1]) || null : null
+    const unitSize = row[unitCol] ? parseFloat(row[unitCol]) || null : null
 
-    for (let c = 2; c < headerRow.length; c++) {
+    for (let c = firstMenuCol; c < headerRow.length; c++) {
       const menuItemName = headerRow[c]?.trim()
       if (!menuItemName) continue
 

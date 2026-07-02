@@ -102,6 +102,25 @@ export interface CachedBranch {
     status: string
 }
 
+// ─── Recipe Link Cache (mirrors food_item_menu_links) ──────────────────────
+export interface CachedRecipeLink {
+    id: string                // food_item_menu_links.id
+    productId: string
+    inventoryItemId: string
+    quantityPerServing: number
+}
+
+// ─── Ingredient Stock Cache — today's remaining qty per ingredient, purely ──
+// advisory/local; always overwritten wholesale by the next successful pull.
+export interface CachedIngredientStock {
+    inventoryItemId: string   // primary key
+    name: string
+    unit: string | null
+    minStockLevel: number | null
+    remaining: number | null  // null = no starting stock logged yet today (don't warn)
+    updatedAt: string
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────
 export class WildshakesDB extends Dexie {
     transactions!: Table<LocalTransaction>
@@ -110,6 +129,8 @@ export class WildshakesDB extends Dexie {
     products!: Table<CachedProduct>
     branches!: Table<CachedBranch>
     users!: Table<CachedUser>
+    recipeLinks!: Table<CachedRecipeLink>
+    ingredientStock!: Table<CachedIngredientStock>
 
     constructor() {
         super('WildshakesNexus')
@@ -178,6 +199,19 @@ export class WildshakesDB extends Dexie {
             products: 'id, category, name',
             branches: 'id',
             users: 'id, branch_id, pin_code, qr_access_token, role',
+        })
+
+        // Version 9 — Smart Inventory: local recipe links + today's ingredient stock,
+        // for instant offline-capable low-stock warnings at checkout.
+        this.version(9).stores({
+            transactions: 'localRef, syncStatus, branchId, createdAt',
+            localHeldOrders: 'localId, syncStatus, branchId, createdAt',
+            localAuditLogs: 'localId, syncStatus, createdAt',
+            products: 'id, category, name',
+            branches: 'id',
+            users: 'id, branch_id, pin_code, qr_access_token, role',
+            recipeLinks: 'id, productId, inventoryItemId',
+            ingredientStock: 'inventoryItemId',
         })
     }
 }

@@ -78,6 +78,11 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
                         users.map(u => ({ ...u, cachedAt: new Date().toISOString() }))
                     )
                 }
+
+                // ── 5. Pull recipe links + today's ingredient remaining stock ────
+                // Smart Inventory: purely advisory/local, wholly overwritten every pull —
+                // powers the instant, fully-offline low-stock warning at checkout.
+                await pullIngredientStock(currentBranch.id)
             }
 
             const stillPending =
@@ -156,6 +161,61 @@ async function pushTransaction(local: LocalTransaction) {
     if (itemsError) throw itemsError
 
     await db.transactions.update(local.localRef, { supabaseId: transactionId })
+}
+
+// ── Pull recipe links + today's per-ingredient remaining stock ──────────────
+async function pullIngredientStock(branchId: string) {
+    const { data: links } = await supabase
+        .from('food_item_menu_links')
+        .select('id, product_id, inventory_item_id, quantity_per_serving')
+    if (links) {
+        await db.recipeLinks.clear()
+        await db.recipeLinks.bulkPut(
+            links
+                .filter(l => l.quantity_per_serving != null)
+                .map(l => ({
+                    id: l.id,
+                    productId: l.product_id,
+                    inventoryItemId: l.inventory_item_id,
+                    quantityPerServing: l.quantity_per_serving as number,
+                }))
+        )
+    }
+
+    const { data: items } = await supabase
+        .from('inventory_items')
+        .select('id, name, unit, min_stock_level')
+        .eq('is_active', true)
+    if (!items) return
+
+    // Branch-local (Asia/Manila) day — must match the server trigger's log_date so today's
+    // used_stock lines up with today's starting/additional stock.
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date())
+    const { data: logs } = await supabase
+        .from('daily_inventory_logs')
+        .select('inventory_item_id, starting_stock, additional_stock, used_stock')
+        .eq('branch_id', branchId)
+        .eq('log_date', today)
+    const logByItem = new Map((logs ?? []).map(l => [l.inventory_item_id, l]))
+
+    await db.ingredientStock.clear()
+    await db.ingredientStock.bulkPut(
+        items.map(it => {
+            const log = logByItem.get(it.id)
+            const start = log?.starting_stock ?? null
+            const remaining = start === null
+                ? null // no morning count logged yet today — treat as unknown, never warn
+                : start + (log?.additional_stock ?? 0) - (log?.used_stock ?? 0)
+            return {
+                inventoryItemId: it.id,
+                name: it.name,
+                unit: it.unit,
+                minStockLevel: it.min_stock_level,
+                remaining,
+                updatedAt: new Date().toISOString(),
+            }
+        })
+    )
 }
 
 // ── Push a queued audit log entry ────────────────────────────────────────────

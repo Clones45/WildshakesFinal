@@ -18,7 +18,8 @@ export default async function FranchiserInventoryPage() {
   const branchId = branches?.[0]?.id ?? null
   const branchName = branches?.[0]?.name ?? 'My Branch'
 
-  const today = new Date().toISOString().split('T')[0]
+  // Branch-local (Asia/Manila, fixed UTC+8, no DST) calendar day — not UTC.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date())
 
   // ── Food / Commissary inventory ──────────────────────────────────────────────
   const { data: categories } = await supabase
@@ -102,8 +103,8 @@ export default async function FranchiserInventoryPage() {
   const voidedMap: Record<string, number> = {}
 
   if (branchId) {
-    const dateStart = `${today}T00:00:00.000Z`
-    const dateEnd   = `${today}T23:59:59.999Z`
+    const dateStart = `${today}T00:00:00.000+08:00`
+    const dateEnd   = `${today}T23:59:59.999+08:00`
 
     // Fetch all transaction items for today at this branch (joins via transaction)
     const { data: txItems } = await supabase
@@ -129,7 +130,11 @@ export default async function FranchiserInventoryPage() {
       }
     }
 
-    // ── Compute used_stock per food item from linked products ─────────────
+    // ── Sync branch availability from used_stock ────────────────────────────
+    // used_stock is now maintained authoritatively by the ingredient-deduction
+    // DB trigger (fires on transaction_items insert/void, grams-aware via
+    // quantity_per_serving) — this block only reads it, it never recomputes
+    // or writes it, so it can't fight the trigger.
     if (foodMenuLinks && items) {
       for (const foodItem of items) {
         const linkedProductIds = (foodMenuLinks ?? [])
@@ -137,23 +142,14 @@ export default async function FranchiserInventoryPage() {
           .map(l => l.product_id)
 
         if (linkedProductIds.length > 0) {
-          const usedQty = linkedProductIds.reduce((sum, pid) => sum + (soldMap[pid] ?? 0), 0)
-          // Update used_stock in today's log if it has changed
           const existingLog = (todayLogs ?? []).find(l => l.inventory_item_id === foodItem.id)
-          if (existingLog && existingLog.id) {
-            await supabase
-              .from('daily_inventory_logs')
-              .update({ used_stock: usedQty })
-              .eq('id', existingLog.id)
-            existingLog.used_stock = usedQty
-          }
 
           // ── Auto-sync branch availability via branch_menu_availability ──────
           // This is the same table the Menu Availability page uses
           const start = existingLog?.starting_stock ?? null
           if (start !== null) {
             const add    = existingLog?.additional_stock ?? 0
-            const used   = usedQty
+            const used   = existingLog?.used_stock ?? 0
             const ending = Math.max(0, start + add - used)
             const isAvailable = ending > 0
 
