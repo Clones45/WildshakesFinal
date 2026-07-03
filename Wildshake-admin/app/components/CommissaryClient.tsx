@@ -772,6 +772,15 @@ export default function CommissaryClient({
               <div className="modal-body">
                 <div className="form-grid">
                   <div className="form-group">
+                    <label className="form-label">Source Commissary *</label>
+                    <select name="source_commissary_id" className="form-select" required>
+                      <option value="">Select commissary…</option>
+                      {commissaryBranches.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}{c.region ? ` (${c.region})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
                     <label className="form-label">Branch *</label>
                     <select name="branch_id" className="form-select" required>
                       <option value="">Select branch…</option>

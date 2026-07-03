@@ -23,14 +23,7 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
     .single()
 
   if (error || !franchise) {
-    return (
-      <div style={{ padding: '2rem', color: 'red' }}>
-        <h2>DEBUG 404 DATA</h2>
-        <p><strong>ID Param:</strong> {JSON.stringify(id)}</p>
-        <p><strong>Error:</strong> {JSON.stringify(error)}</p>
-        <p><strong>Franchise Data:</strong> {JSON.stringify(franchise)}</p>
-      </div>
-    )
+    notFound()
   }
 
   // Fetch all branches

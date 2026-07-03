@@ -7,17 +7,19 @@ import { revalidatePath } from 'next/cache'
 export async function createCommissaryShipment(formData: FormData) {
   const supabase = await createClient()
 
+  const source_commissary_id = formData.get('source_commissary_id') as string
   const branch_id         = formData.get('branch_id') as string
   const inventory_item_id = formData.get('inventory_item_id') as string
   const quantity          = parseFloat(formData.get('quantity') as string)
   const quantity_unit     = (formData.get('quantity_unit') as string) || null
   const notes             = (formData.get('notes') as string) || null
 
-  if (!branch_id || !inventory_item_id || isNaN(quantity) || quantity <= 0) {
-    return { error: 'Branch, item, and a valid quantity are required.' }
+  if (!source_commissary_id || !branch_id || !inventory_item_id || isNaN(quantity) || quantity <= 0) {
+    return { error: 'Source commissary, branch, item, and a valid quantity are required.' }
   }
 
   const { error } = await supabase.from('commissary_shipments').insert({
+    source_commissary_id,
     branch_id,
     inventory_item_id,
     quantity_sent: quantity,

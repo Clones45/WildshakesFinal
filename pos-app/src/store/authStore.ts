@@ -85,11 +85,6 @@ export const useAuthStore = create<AuthState>()(
                         region:      franchise?.region      ?? null,
                     }
 
-                    // Allow owner to override if it's claimed by another device.
-                    // This prevents lockouts if local storage is cleared.
-                    // const existing = branchRow.active_device_id
-                    // if (existing && existing !== deviceId) { ... }
-
                     // Claim the device slot
                     const { error: updateErr } = await supabase
                         .from('branches')
@@ -221,7 +216,6 @@ export const useAuthStore = create<AuthState>()(
 
                     // Always try Supabase first — navigator.onLine is unreliable on POS tablets
                     try {
-                        console.log('[QR] token:', JSON.stringify(token), 'len:', token.length)
                         const { data: users, error } = await supabase
                             .from('users')
                             .select('*')
@@ -230,12 +224,10 @@ export const useAuthStore = create<AuthState>()(
                             .eq('is_active', true)
                             .limit(1)
 
-                        console.log('[QR] Supabase result:', users?.length, 'error:', error?.message)
                         if (!error && users && users.length > 0) {
                             userProfile = users[0] as UserProfile
                         }
-                    } catch (e) {
-                        console.log('[QR] Supabase threw:', e)
+                    } catch {
                         // Network failure — fall through to Dexie cache
                     }
 
@@ -245,7 +237,6 @@ export const useAuthStore = create<AuthState>()(
                         const cachedUsers = await db.users
                             .filter(u => u.qr_access_token === token && u.is_active && u.branch_id === branchId)
                             .toArray()
-                        console.log('[QR] Dexie fallback result:', cachedUsers.length)
 
                         if (cachedUsers.length > 0) {
                             const c = cachedUsers[0]
