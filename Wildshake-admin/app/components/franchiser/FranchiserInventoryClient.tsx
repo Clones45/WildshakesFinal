@@ -214,17 +214,14 @@ export default function FranchiserInventoryClient({
   }
 
   /* Stats */
+  // ending_stock is never persisted to the DB anywhere in this app — it's always computed
+  // on the fly from starting + additional - used (see foodEnding() above). Reading the raw
+  // column here made Low/Out of Stock always show zero regardless of real stock levels.
   const allItems = items
-  const filledCount = Object.values(logs).filter(l => l.ending_stock !== null || l.starting_stock !== null).length
+  const filledCount = Object.values(logs).filter(l => l.starting_stock !== null).length
   const menuFilledCount = Object.values(mLogs).filter(l => l.starting_stock !== null).length
-  const lowCount = allItems.filter(i => {
-    const log = logs[i.id]
-    return getStockStatus(log?.ending_stock ?? null, i.min_stock_level) === 'low'
-  }).length
-  const outCount = allItems.filter(i => {
-    const log = logs[i.id]
-    return getStockStatus(log?.ending_stock ?? null, i.min_stock_level) === 'out'
-  }).length
+  const lowCount = allItems.filter(i => getStockStatus(foodEnding(i), i.min_stock_level) === 'low').length
+  const outCount = allItems.filter(i => getStockStatus(foodEnding(i), i.min_stock_level) === 'out').length
 
   /* ── Auto-sync POS product availability from food item ending ─── */
   // Uses branch_menu_availability (per-branch override, same table as Menu Availability page)
@@ -458,11 +455,36 @@ export default function FranchiserInventoryClient({
   }
 
   /* ── Copy yesterday's ending → today's starting ───────────────── */
+  // ending is never persisted (see the Stats note above) — recomputed here from yesterday's
+  // starting/additional/used, same formula as foodEnding()/menuEnding(). "yesterday" is
+  // derived from the `today` prop (already Asia/Manila-correct) rather than a naive
+  // Date.now() - 86400000, which can land on the wrong calendar day near midnight.
   async function copyFromYesterday() {
     if (!branchId) return
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+    const anchor = new Date(today + 'T12:00:00')
+    anchor.setDate(anchor.getDate() - 1)
+    const yesterday = anchor.toISOString().split('T')[0]
 
     if (activeSheet === 'menu_items') {
+      // menu_item_daily_logs has no "sold"/"ending" column — it's always live-computed from
+      // transaction_items, so yesterday's sold-per-product has to be fetched fresh here
+      // (soldMap in scope is TODAY's sales and would silently produce the wrong ending).
+      const dateStart = `${yesterday}T00:00:00.000+08:00`
+      const dateEnd   = `${yesterday}T23:59:59.999+08:00`
+      const { data: txItems } = await supabase
+        .from('transaction_items')
+        .select('product_id, quantity, cancelled, transactions!inner(branch_id, status, created_at)')
+        .eq('transactions.branch_id', branchId)
+        .gte('transactions.created_at', dateStart)
+        .lte('transactions.created_at', dateEnd)
+
+      const yesterdaySoldMap: Record<string, number> = {}
+      for (const ti of txItems ?? []) {
+        const tx = (ti as any).transactions
+        if (tx?.status === 'voided' || ti.cancelled) continue
+        yesterdaySoldMap[ti.product_id] = (yesterdaySoldMap[ti.product_id] ?? 0) + Number(ti.quantity ?? 0)
+      }
+
       const { data: yestLogs } = await supabase
         .from('menu_item_daily_logs')
         .select('product_id, starting_stock, additional_stock')
@@ -475,10 +497,10 @@ export default function FranchiserInventoryClient({
       }
       startTransition(async () => {
         for (const yl of yestLogs) {
-          const sold = soldMap[yl.product_id] ?? 0
+          if (yl.starting_stock === null) continue
+          const sold = yesterdaySoldMap[yl.product_id] ?? 0
           const add  = yl.additional_stock ?? 0
-          const start = yl.starting_stock ?? 0
-          const yesterdayEnding = Math.max(0, start + add - sold)
+          const yesterdayEnding = Math.max(0, yl.starting_stock + add - sold)
           const product = products.find(p => p.id === yl.product_id)
           if (product && !mLogs[yl.product_id]?.starting_stock) {
             await saveMenuField(product, 'starting_stock', String(yesterdayEnding))
@@ -489,7 +511,7 @@ export default function FranchiserInventoryClient({
     } else {
       const { data: yestLogs } = await supabase
         .from('daily_inventory_logs')
-        .select('inventory_item_id, ending_stock')
+        .select('inventory_item_id, starting_stock, additional_stock, used_stock')
         .eq('branch_id', branchId)
         .eq('log_date', yesterday)
 
@@ -499,13 +521,13 @@ export default function FranchiserInventoryClient({
       }
       startTransition(async () => {
         for (const yl of yestLogs) {
-          if (yl.ending_stock !== null && !logs[yl.inventory_item_id]?.starting_stock) {
-            await saveField(
-              { id: yl.inventory_item_id } as InventoryItem,
-              'starting_stock',
-              String(yl.ending_stock)
-            )
-          }
+          if (yl.starting_stock === null || logs[yl.inventory_item_id]?.starting_stock) continue
+          const yesterdayEnding = Math.max(0, yl.starting_stock + (yl.additional_stock ?? 0) - (yl.used_stock ?? 0))
+          await saveField(
+            { id: yl.inventory_item_id } as InventoryItem,
+            'starting_stock',
+            String(yesterdayEnding)
+          )
         }
         showToast(`✅ Copied yesterday's ending → today's starting.`)
       })
