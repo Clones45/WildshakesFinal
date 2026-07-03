@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 interface Category {
   id: string
   name: string
-  sheet_type: 'food' | 'commissary' | 'commissary_home'
+  sheet_type: 'food' | 'shake' | 'coffee_general' | 'commissary' | 'commissary_home'
   sort_order: number
 }
 
@@ -83,6 +83,8 @@ interface Props {
 /* ─── Sheet Tab Config ─────────────────────────────────────────── */
 const SHEET_LABELS: Record<string, { label: string; icon: string; color: string }> = {
   food:             { label: 'Food Items',        icon: '🍝', color: '#e67e22' },
+  shake:            { label: 'Shakes',            icon: '🥤', color: '#d63384' },
+  coffee_general:   { label: 'Coffee',             icon: '☕', color: '#795548' },
   commissary:       { label: 'Commissary (CSL)',   icon: '🏭', color: '#2980b9' },
   commissary_home:  { label: 'Commissary Home',    icon: '🏠', color: '#8e44ad' },
   menu_items:       { label: 'Menu Items',         icon: '📋', color: '#16a085' },
@@ -535,8 +537,11 @@ export default function FranchiserInventoryClient({
   }
 
   /* ── Filter helpers ──────────────────────────────────────────── */
-  const sheetTypes = ['menu_items', 'food', 'commissary', 'commissary_home']
+  const sheetTypes = ['menu_items', 'food', 'shake', 'coffee_general', 'commissary', 'commissary_home']
   const categoriesBySheet = categories.filter(c => c.sheet_type === activeSheet)
+  // Food, Shake, and Coffee ingredients are all recipe-linked (food_item_menu_links) and get
+  // their "Used" auto-summed from POS sales + a menu-item tag picker; Commissary sheets don't.
+  const isRecipeLinkedSheet = activeSheet === 'food' || activeSheet === 'shake' || activeSheet === 'coffee_general'
 
   /* ── Render ──────────────────────────────────────────────────── */
   return (
@@ -953,7 +958,7 @@ export default function FranchiserInventoryClient({
             </div>
           </div>
 
-          {activeSheet === 'food' && (
+          {isRecipeLinkedSheet && (
             <div style={{ display: 'flex', gap: '1rem', padding: '0.5rem 1rem', flexWrap: 'wrap', fontSize: '0.74rem', color: 'var(--color-text-muted)', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
               <span>🏷️ <strong>Menu Tags</strong> — link this food item to POS products</span>
               <span style={{ color: '#16a085' }}>🔵 <strong>Used</strong> = auto-summed from POS sales of tagged products</span>
@@ -992,14 +997,14 @@ export default function FranchiserInventoryClient({
                   <table>
                     <thead>
                       <tr>
-                        <th style={{ width: activeSheet === 'food' ? '22%' : '35%' }}>Item</th>
-                        {activeSheet === 'food' && (
+                        <th style={{ width: isRecipeLinkedSheet ? '22%' : '35%' }}>Item</th>
+                        {isRecipeLinkedSheet && (
                           <th style={{ width: '18%' }}>Menu Item Tags 🏷️</th>
                         )}
                         <th style={{ width: '8%', textAlign: 'center' }}>Unit</th>
                         <th style={{ width: '10%', textAlign: 'center' }}>Starting</th>
                         <th style={{ width: '10%', textAlign: 'center' }}>Additional</th>
-                        {activeSheet === 'food' && (
+                        {isRecipeLinkedSheet && (
                           <th style={{ width: '9%', textAlign: 'center', color: '#2980b9' }}>Used 🔒</th>
                         )}
                         <th style={{ width: '10%', textAlign: 'center', color: '#16a085' }}>Ending</th>
@@ -1034,7 +1039,7 @@ export default function FranchiserInventoryClient({
                             </td>
 
                             {/* ── Tag Picker (food only) ─────────────────────── */}
-                            {activeSheet === 'food' && (
+                            {isRecipeLinkedSheet && (
                               <td style={{ position: 'relative' }}>
                                 <div
                                   style={{ cursor: 'pointer', minHeight: '32px', display: 'flex', flexWrap: 'wrap', gap: '3px', alignItems: 'center', padding: '3px 6px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--color-border)', background: 'var(--color-surface)' }}
@@ -1140,7 +1145,7 @@ export default function FranchiserInventoryClient({
                             </td>
 
                             {/* Used (food only) — read-only */}
-                            {activeSheet === 'food' && (
+                            {isRecipeLinkedSheet && (
                               <td style={{ textAlign: 'center' }}>
                                 <span style={{
                                   display: 'inline-block', minWidth: '40px',
@@ -1176,7 +1181,7 @@ export default function FranchiserInventoryClient({
                                 border: ending !== null ? '1px solid rgba(22,160,133,0.25)' : 'none',
                               }}
                                 title={ending !== null
-                                  ? `${log?.starting_stock ?? 0} + ${log?.additional_stock ?? 0} − ${activeSheet === 'food' ? (log?.used_stock ?? 0) + ' used' : log?.ending_stock ?? 0} = ${ending}`
+                                  ? `${log?.starting_stock ?? 0} + ${log?.additional_stock ?? 0} − ${isRecipeLinkedSheet ? (log?.used_stock ?? 0) + ' used' : log?.ending_stock ?? 0} = ${ending}`
                                   : 'Enter starting stock to compute ending'}
                               >
                                 {ending === null ? '—' : ending}
