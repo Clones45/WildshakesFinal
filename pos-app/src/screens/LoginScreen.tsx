@@ -7,6 +7,35 @@ import { QRScanner } from '../components/QRScanner'
 
 type LoginTab = 'qr' | 'pin'
 
+// ── PIN lockout: a throttle against casual guessing, not a defense against ──
+// physical device access — persisted in localStorage so a page refresh can't
+// reset the counter. Keyed per branch since the claimed branch is the only
+// stable identity available before a cashier is actually logged in.
+const PIN_LOCKOUT_KEY = 'wildshakes-pin-lockout'
+const MAX_ATTEMPTS = 5
+const LOCKOUT_MS = 30_000
+
+interface PinLockoutState { count: number; lockedUntil: number | null }
+
+function readLockoutState(branchId: string): PinLockoutState {
+    try {
+        const all = JSON.parse(localStorage.getItem(PIN_LOCKOUT_KEY) || '{}')
+        return all[branchId] ?? { count: 0, lockedUntil: null }
+    } catch {
+        return { count: 0, lockedUntil: null }
+    }
+}
+
+function writeLockoutState(branchId: string, state: PinLockoutState) {
+    try {
+        const all = JSON.parse(localStorage.getItem(PIN_LOCKOUT_KEY) || '{}')
+        all[branchId] = state
+        localStorage.setItem(PIN_LOCKOUT_KEY, JSON.stringify(all))
+    } catch {
+        // localStorage unavailable — lockout just won't persist across reloads
+    }
+}
+
 export function LoginScreen() {
     const { loginWithPin, loginWithQR, isLoading, error, clearError, branch } = useAuthStore()
     const { syncPending } = useSyncStore()
@@ -15,13 +44,37 @@ export function LoginScreen() {
     const [pin, setPin] = useState<string>('')
     const [shake, setShake] = useState(false)
     const [loginFailed, setLoginFailed] = useState(false)
+    const [lockedUntil, setLockedUntil] = useState<number | null>(null)
+    const [lockRemaining, setLockRemaining] = useState(0)
 
     useEffect(() => {
         syncPending()
     }, [])
 
+    // Restore any still-active lockout on mount, and tick down the countdown.
+    useEffect(() => {
+        if (!branch) return
+        const state = readLockoutState(branch.id)
+        if (state.lockedUntil && state.lockedUntil > Date.now()) {
+            setLockedUntil(state.lockedUntil)
+        }
+    }, [branch])
+
+    useEffect(() => {
+        if (!lockedUntil) return
+        const tick = () => {
+            const remaining = Math.max(0, Math.ceil((lockedUntil - Date.now()) / 1000))
+            setLockRemaining(remaining)
+            if (remaining <= 0) setLockedUntil(null)
+        }
+        tick()
+        const interval = setInterval(tick, 250)
+        return () => clearInterval(interval)
+    }, [lockedUntil])
+
     // ── PIN handlers ─────────────────────────────────────────────────────────
     const handlePad = (val: string) => {
+        if (lockedUntil) return
         clearError()
         if (val === 'backspace') { setPin(p => p.slice(0, -1)); return }
         if (pin.length >= 6) return
@@ -37,6 +90,18 @@ export function LoginScreen() {
             setShake(true)
             setTimeout(() => setShake(false), 600)
             setPin('')
+
+            const state = readLockoutState(branch.id)
+            const nextCount = state.count + 1
+            if (nextCount >= MAX_ATTEMPTS) {
+                const until = Date.now() + LOCKOUT_MS
+                writeLockoutState(branch.id, { count: 0, lockedUntil: until })
+                setLockedUntil(until)
+            } else {
+                writeLockoutState(branch.id, { count: nextCount, lockedUntil: null })
+            }
+        } else {
+            writeLockoutState(branch.id, { count: 0, lockedUntil: null })
         }
     }
 
@@ -202,7 +267,7 @@ export function LoginScreen() {
                             </motion.div>
 
                             {/* PIN Pad */}
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-3 gap-2" style={{ opacity: lockedUntil ? 0.4 : 1, pointerEvents: lockedUntil ? 'none' : 'auto' }}>
                                 {padKeys.map((key, idx) => {
                                     if (key === '') return <div key={idx} />
                                     if (key === 'backspace') {
@@ -238,9 +303,15 @@ export function LoginScreen() {
                                 })}
                             </div>
 
-                            <p className="text-center text-brand-600 text-[11px] mt-4">
-                                Enter your 6-digit Staff PIN
-                            </p>
+                            {lockedUntil ? (
+                                <p className="text-center text-red-400 text-xs mt-4 font-semibold">
+                                    Too many failed attempts — try again in {lockRemaining}s
+                                </p>
+                            ) : (
+                                <p className="text-center text-brand-600 text-[11px] mt-4">
+                                    Enter your 6-digit Staff PIN
+                                </p>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>

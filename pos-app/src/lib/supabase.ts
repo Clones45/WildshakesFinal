@@ -14,8 +14,19 @@ if (typeof window !== 'undefined') {
     }
 }
 
-const SUPABASE_URL = 'https://jhicfriososaaxebktzv.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoaWNmcmlvc29zYWF4ZWJrdHp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NTg4NDUsImV4cCI6MjA4ODIzNDg0NX0.Q6Oj1ofcAriSHmsnQfAzmh-e0qBIakWOaBvEj9y_m-0'
+// The anon key is safe to ship inside the built APK (Supabase's security model
+// relies on RLS policies, not on keeping this key secret) — this still moves it
+// out of source so it's not hardcoded, and so a different Supabase project can
+// be targeted (staging, another franchise deployment) without a code change.
+// See .env.example for the required keys.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error(
+        'Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY — copy pos-app/.env.example to pos-app/.env and fill in your Supabase project values.'
+    )
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true },
