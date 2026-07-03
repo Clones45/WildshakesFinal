@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore'
 import { ManagerPinModal } from './ManagerPinModal'
 import {
     X, ReceiptText, Loader2, Filter, RefreshCw,
-    Banknote, Landmark,
+    Banknote, Landmark, SplitSquareVertical,
     CheckCircle2, XCircle, Tag, MapPin, Clock,
 } from 'lucide-react'
 
@@ -14,9 +14,16 @@ interface TransactionsViewProps {
     onClose: () => void
 }
 
-type PaymentFilter = 'all' | 'cash' | 'gcash' | 'maya' | 'bank_transfer'
+type PaymentFilter = 'all' | 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'split'
 type StatusFilter = 'all' | 'completed' | 'voided' | 'discounted'
 type DateFilter = 'today' | 'yesterday' | '7days' | '30days'
+
+interface SplitPaymentEntry {
+    method: string
+    amount: number
+    referenceNumber?: string
+    bankName?: string
+}
 
 interface TxRow {
     id: string
@@ -24,6 +31,7 @@ interface TxRow {
     payment_method: string
     reference_number: string | null
     bank_name: string | null
+    split_payments: SplitPaymentEntry[] | null
     status: string
     discount_type: string
     discount_amount: number
@@ -39,6 +47,7 @@ interface TxRow {
 const PAYMENT_ICONS: Record<string, React.ElementType> = {
     cash: Banknote,
     bank_transfer: Landmark,
+    split: SplitSquareVertical,
 }
 
 const PAYMENT_COLORS: Record<string, string> = {
@@ -46,6 +55,7 @@ const PAYMENT_COLORS: Record<string, string> = {
     gcash: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
     maya: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
     bank_transfer: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    split: 'text-teal-400 bg-teal-500/10 border-teal-500/20',
 }
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -53,6 +63,7 @@ const PAYMENT_LABELS: Record<string, string> = {
     gcash: 'GCash',
     maya: 'Maya',
     bank_transfer: 'Bank Transfer',
+    split: 'Split Payment',
 }
 
 const STATUS_FILTER_OPTIONS: { id: StatusFilter; label: string }[] = [
@@ -75,6 +86,7 @@ const PAYMENT_FILTER_OPTIONS: { id: PaymentFilter; label: string }[] = [
     { id: 'gcash', label: 'GCash' },
     { id: 'maya', label: 'Maya' },
     { id: 'bank_transfer', label: 'Bank Transfer' },
+    { id: 'split', label: 'Split Payment' },
 ]
 
 function formatDateTime(iso: string) {
@@ -112,7 +124,7 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
 
             let query = supabase
                 .from('transactions')
-                .select('id, total_amount, payment_method, reference_number, bank_name, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, delivery_platform, created_at')
+                .select('id, total_amount, payment_method, reference_number, bank_name, split_payments, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, delivery_platform, created_at')
                 .eq('branch_id', branch.id)
                 .neq('status', 'pending')         // exclude held orders
                 .gte('created_at', fromDate.toISOString())
@@ -412,6 +424,17 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                                     </p>
                                                 )}
                                             </div>
+
+                                            {/* Split payment breakdown */}
+                                            {tx.payment_method === 'split' && tx.split_payments && tx.split_payments.length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {tx.split_payments.map((s, i) => (
+                                                        <span key={i} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] font-semibold ${PAYMENT_COLORS[s.method] ?? PAYMENT_COLORS.cash}`}>
+                                                            {PAYMENT_LABELS[s.method] ?? s.method}: ₱{s.amount.toFixed(2)}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
 
                                             {/* Void reason */}
                                             {isVoided && tx.void_reason && (

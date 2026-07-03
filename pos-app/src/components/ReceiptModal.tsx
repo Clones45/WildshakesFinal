@@ -267,6 +267,15 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                         <span>{deliveryPlatform === 'foodpanda' ? 'Foodpanda Code' : 'Grab Code'}</span>
                                         <span className="text-white font-bold">{transaction.referenceNumber}</span>
                                     </div>
+                                ) : transaction.paymentMethod === 'split' && transaction.splitPayments ? (
+                                    <>
+                                        {transaction.splitPayments.map((s, i) => (
+                                            <div key={i} className="flex justify-between text-gray-400">
+                                                <span className="capitalize">{s.method.replace(/_/g, ' ')}</span>
+                                                <span className="text-white">₱{s.amount.toFixed(2)}</span>
+                                            </div>
+                                        ))}
+                                    </>
                                 ) : (
                                     <>
                                         <div className="flex justify-between text-gray-400">
@@ -278,6 +287,18 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                                 <span>Ref#</span>
                                                 <span className="text-white">{transaction.referenceNumber}</span>
                                             </div>
+                                        )}
+                                        {transaction.paymentMethod === 'cash' && transaction.cashTendered != null && (
+                                            <>
+                                                <div className="flex justify-between text-gray-400">
+                                                    <span>Cash Tendered</span>
+                                                    <span className="text-white">₱{transaction.cashTendered.toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex justify-between text-gray-400">
+                                                    <span>Change</span>
+                                                    <span className="text-white">₱{(transaction.changeGiven ?? 0).toFixed(2)}</span>
+                                                </div>
+                                            </>
                                         )}
                                     </>
                                 )}

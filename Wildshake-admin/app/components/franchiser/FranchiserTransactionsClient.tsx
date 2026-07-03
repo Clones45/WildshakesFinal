@@ -18,11 +18,19 @@ const SIZE_FROM_CATEGORY: Record<string, string> = {
   'Milkshakes Petite':  'Petite',
 }
 
+interface SplitPaymentEntry {
+  method: string
+  amount: number
+  referenceNumber?: string
+  bankName?: string
+}
+
 interface Tx {
   id: string
   local_ref: string | null
   reference_number: string | null
   bank_name: string | null
+  split_payments: SplitPaymentEntry[] | null
   total_amount: number
   discount_type: string | null
   discount_amount: number
@@ -77,7 +85,7 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
   }
 
   const payLabels: Record<string, string> = {
-    cash: '💵', gcash: '📱', maya: '🟣', bank_transfer: '🏦', card: '💳', other: '📎'
+    cash: '💵', gcash: '📱', maya: '🟣', bank_transfer: '🏦', card: '💳', other: '📎', split: '🔀'
   }
 
   return (
@@ -208,6 +216,16 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                     </td>
                     <td style={{ fontSize: '0.85rem' }}>
                       {payLabels[tx.payment_method] || '📎'} {tx.payment_method.replace('_', ' ')}
+                      {tx.payment_method === 'split' && tx.split_payments && tx.split_payments.length > 0 && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
+                          {tx.split_payments.map((s, i) => (
+                            <span key={i}>
+                              {payLabels[s.method] || ''} {s.method.replace('_', ' ')} ₱{s.amount.toFixed(2)}
+                              {i < tx.split_payments!.length - 1 ? ' + ' : ''}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <span className={`badge badge-${tx.status === 'completed' ? 'success' : tx.status === 'voided' ? 'danger' : 'warning'}`}>

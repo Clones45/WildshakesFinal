@@ -165,13 +165,14 @@ export function POSScreen() {
         await processCheckout(method, tendered, refNumber, bank, orderType, splits)
     }
 
-    const processCheckout = async (method: string, _tendered: number, refNumber: string, bank: string, orderType: 'dine-in' | 'take-out' | 'pickup', splits?: SplitEntry[]) => {
+    const processCheckout = async (method: string, tendered: number, refNumber: string, bank: string, orderType: 'dine-in' | 'take-out' | 'pickup', splits?: SplitEntry[]) => {
         setIsProcessing(true)
         try {
             const localRef = uuidv4()
             const disc = discountAmount()
             const tot = total()
             const createdAt = new Date().toISOString()
+            const isSplit = !!splits && splits.length > 0
 
             const localTx: LocalTransaction = {
                 localRef,
@@ -180,7 +181,11 @@ export function POSScreen() {
                 totalAmount: tot,
                 discountType,
                 discountAmount: disc,
-                paymentMethod: method,
+                // `method` is a joined string like "cash+gcash" for split payments (not a real
+                // payment_method value) — store the literal 'split' instead so it matches the
+                // transactions.payment_method check constraint; the actual per-method
+                // breakdown lives in splitPayments below.
+                paymentMethod: isSplit ? 'split' : method,
                 referenceNumber: refNumber || undefined,
                 bankName: bank || undefined,
                 splitPayments: splits ? splits.map(s => ({
@@ -189,6 +194,9 @@ export function POSScreen() {
                     referenceNumber: s.referenceNumber || undefined,
                     bankName: s.bankName || undefined,
                 })) : undefined,
+                // Cash tendered/change only make sense for a plain cash sale, not split/delivery.
+                cashTendered: !isSplit && method === 'cash' ? tendered : undefined,
+                changeGiven: !isSplit && method === 'cash' ? Math.max(0, tendered - tot) : undefined,
                 status: 'completed',
                 source: 'pos',
                 orderType,
