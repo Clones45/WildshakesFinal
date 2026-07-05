@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { getPortalPermissions } from '@/lib/portal/access'
 
 export default async function DashboardLayout({
   children,
@@ -8,6 +10,13 @@ export default async function DashboardLayout({
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) redirect('/login')
+
+  const role = (user.app_metadata as Record<string, string>)?.role
+  if (role !== 'master_admin') redirect('/unauthorized')
+
+  const { grantedPanels } = await getPortalPermissions(supabase, user)
 
   // Count low-stock items (current_stock < safety_level)
   const { data: inventory } = await supabase
@@ -23,6 +32,7 @@ export default async function DashboardLayout({
       <Sidebar
         userEmail={user?.email}
         lowStockCount={lowStockCount}
+        grantedPanels={grantedPanels}
       />
       <main className="dashboard-main">
         {children}

@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import FinancialsClient from '../../../components/FinancialsClient'
 
 export default async function FinancialsPage() {
+  await requirePanelAccess('master_admin', 'financials')
   const supabase = await createClient()
 
   // Use a wide date range (365 days) — client-side filtering handles the display window

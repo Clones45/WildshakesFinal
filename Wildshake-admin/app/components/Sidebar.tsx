@@ -3,24 +3,20 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-  { href: '/franchises', label: 'Franchises', icon: '🏪' },
-  { href: '/commissary', label: 'Commissary', icon: '📦' },
-  { href: '/menu', label: 'Menu', icon: '🍹' },
-  { href: '/financials', label: 'Financials', icon: '💰' },
-  { href: '/broadcast', label: 'Broadcast', icon: '📣' },
-]
+import { PANELS, isPanelGranted, type GrantedPanels } from '@/lib/portal/panels'
 
 interface SidebarProps {
   userEmail?: string
   lowStockCount?: number
+  grantedPanels?: GrantedPanels
 }
 
-export default function Sidebar({ userEmail, lowStockCount = 0 }: SidebarProps) {
+export default function Sidebar({ userEmail, lowStockCount = 0, grantedPanels = 'all' }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+
+  const navItems = PANELS.master_admin.filter(item => isPanelGranted(grantedPanels, item.key))
+  const isOwner  = grantedPanels === 'all'
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -77,6 +73,11 @@ export default function Sidebar({ userEmail, lowStockCount = 0 }: SidebarProps) 
             <p className="sidebar-user-role">Master Admin</p>
           </div>
         </div>
+        {isOwner && (
+          <Link href="/staff" className="btn btn-ghost btn-sm w-full" style={{ marginTop: '0.5rem', justifyContent: 'center' }}>
+            🔑 Manage Staff
+          </Link>
+        )}
         <button
           onClick={handleSignOut}
           className="btn btn-ghost btn-sm w-full"

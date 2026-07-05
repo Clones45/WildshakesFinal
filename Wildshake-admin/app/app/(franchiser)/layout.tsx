@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import FranchiserSidebar from '@/components/franchiser/FranchiserSidebar'
 import { redirect } from 'next/navigation'
+import { getPortalPermissions } from '@/lib/portal/access'
 
 export default async function FranchiserLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -10,6 +11,8 @@ export default async function FranchiserLayout({ children }: { children: React.R
 
   const role = (user.app_metadata as Record<string, string>)?.role
   if (role !== 'franchisee') redirect('/unauthorized')
+
+  const { grantedPanels } = await getPortalPermissions(supabase, user)
 
   // Load the franchisee's franchise + branch info
   const franchiseId = (user.app_metadata as Record<string, string>)?.franchise_id
@@ -37,6 +40,7 @@ export default async function FranchiserLayout({ children }: { children: React.R
         franchiseName={franchise?.name}
         branchName={branch?.name}
         deviceClaimed={!!branch?.active_device_id}
+        grantedPanels={grantedPanels}
       />
       <main className="dashboard-main">
         {children}

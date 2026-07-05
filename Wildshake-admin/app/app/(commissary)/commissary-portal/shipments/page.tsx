@@ -1,9 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import CommissaryShipmentsClient from '@/components/commissary/CommissaryShipmentsClient'
 
 export default async function CommissaryShipmentsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, user } = await requirePanelAccess('commissary', 'shipments')
   const commissaryId = (user?.app_metadata as Record<string, string>)?.commissary_id
 
   const [

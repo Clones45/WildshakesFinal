@@ -1,9 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import CommissaryReportsClient from '@/components/commissary/CommissaryReportsClient'
 
 export default async function CommissaryReportsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, user } = await requirePanelAccess('commissary', 'reports')
   const commissaryId = (user?.app_metadata as Record<string, string>)?.commissary_id
 
   // Load franchisees of this commissary

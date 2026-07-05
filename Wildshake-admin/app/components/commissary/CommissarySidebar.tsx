@@ -3,24 +3,21 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-
-const navItems = [
-  { href: '/commissary-portal/dashboard',   label: 'Dashboard',    icon: '📊' },
-  { href: '/commissary-portal/franchisees', label: 'Franchisees',  icon: '🏪' },
-  { href: '/commissary-portal/shipments',   label: 'Shipments',    icon: '📦' },
-  { href: '/commissary-portal/inventory',   label: 'Inventory',    icon: '🗂️' },
-  { href: '/commissary-portal/reports',     label: 'Reports',      icon: '📈' },
-]
+import { PANELS, isPanelGranted, type GrantedPanels } from '@/lib/portal/panels'
 
 interface Props {
   userEmail?: string
   commissaryName?: string
   region?: string | null
+  grantedPanels?: GrantedPanels
 }
 
-export default function CommissarySidebar({ userEmail, commissaryName, region }: Props) {
+export default function CommissarySidebar({ userEmail, commissaryName, region, grantedPanels = 'all' }: Props) {
   const pathname = usePathname()
   const router   = useRouter()
+
+  const navItems = PANELS.commissary.filter(item => isPanelGranted(grantedPanels, item.key))
+  const isOwner  = grantedPanels === 'all'
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -91,6 +88,11 @@ export default function CommissarySidebar({ userEmail, commissaryName, region }:
             <p className="sidebar-user-role">Commissary Manager</p>
           </div>
         </div>
+        {isOwner && (
+          <Link href="/commissary-portal/staff" className="btn btn-ghost btn-sm w-full" style={{ marginTop: '0.5rem', justifyContent: 'center' }}>
+            🔑 Manage Staff
+          </Link>
+        )}
         <button
           onClick={handleSignOut}
           className="btn btn-ghost btn-sm w-full"

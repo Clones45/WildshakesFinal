@@ -1,9 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import FranchiserPosDeviceClient from '@/components/franchiser/FranchiserPosDeviceClient'
 
 export default async function FranchiserPosDevicePage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, user } = await requirePanelAccess('franchise', 'pos_device')
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
 
   // Get all branches; show primary branch's POS status

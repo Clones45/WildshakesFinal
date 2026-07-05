@@ -3,17 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-
-const navItems = [
-  { href: '/franchiser/dashboard',     label: 'Dashboard',          icon: '📊' },
-  { href: '/franchiser/sales',         label: 'Sales Reports',      icon: '📈' },
-  { href: '/franchiser/transactions',  label: 'Transactions',       icon: '🧾' },
-  { href: '/franchiser/inventory',     label: 'Inventory',          icon: '📦' },
-  { href: '/franchiser/staff',         label: 'My Staff',           icon: '👥' },
-  { href: '/franchiser/menu',          label: 'Menu Availability',  icon: '🍹' },
-  { href: '/franchiser/pos-device',    label: 'POS Device',         icon: '🖥️' },
-  { href: '/franchiser/announcements', label: 'Announcements',      icon: '📣' },
-]
+import { PANELS, isPanelGranted, type GrantedPanels } from '@/lib/portal/panels'
 
 interface FranchiserSidebarProps {
   userEmail?: string
@@ -21,13 +11,16 @@ interface FranchiserSidebarProps {
   franchiseName?: string
   branchName?: string
   deviceClaimed?: boolean
+  grantedPanels?: GrantedPanels
 }
 
 export default function FranchiserSidebar({
-  userEmail, ownerName, franchiseName, branchName, deviceClaimed
+  userEmail, ownerName, franchiseName, branchName, deviceClaimed, grantedPanels = 'all'
 }: FranchiserSidebarProps) {
   const pathname = usePathname()
   const router   = useRouter()
+
+  const navItems = PANELS.franchise.filter(item => isPanelGranted(grantedPanels, item.key))
 
   async function handleSignOut() {
     const supabase = createClient()

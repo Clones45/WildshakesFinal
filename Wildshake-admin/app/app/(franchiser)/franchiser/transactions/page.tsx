@@ -1,9 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import FranchiserTransactionsClient from '@/components/franchiser/FranchiserTransactionsClient'
 
 export default async function FranchiserTransactionsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, user } = await requirePanelAccess('franchise', 'transactions')
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
 
   // Get ALL branches for this franchise

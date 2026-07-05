@@ -1,13 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+import { requirePanelAccess } from '@/lib/portal/access'
 import InventoryImportClient from '@/components/franchiser/InventoryImportClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function InventoryImportPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const { supabase } = await requirePanelAccess('franchise', 'inventory')
 
   // Fetch all products for matching
   const { data: products } = await supabase

@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import FranchiseDetailClient from '@/components/admin/FranchiseDetailClient'
+import { requirePanelAccess } from '@/lib/portal/access'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -9,6 +10,8 @@ interface PageProps {
 }
 
 export default async function FranchiseDetailPage({ params, searchParams }: PageProps) {
+  await requirePanelAccess('master_admin', 'franchises')
+
   const { id } = await params
   const { tab = 'dashboard' } = await searchParams
 

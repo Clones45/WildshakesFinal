@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import BroadcastClient from '../../../components/BroadcastClient'
 
 export default async function BroadcastPage() {
+  await requirePanelAccess('master_admin', 'broadcast')
   const supabase = await createClient()
 
   const [

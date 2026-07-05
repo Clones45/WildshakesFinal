@@ -1,9 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import FranchiserMenuClient from '@/components/franchiser/FranchiserMenuClient'
 
 export default async function FranchiserMenuPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, user } = await requirePanelAccess('franchise', 'menu')
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
 
   // Get the franchisee's primary branch

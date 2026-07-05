@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 
 async function getFranchiserDashboardData(franchiseId: string) {
   const supabase = await createClient()
@@ -118,8 +119,7 @@ async function getFranchiserDashboardData(franchiseId: string) {
 }
 
 export default async function FranchiserDashboard() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await requirePanelAccess('franchise', 'dashboard')
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
 
   const data = await getFranchiserDashboardData(franchiseId)

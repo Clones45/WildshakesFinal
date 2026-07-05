@@ -1,7 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requirePanelAccess } from '@/lib/portal/access'
 import FranchisesClient from '@/components/FranchisesClient'
 
 export default async function FranchisesPage() {
+  await requirePanelAccess('master_admin', 'franchises')
   const supabase = createAdminClient()
 
   const [

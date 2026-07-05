@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import CommissarySidebar from '@/components/commissary/CommissarySidebar'
+import { getPortalPermissions } from '@/lib/portal/access'
 
 export default async function CommissaryPortalLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -10,6 +11,8 @@ export default async function CommissaryPortalLayout({ children }: { children: R
 
   const role = (user.app_metadata as Record<string, string>)?.role
   if (role !== 'commissary') redirect('/unauthorized')
+
+  const { grantedPanels } = await getPortalPermissions(supabase, user)
 
   const commissaryId = (user.app_metadata as Record<string, string>)?.commissary_id
 
@@ -26,6 +29,7 @@ export default async function CommissaryPortalLayout({ children }: { children: R
         userEmail={user.email}
         commissaryName={commissary?.name}
         region={commissary?.region}
+        grantedPanels={grantedPanels}
       />
       <main className="dashboard-main">
         {children}

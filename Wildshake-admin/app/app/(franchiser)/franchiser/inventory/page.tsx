@@ -1,11 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import FranchiserInventoryClient from '@/components/franchiser/FranchiserInventoryClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function FranchiserInventoryPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, user } = await requirePanelAccess('franchise', 'inventory')
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
 
   // Get branches for this franchise

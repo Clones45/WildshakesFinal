@@ -1,9 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import CommissaryInventoryClient from '@/components/commissary/CommissaryInventoryClient'
 
 export default async function CommissaryInventoryPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, user } = await requirePanelAccess('commissary', 'inventory')
   const commissaryId = (user?.app_metadata as Record<string, string>)?.commissary_id
 
   const today = new Date().toISOString().split('T')[0]

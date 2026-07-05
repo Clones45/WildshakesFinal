@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { createFranchiserStaff, updateStaffStatus, updateStaffPin } from '@/lib/actions/franchiser'
+import { grantPortalAccess, revokePortalAccess, updateStaffPanels } from '@/lib/actions/staff'
 import StaffQRModal from '@/components/franchiser/StaffQRModal'
+import PortalAccessFields from '@/components/staff/PortalAccessFields'
+import { PANELS } from '@/lib/portal/panels'
 
 export interface StaffMember {
   id: string
@@ -13,12 +16,15 @@ export interface StaffMember {
   qr_access_token: string | null
   is_active: boolean
   created_at: string
+  has_portal_access?: boolean
+  panels?: string[] | null
 }
 
 interface Props {
   branchId: string
   branchName: string
   staff: StaffMember[]
+  isOwner: boolean
 }
 
 // Roles that require a PIN (they authenticate on the POS terminal)
@@ -33,21 +39,29 @@ const ALL_ROLES = [
   { value: 'delivery_rider',  label: 'Delivery Rider',    icon: '🛵', color: 'badge-muted',   description: 'Handles deliveries' },
   { value: 'supervisor',      label: 'Supervisor',        icon: '🏷️', color: 'badge-warning', description: 'Assists manager in daily operations' },
   { value: 'investor',        label: 'Investor',          icon: '📊', color: 'badge-success', description: 'Branch co-owner / silent investor' },
+  { value: 'staff',           label: 'Office / Portal Staff', icon: '💻', color: 'badge-muted', description: 'No POS login — web portal access only' },
 ]
 
 const ROLE_MAP = Object.fromEntries(ALL_ROLES.map(r => [r.value, r]))
 
-export default function FranchiserStaffClient({ branchId, branchName, staff: initialStaff }: Props) {
+export default function FranchiserStaffClient({ branchId, branchName, staff: initialStaff, isOwner }: Props) {
   const [staff, setStaff] = useState(initialStaff)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editPin, setEditPin]   = useState<{ id: string; name: string; pin: string } | null>(null)
   const [qrTarget, setQrTarget] = useState<StaffMember | null>(null)
+  const [portalTarget, setPortalTarget] = useState<StaffMember | null>(null)
   const [error, setError]       = useState('')
   const [success, setSuccess]   = useState('')
   const [isPending, startTransition] = useTransition()
 
   // Add staff form state
-  const [form, setForm] = useState({ name: '', role: 'cashier', pin_code: '' })
+  const [form, setForm] = useState({ name: '', role: 'cashier', pin_code: '', grantPortal: false })
+  const [portalEmail, setPortalEmail]       = useState('')
+  const [portalPassword, setPortalPassword] = useState('')
+  const [portalPanels, setPortalPanels]     = useState<string[]>([])
+
+  // Edit-permissions / grant-portal-access modal state (existing staff row)
+  const [portalForm, setPortalForm] = useState({ email: '', password: '', panels: [] as string[] })
 
   const pinRequired = PIN_REQUIRED_ROLES.has(form.role)
 
@@ -94,6 +108,11 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
       const pinError = validatePin(form.pin_code)
       if (pinError) { flash(pinError, true); return }
     }
+    if (form.grantPortal && (!portalEmail || portalPassword.length < 6)) {
+      flash('Email and a password of at least 6 characters are required to grant portal access.', true)
+      return
+    }
+
     startTransition(async () => {
       const fd = new FormData()
       fd.set('branch_id', branchId)
@@ -102,10 +121,27 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
       fd.set('pin_code', form.pin_code)
       const res = await createFranchiserStaff(fd)
       if (res.error) { flash(res.error, true); return }
-      setStaff(prev => [...prev, res.staff!])
-      setForm({ name: '', role: 'cashier', pin_code: '' })
+
+      let newMember = res.staff!
+
+      if (form.grantPortal) {
+        const portalFd = new FormData()
+        portalFd.set('email', portalEmail)
+        portalFd.set('password', portalPassword)
+        portalPanels.forEach(p => portalFd.append('panels', p))
+        const portalRes = await grantPortalAccess(newMember.id, portalFd)
+        if (portalRes.error) {
+          flash(`Staff created, but portal access failed: ${portalRes.error}`, true)
+        } else {
+          newMember = { ...newMember, email: portalEmail, has_portal_access: true, panels: portalPanels }
+        }
+      }
+
+      setStaff(prev => [...prev, newMember])
+      setForm({ name: '', role: 'cashier', pin_code: '', grantPortal: false })
+      setPortalEmail(''); setPortalPassword(''); setPortalPanels([])
       setShowAddModal(false)
-      flash(`${res.staff!.name} added successfully!`)
+      flash(`${newMember.name} added successfully!`)
     })
   }
 
@@ -131,6 +167,59 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
     })
   }
 
+  function openPortalModal(member: StaffMember) {
+    setPortalForm({
+      email: member.email || '',
+      password: '',
+      panels: member.panels || [],
+    })
+    setPortalTarget(member)
+  }
+
+  async function handleSavePortal() {
+    if (!portalTarget) return
+
+    if (portalTarget.has_portal_access) {
+      startTransition(async () => {
+        const res = await updateStaffPanels(portalTarget.id, portalForm.panels)
+        if (res.error) { flash(res.error, true); return }
+        setStaff(prev => prev.map(s => s.id === portalTarget.id ? { ...s, panels: portalForm.panels } : s))
+        setPortalTarget(null)
+        flash('Panel permissions updated.')
+      })
+      return
+    }
+
+    if (!portalForm.email || portalForm.password.length < 6) {
+      flash('Email and a password of at least 6 characters are required.', true)
+      return
+    }
+
+    startTransition(async () => {
+      const fd = new FormData()
+      fd.set('email', portalForm.email)
+      fd.set('password', portalForm.password)
+      portalForm.panels.forEach(p => fd.append('panels', p))
+      const res = await grantPortalAccess(portalTarget.id, fd)
+      if (res.error) { flash(res.error, true); return }
+      setStaff(prev => prev.map(s => s.id === portalTarget.id
+        ? { ...s, email: portalForm.email, has_portal_access: true, panels: portalForm.panels }
+        : s))
+      setPortalTarget(null)
+      flash('Portal access granted.')
+    })
+  }
+
+  async function handleRevokePortal(member: StaffMember) {
+    if (!confirm(`Remove portal access for ${member.name}? They will no longer be able to log into the web admin.`)) return
+    startTransition(async () => {
+      const res = await revokePortalAccess(member.id)
+      if (res.error) { flash(res.error, true); return }
+      setStaff(prev => prev.map(s => s.id === member.id ? { ...s, has_portal_access: false, panels: [] } : s))
+      flash(`Portal access removed for ${member.name}.`)
+    })
+  }
+
   function handleQRTokenUpdated(staffId: string, newToken: string) {
     setStaff(prev => prev.map(s => s.id === staffId ? { ...s, qr_access_token: newToken } : s))
     // Update the modal target's token in-place so the QR re-renders immediately
@@ -150,9 +239,11 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
           <h1>Staff Management</h1>
           <p className="page-header-subtitle">{branchName} — {staff.length} staff member{staff.length !== 1 ? 's' : ''}</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-          + Add Staff Member
-        </button>
+        {isOwner && (
+          <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+            + Add Staff Member
+          </button>
+        )}
       </div>
 
       {/* Flash messages */}
@@ -169,7 +260,7 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
       {/* Staff Table */}
       <div className="table-wrapper">
         <div className="table-header">
-          <p className="table-title">My Branch Staff</p>
+          <p className="table-title">My Staff</p>
         </div>
         <table>
           <thead>
@@ -178,6 +269,7 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
               <th>Role</th>
               <th>PIN</th>
               <th>Access QR</th>
+              <th>Portal Access</th>
               <th>Status</th>
               <th>Joined</th>
               <th>Actions</th>
@@ -186,7 +278,7 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
           <tbody>
             {staff.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--color-text-muted)' }}>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--color-text-muted)' }}>
                   No staff members yet — add your first cashier!
                 </td>
               </tr>
@@ -219,12 +311,14 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                       <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', letterSpacing: '0.12em' }}>
                         {member.pin_code ? '●'.repeat(member.pin_code.length) : <span style={{ color: 'var(--color-danger)', fontFamily: 'inherit' }}>Not set</span>}
                       </span>
-                      <button
-                        onClick={() => setEditPin({ id: member.id, name: member.name, pin: member.pin_code || '' })}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary-light)', fontSize: '0.75rem', fontWeight: 600 }}
-                      >
-                        ✏️ Change
-                      </button>
+                      {isOwner && (
+                        <button
+                          onClick={() => setEditPin({ id: member.id, name: member.name, pin: member.pin_code || '' })}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary-light)', fontSize: '0.75rem', fontWeight: 600 }}
+                        >
+                          ✏️ Change
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>N/A</span>
@@ -256,6 +350,15 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                   )}
                 </td>
                 <td>
+                  {member.has_portal_access ? (
+                    <span className="badge badge-success" style={{ fontSize: '0.72rem' }}>
+                      🔑 {(member.panels || []).length} panel{(member.panels || []).length !== 1 ? 's' : ''}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>— POS only</span>
+                  )}
+                </td>
+                <td>
                   <span className={`badge ${member.is_active ? 'badge-success' : 'badge-danger'}`}>
                     {member.is_active ? '● Active' : '○ Inactive'}
                   </span>
@@ -275,13 +378,35 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                         📲 QR
                       </button>
                     )}
-                    <button
-                      onClick={() => handleToggleActive(member)}
-                      disabled={isPending}
-                      className={`btn btn-sm ${member.is_active ? 'btn-ghost' : 'btn-primary'}`}
-                    >
-                      {member.is_active ? 'Deactivate' : 'Activate'}
-                    </button>
+                    {isOwner && (
+                      <button
+                        onClick={() => openPortalModal(member)}
+                        disabled={isPending}
+                        className="btn btn-sm btn-ghost"
+                        title={member.has_portal_access ? 'Edit panel permissions' : 'Grant portal access'}
+                      >
+                        {member.has_portal_access ? '✏️ Permissions' : '🔑 Grant Portal'}
+                      </button>
+                    )}
+                    {isOwner && member.has_portal_access && (
+                      <button
+                        onClick={() => handleRevokePortal(member)}
+                        disabled={isPending}
+                        className="btn btn-sm btn-ghost"
+                        title="Remove portal (web) access"
+                      >
+                        🚫 Revoke Portal
+                      </button>
+                    )}
+                    {isOwner && (
+                      <button
+                        onClick={() => handleToggleActive(member)}
+                        disabled={isPending}
+                        className={`btn btn-sm ${member.is_active ? 'btn-ghost' : 'btn-primary'}`}
+                      >
+                        {member.is_active ? 'Deactivate' : 'Activate'}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -348,6 +473,32 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                     </p>
                   </div>
                 )}
+
+                <div className="form-group" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem', marginTop: '0.25rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={form.grantPortal}
+                      onChange={e => setForm(f => ({ ...f, grantPortal: e.target.checked }))}
+                    />
+                    <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Also grant web portal access</span>
+                  </label>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                    Lets this person log into the admin portal (separate from the PIN above) with only the panels you choose.
+                  </p>
+                </div>
+
+                {form.grantPortal && (
+                  <PortalAccessFields
+                    panels={PANELS.franchise}
+                    email={portalEmail}
+                    password={portalPassword}
+                    selectedPanels={portalPanels}
+                    onEmailChange={setPortalEmail}
+                    onPasswordChange={setPortalPassword}
+                    onPanelsChange={setPortalPanels}
+                  />
+                )}
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowAddModal(false)}>Cancel</button>
@@ -392,6 +543,51 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
           </div>
         </div>
       )}
+
+      {/* Grant Portal Access / Edit Permissions Modal */}
+      {portalTarget && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setPortalTarget(null) }}>
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title">
+                {portalTarget.has_portal_access ? 'Edit Permissions' : 'Grant Portal Access'} — {portalTarget.name}
+              </h3>
+              <button className="modal-close" onClick={() => setPortalTarget(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {portalTarget.has_portal_access ? (
+                <PortalAccessFields
+                  panels={PANELS.franchise}
+                  email=""
+                  password=""
+                  selectedPanels={portalForm.panels}
+                  onEmailChange={() => {}}
+                  onPasswordChange={() => {}}
+                  onPanelsChange={panels => setPortalForm(f => ({ ...f, panels }))}
+                  showCredentials={false}
+                />
+              ) : (
+                <PortalAccessFields
+                  panels={PANELS.franchise}
+                  email={portalForm.email}
+                  password={portalForm.password}
+                  selectedPanels={portalForm.panels}
+                  onEmailChange={email => setPortalForm(f => ({ ...f, email }))}
+                  onPasswordChange={password => setPortalForm(f => ({ ...f, password }))}
+                  onPanelsChange={panels => setPortalForm(f => ({ ...f, panels }))}
+                />
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setPortalTarget(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSavePortal} disabled={isPending}>
+                {isPending ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* QR Code Modal */}
       {qrTarget && (
         <StaffQRModal

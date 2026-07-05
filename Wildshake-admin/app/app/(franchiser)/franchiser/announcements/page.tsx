@@ -1,9 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import FranchiserAnnouncementsClient from '@/components/franchiser/FranchiserAnnouncementsClient'
 
 export default async function FranchiserAnnouncementsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, user } = await requirePanelAccess('franchise', 'announcements')
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
 
   const { data: announcements } = await supabase

@@ -1,8 +1,7 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 
 export default async function CommissaryDashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, user } = await requirePanelAccess('commissary', 'dashboard')
   const commissaryId = (user?.app_metadata as Record<string, string>)?.commissary_id
 
   const today = new Date().toISOString().split('T')[0]

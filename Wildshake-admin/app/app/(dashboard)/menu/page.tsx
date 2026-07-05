@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
+import { requirePanelAccess } from '@/lib/portal/access'
 import MenuClient from '@/components/MenuClient'
 
 export default async function MenuPage() {
+  await requirePanelAccess('master_admin', 'menu')
   const supabase = await createClient()
 
   const [
