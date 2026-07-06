@@ -695,7 +695,7 @@ export default function InventoryImportClient({ products, inventoryItems, catego
           </div>
 
           {/* Summary cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
             {[
               { label: 'Recipe Links', value: validCount, icon: '🔗', color: 'var(--color-success)' },
               { label: 'Skipped (unmatched)', value: skippableCount, icon: '⏭️', color: 'var(--color-warning)' },
@@ -775,7 +775,7 @@ export default function InventoryImportClient({ products, inventoryItems, catego
             <p style={{ color: 'var(--color-text-muted)' }}>Recipe links have been saved to Supabase.</p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
             {[
               { label: 'Inserted', value: commitResult.inserted, icon: '✅', color: 'var(--color-success)' },
               { label: 'Updated', value: commitResult.updated, icon: '🔄', color: 'var(--color-info)' },

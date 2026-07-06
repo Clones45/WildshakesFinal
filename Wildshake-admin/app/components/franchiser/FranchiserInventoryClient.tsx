@@ -609,7 +609,7 @@ export default function FranchiserInventoryClient({
       </div>
 
       {/* KPI Summary */}
-      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stat-grid" style={{ marginBottom: '1.25rem' }}>
         <div className="stat-card">
           <div className="stat-card-icon" style={{ background: 'rgba(22,160,133,0.15)', color: '#16a085' }}>📋</div>
           <p className="stat-card-label">Menu Items Tracked</p>

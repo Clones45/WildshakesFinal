@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 
 interface Tx {
   total_amount: number
@@ -241,7 +241,7 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
       )}
 
       {/* Top Items + Daily Table */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: '1.25rem', marginTop: '1.25rem' }}>
+      <div className="two-col-panel" style={{ '--panel-ratio': '1.4fr', marginTop: '1.25rem' } as CSSProperties}>
         {/* Top Selling Items */}
         <div className="chart-card">
           <p className="chart-title">

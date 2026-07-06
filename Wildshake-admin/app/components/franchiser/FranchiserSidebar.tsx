@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PANELS, isPanelGranted, type GrantedPanels } from '@/lib/portal/panels'
+import { useMobileSidebar } from '@/lib/hooks/useMobileSidebar'
 
 interface FranchiserSidebarProps {
   userEmail?: string
@@ -19,6 +20,7 @@ export default function FranchiserSidebar({
 }: FranchiserSidebarProps) {
   const pathname = usePathname()
   const router   = useRouter()
+  const { isOpen, toggle, close } = useMobileSidebar()
 
   const navItems = PANELS.franchise.filter(item => isPanelGranted(grantedPanels, item.key))
 
@@ -34,7 +36,16 @@ export default function FranchiserSidebar({
     : 'FR'
 
   return (
-    <aside className="sidebar">
+    <>
+      <button
+        className="sidebar-mobile-toggle"
+        onClick={toggle}
+        aria-label={isOpen ? 'Close menu' : 'Open menu'}
+      >
+        {isOpen ? '✕' : '☰'}
+      </button>
+      {isOpen && <div className="sidebar-backdrop" onClick={close} />}
+      <aside className={`sidebar${isOpen ? ' sidebar-open' : ''}`}>
       {/* Logo */}
       <div className="sidebar-logo">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
@@ -111,6 +122,7 @@ export default function FranchiserSidebar({
           🚪 Sign Out
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }

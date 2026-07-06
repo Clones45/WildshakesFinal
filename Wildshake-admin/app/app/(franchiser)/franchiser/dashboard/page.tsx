@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { requireDashboardOrFirstPanel } from '@/lib/portal/access'
 
@@ -264,7 +265,7 @@ export default async function FranchiserDashboard() {
       </div>
 
       {/* Top Items + Recent Transactions row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '1.25rem', marginTop: '1.25rem' }}>
+      <div className="two-col-panel" style={{ '--panel-ratio': '1.6fr', marginTop: '1.25rem' } as CSSProperties}>
         {/* Top selling items today */}
         <div className="chart-card">
           <p className="chart-title">

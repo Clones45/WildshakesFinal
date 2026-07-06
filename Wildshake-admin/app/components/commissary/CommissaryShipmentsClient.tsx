@@ -85,7 +85,7 @@ export default function CommissaryShipmentsClient({ commissaryId, franchises, in
       </div>
 
       {/* Stats */}
-      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.5rem' }}>
+      <div className="stat-grid" style={{ marginBottom: '1.5rem' }}>
         <div className="stat-card">
           <div className="stat-card-icon gold">📋</div>
           <p className="stat-card-label">Pending</p>

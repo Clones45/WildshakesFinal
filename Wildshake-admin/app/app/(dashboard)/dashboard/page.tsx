@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { requireDashboardOrFirstPanel } from '@/lib/portal/access'
 
@@ -269,7 +270,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Branch Leaderboard + Low Stock row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginTop: '1.25rem' }}>
+      <div className="two-col-panel" style={{ '--panel-ratio': '1fr', marginTop: '1.25rem' } as CSSProperties}>
         {/* 30-Day Branch Revenue Leaderboard */}
         <div className="chart-card">
           <p className="chart-title">

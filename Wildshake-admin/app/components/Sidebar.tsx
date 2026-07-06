@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PANELS, isPanelGranted, type GrantedPanels } from '@/lib/portal/panels'
+import { useMobileSidebar } from '@/lib/hooks/useMobileSidebar'
 
 interface SidebarProps {
   userEmail?: string
@@ -14,6 +15,7 @@ interface SidebarProps {
 export default function Sidebar({ userEmail, lowStockCount = 0, grantedPanels = 'all' }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const { isOpen, toggle, close } = useMobileSidebar()
 
   const navItems = PANELS.master_admin.filter(item => isPanelGranted(grantedPanels, item.key))
   const isOwner  = grantedPanels === 'all'
@@ -30,7 +32,16 @@ export default function Sidebar({ userEmail, lowStockCount = 0, grantedPanels = 
     : 'MA'
 
   return (
-    <aside className="sidebar">
+    <>
+      <button
+        className="sidebar-mobile-toggle"
+        onClick={toggle}
+        aria-label={isOpen ? 'Close menu' : 'Open menu'}
+      >
+        {isOpen ? '✕' : '☰'}
+      </button>
+      {isOpen && <div className="sidebar-backdrop" onClick={close} />}
+      <aside className={`sidebar${isOpen ? ' sidebar-open' : ''}`}>
       {/* Logo */}
       <div className="sidebar-logo">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
@@ -86,6 +97,7 @@ export default function Sidebar({ userEmail, lowStockCount = 0, grantedPanels = 
           🚪 Sign Out
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, type CSSProperties } from 'react'
 import { createAnnouncement, deactivateAnnouncement } from '@/lib/actions/broadcast'
 
 interface Announcement {
@@ -61,7 +61,7 @@ export default function BroadcastClient({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '1.5rem', alignItems: 'start' }}>
+      <div className="two-col-panel" style={{ '--panel-ratio': '1.5fr', alignItems: 'start' } as CSSProperties}>
         {/* Compose Panel */}
         <div className="card" style={{ position: 'sticky', top: '1.5rem' }}>
           <h3 style={{ color: 'var(--color-text)', marginBottom: '1.25rem' }}>📣 Compose Announcement</h3>

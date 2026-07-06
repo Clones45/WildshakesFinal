@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PANELS, isPanelGranted, type GrantedPanels } from '@/lib/portal/panels'
+import { useMobileSidebar } from '@/lib/hooks/useMobileSidebar'
 
 interface Props {
   userEmail?: string
@@ -15,6 +16,7 @@ interface Props {
 export default function CommissarySidebar({ userEmail, commissaryName, region, grantedPanels = 'all' }: Props) {
   const pathname = usePathname()
   const router   = useRouter()
+  const { isOpen, toggle, close } = useMobileSidebar()
 
   const navItems = PANELS.commissary.filter(item => isPanelGranted(grantedPanels, item.key))
   const isOwner  = grantedPanels === 'all'
@@ -31,7 +33,16 @@ export default function CommissarySidebar({ userEmail, commissaryName, region, g
     : (userEmail?.slice(0, 2).toUpperCase() ?? 'CB')
 
   return (
-    <aside className="sidebar">
+    <>
+      <button
+        className="sidebar-mobile-toggle"
+        onClick={toggle}
+        aria-label={isOpen ? 'Close menu' : 'Open menu'}
+      >
+        {isOpen ? '✕' : '☰'}
+      </button>
+      {isOpen && <div className="sidebar-backdrop" onClick={close} />}
+      <aside className={`sidebar${isOpen ? ' sidebar-open' : ''}`}>
       {/* Logo */}
       <div className="sidebar-logo">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
@@ -101,6 +112,7 @@ export default function CommissarySidebar({ userEmail, commissaryName, region, g
           🚪 Sign Out
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }

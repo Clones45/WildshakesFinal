@@ -81,7 +81,7 @@ export default function PortalAccessFields({
       )}
       <div className="form-group">
         <label className="form-label">Panel Access</label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+        <div className="panel-checkbox-grid">
           {panels.map(p => (
             <label
               key={p.key}

@@ -138,6 +138,7 @@ a:hover { color: var(--color-accent); }
   .dashboard-main {
     margin-left: 0;
     padding: 1rem;
+    padding-top: 4.5rem; /* room for the fixed mobile sidebar toggle button */
   }
 }
 
@@ -155,8 +156,59 @@ a:hover { color: var(--color-accent); }
   display: flex;
   flex-direction: column;
   padding: 0;
-  z-index: 100;
+  z-index: 200;
   overflow-y: auto;
+  transition: transform var(--transition-slow);
+}
+
+/* Mobile sidebar: hidden off-canvas by default, slides in when toggled open */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  }
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+}
+
+.sidebar-mobile-toggle {
+  display: none;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 300;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 1.15rem;
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+}
+
+@media (max-width: 768px) {
+  .sidebar-mobile-toggle {
+    display: flex;
+  }
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: rgba(0, 0, 0, 0.5);
+  animation: fadeIn 0.15s ease;
+}
+
+@media (min-width: 769px) {
+  .sidebar-backdrop {
+    display: none;
+  }
 }
 
 .sidebar-logo {
@@ -507,7 +559,8 @@ a:hover { color: var(--color-accent); }
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .table-header {
@@ -518,6 +571,9 @@ a:hover { color: var(--color-accent); }
   gap: 1rem;
   border-bottom: 1px solid var(--color-border);
   flex-wrap: wrap;
+  position: sticky;
+  left: 0;
+  background: var(--color-surface);
 }
 
 .table-title {
@@ -555,6 +611,7 @@ a:hover { color: var(--color-accent); }
 
 table {
   width: 100%;
+  min-width: 640px; /* keep columns readable on narrow screens -- scroll the wrapper instead of cramming */
   border-collapse: collapse;
 }
 
@@ -702,8 +759,26 @@ tbody td {
   padding: 2rem;
   width: 100%;
   max-width: 520px;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
   box-shadow: 0 24px 60px rgba(0,0,0,0.6), var(--shadow-glow);
   animation: slideUp 0.2s ease;
+}
+
+@media (max-width: 480px) {
+  .modal { padding: 1.25rem; }
+  .modal-title { font-size: 1.1rem; }
+}
+
+/* Panel-permission checkbox grid (staff portal-access forms) */
+.panel-checkbox-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .panel-checkbox-grid { grid-template-columns: 1fr; }
 }
 
 @keyframes slideUp {
@@ -779,6 +854,21 @@ tbody td {
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 1.25rem;
   margin-top: 1.5rem;
+}
+
+/* Shared asymmetric two-column layout (main panel + side panel), e.g. a chart
+   next to a table. Each page sets --panel-ratio for its own main:side ratio;
+   collapses to a single column on tablet/phone widths. */
+.two-col-panel {
+  display: grid;
+  grid-template-columns: 1fr var(--panel-ratio, 1fr);
+  gap: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .two-col-panel {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ==========================================

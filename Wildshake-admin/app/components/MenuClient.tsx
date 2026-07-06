@@ -147,7 +147,7 @@ export default function MenuClient({
       {tab === 'products' && (
         <>
           {/* Stats */}
-          <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '1.5rem' }}>
+          <div className="stat-grid" style={{ marginBottom: '1.5rem' }}>
             <div className="stat-card">
               <div className="stat-card-icon green">🍹</div>
               <p className="stat-card-label">Total Products</p>

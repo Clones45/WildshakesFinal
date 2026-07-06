@@ -100,7 +100,7 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
       </div>
 
       {/* Summary KPIs */}
-      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stat-grid" style={{ marginBottom: '1.25rem' }}>
         <div className="stat-card">
           <div className="stat-card-icon green">✅</div>
           <p className="stat-card-label">Completed Revenue</p>

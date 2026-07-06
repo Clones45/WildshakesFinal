@@ -78,7 +78,7 @@ export default function CommissaryFranchiseesClient({ franchises, commissaryId }
       </div>
 
       {/* Stats */}
-      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.5rem' }}>
+      <div className="stat-grid" style={{ marginBottom: '1.5rem' }}>
         <div className="stat-card">
           <div className="stat-card-icon green">🏪</div>
           <p className="stat-card-label">Total Franchisees</p>

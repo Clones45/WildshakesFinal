@@ -96,7 +96,7 @@ export default function FinancialsClient({ transactions, branches }: FinancialsC
       </div>
 
       {/* Revenue KPI row */}
-      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '2rem' }}>
+      <div className="stat-grid" style={{ marginBottom: '2rem' }}>
         <div className="stat-card">
           <div className="stat-card-icon green">💰</div>
           <p className="stat-card-label">Gross Revenue</p>
