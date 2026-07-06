@@ -51,6 +51,32 @@ export async function requirePanelAccess(tenantType: TenantType, panelKey: strin
   return { supabase, user, ...perms }
 }
 
+// Call at the top of a tier's dashboard/page.tsx specifically. Dashboard is a
+// normal togglable panel like any other (some staff shouldn't see it), so unlike
+// requirePanelAccess() this doesn't dead-end at /unauthorized when it's missing --
+// it sends the staffer to their first granted panel instead, since a staffer
+// still needs somewhere to land after login (middleware always routes post-login
+// to .../dashboard without knowing about per-staff panels).
+export async function requireDashboardOrFirstPanel(tenantType: TenantType) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const perms = await getPortalPermissions(supabase, user)
+
+  if (isPanelGranted(perms.grantedPanels, 'dashboard')) {
+    return { supabase, user, ...perms }
+  }
+
+  const grantedPanels = perms.grantedPanels
+  const firstPanel = grantedPanels === 'all'
+    ? undefined
+    : PANELS[tenantType].find(p => grantedPanels.includes(p.key))
+
+  if (firstPanel) redirect(firstPanel.href)
+  redirect('/unauthorized')
+}
+
 // For pages that are never delegable to staff at all (master admin / commissary
 // staff management itself has no panel key in PANELS -- it's always owner-only).
 export async function requireOwner() {

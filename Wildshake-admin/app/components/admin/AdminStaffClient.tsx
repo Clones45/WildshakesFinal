@@ -28,7 +28,7 @@ export default function AdminStaffClient({ staff: initialStaff }: Props) {
   const [success, setSuccess] = useState('')
   const [isPending, startTransition] = useTransition()
 
-  const [form, setForm] = useState({ name: '', email: '', password: '', panels: [] as string[] })
+  const [form, setForm] = useState({ name: '', email: '', password: '', panels: ['dashboard'] as string[] })
   const [editPanels, setEditPanels] = useState<string[]>([])
 
   function flash(msg: string, isError = false) {
@@ -51,7 +51,7 @@ export default function AdminStaffClient({ staff: initialStaff }: Props) {
       const res = await createStaffMember(fd)
       if (res.error) { flash(res.error, true); return }
       setStaff(prev => [...prev, res.staff as AdminStaffMember])
-      setForm({ name: '', email: '', password: '', panels: [] })
+      setForm({ name: '', email: '', password: '', panels: ['dashboard'] })
       setShowAddModal(false)
       flash(`${res.staff!.name} added successfully!`)
     })

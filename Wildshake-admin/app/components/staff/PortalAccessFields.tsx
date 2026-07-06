@@ -1,6 +1,7 @@
 'use client'
 
-import { ALWAYS_ON_PANEL, type PanelDef } from '@/lib/portal/panels'
+import { useState } from 'react'
+import type { PanelDef } from '@/lib/portal/panels'
 
 interface Props {
   panels: PanelDef[]
@@ -21,8 +22,9 @@ export default function PortalAccessFields({
   panels, email, password, selectedPanels, onEmailChange, onPasswordChange, onPanelsChange,
   showCredentials = true,
 }: Props) {
+  const [showPassword, setShowPassword] = useState(false)
+
   function togglePanel(key: string) {
-    if (key === ALWAYS_ON_PANEL) return
     onPanelsChange(
       selectedPanels.includes(key)
         ? selectedPanels.filter(p => p !== key)
@@ -47,15 +49,30 @@ export default function PortalAccessFields({
           </div>
           <div className="form-group">
             <label className="form-label">Password *</label>
-            <input
-              className="form-input"
-              type="password"
-              value={password}
-              onChange={e => onPasswordChange(e.target.value)}
-              placeholder="Set an initial password"
-              minLength={6}
-              required
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                className="form-input"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={e => onPasswordChange(e.target.value)}
+                placeholder="Set an initial password"
+                minLength={6}
+                required
+                style={{ paddingRight: '2.5rem' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(v => !v)}
+                title={showPassword ? 'Hide password' : 'Show password'}
+                style={{
+                  position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.95rem',
+                  color: 'var(--color-text-muted)', padding: '0.2rem',
+                }}
+              >
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
             <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
               🔐 The staff member can log in with this right away — they can change it later.
             </p>
@@ -68,18 +85,13 @@ export default function PortalAccessFields({
           {panels.map(p => (
             <label
               key={p.key}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                fontSize: '0.85rem', opacity: p.key === ALWAYS_ON_PANEL ? 0.6 : 1,
-                cursor: p.key === ALWAYS_ON_PANEL ? 'default' : 'pointer',
-              }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}
             >
               <input
                 type="checkbox"
                 name="panels"
                 value={p.key}
-                checked={p.key === ALWAYS_ON_PANEL || selectedPanels.includes(p.key)}
-                disabled={p.key === ALWAYS_ON_PANEL}
+                checked={selectedPanels.includes(p.key)}
                 onChange={() => togglePanel(p.key)}
               />
               {p.icon} {p.label}

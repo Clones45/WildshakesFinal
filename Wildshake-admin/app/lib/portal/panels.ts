@@ -39,14 +39,12 @@ export const PANELS: Record<TenantType, PanelDef[]> = {
   ],
 }
 
-export const ALWAYS_ON_PANEL = 'dashboard'
-
 // 'all' means "not a restricted staff session" (an owner, or no restriction applies).
 export type GrantedPanels = 'all' | string[]
 
 export function isPanelGranted(granted: GrantedPanels, key: string): boolean {
   if (granted === 'all') return true
-  return key === ALWAYS_ON_PANEL || granted.includes(key)
+  return granted.includes(key)
 }
 
 // Maps the tenant-tier role string stored in Supabase Auth app_metadata

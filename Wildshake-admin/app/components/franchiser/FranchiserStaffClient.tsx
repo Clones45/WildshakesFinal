@@ -53,12 +53,14 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
   const [error, setError]       = useState('')
   const [success, setSuccess]   = useState('')
   const [isPending, startTransition] = useTransition()
+  const [showAddPin, setShowAddPin]   = useState(false)
+  const [showEditPin, setShowEditPin] = useState(false)
 
   // Add staff form state
   const [form, setForm] = useState({ name: '', role: 'cashier', pin_code: '', grantPortal: false })
   const [portalEmail, setPortalEmail]       = useState('')
   const [portalPassword, setPortalPassword] = useState('')
-  const [portalPanels, setPortalPanels]     = useState<string[]>([])
+  const [portalPanels, setPortalPanels]     = useState<string[]>(['dashboard'])
 
   // Edit-permissions / grant-portal-access modal state (existing staff row)
   const [portalForm, setPortalForm] = useState({ email: '', password: '', panels: [] as string[] })
@@ -139,7 +141,7 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
 
       setStaff(prev => [...prev, newMember])
       setForm({ name: '', role: 'cashier', pin_code: '', grantPortal: false })
-      setPortalEmail(''); setPortalPassword(''); setPortalPanels([])
+      setPortalEmail(''); setPortalPassword(''); setPortalPanels(['dashboard'])
       setShowAddModal(false)
       flash(`${newMember.name} added successfully!`)
     })
@@ -171,7 +173,10 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
     setPortalForm({
       email: member.email || '',
       password: '',
-      panels: member.panels || [],
+      // Editing an existing portal account shows their real current panels;
+      // granting portal access to a PIN-only staffer for the first time starts
+      // with just Dashboard checked as a sensible default (fully optional).
+      panels: member.has_portal_access ? (member.panels || []) : ['dashboard'],
     })
     setPortalTarget(member)
   }
@@ -313,7 +318,7 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                       </span>
                       {isOwner && (
                         <button
-                          onClick={() => setEditPin({ id: member.id, name: member.name, pin: member.pin_code || '' })}
+                          onClick={() => { setShowEditPin(false); setEditPin({ id: member.id, name: member.name, pin: member.pin_code || '' }) }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary-light)', fontSize: '0.75rem', fontWeight: 600 }}
                         >
                           ✏️ Change
@@ -458,16 +463,30 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
                 {pinRequired && (
                   <div className="form-group">
                     <label className="form-label">6-Digit PIN *</label>
-                    <input
-                      className="form-input"
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={6}
-                      placeholder="e.g. 123456"
-                      value={form.pin_code}
-                      onChange={e => setForm(f => ({ ...f, pin_code: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
-                      style={{ fontFamily: 'monospace', letterSpacing: '0.25em', fontSize: '1.2rem' }}
-                    />
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        className="form-input"
+                        type={showAddPin ? 'text' : 'password'}
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder="e.g. 123456"
+                        value={form.pin_code}
+                        onChange={e => setForm(f => ({ ...f, pin_code: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                        style={{ fontFamily: 'monospace', letterSpacing: '0.25em', fontSize: '1.2rem', paddingRight: '2.5rem' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAddPin(v => !v)}
+                        title={showAddPin ? 'Hide PIN' : 'Show PIN'}
+                        style={{
+                          position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)',
+                          background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.95rem',
+                          color: 'var(--color-text-muted)', padding: '0.2rem',
+                        }}
+                      >
+                        {showAddPin ? '🙈' : '👁️'}
+                      </button>
+                    </div>
                     <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
                       🔐 Required — this staff logs in on the POS terminal using this PIN.
                     </p>
@@ -522,16 +541,30 @@ export default function FranchiserStaffClient({ branchId, branchName, staff: ini
             <div className="modal-body">
               <div className="form-group">
                 <label className="form-label">New 6-Digit PIN</label>
-                <input
-                  className="form-input"
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  autoFocus
-                  value={editPin.pin}
-                  onChange={e => setEditPin(p => p ? { ...p, pin: e.target.value.replace(/\D/g, '').slice(0, 6) } : null)}
-                  style={{ fontFamily: 'monospace', letterSpacing: '0.3em', fontSize: '1.4rem', textAlign: 'center' }}
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="form-input"
+                    type={showEditPin ? 'text' : 'password'}
+                    inputMode="numeric"
+                    maxLength={6}
+                    autoFocus
+                    value={editPin.pin}
+                    onChange={e => setEditPin(p => p ? { ...p, pin: e.target.value.replace(/\D/g, '').slice(0, 6) } : null)}
+                    style={{ fontFamily: 'monospace', letterSpacing: '0.3em', fontSize: '1.4rem', textAlign: 'center', paddingRight: '2.5rem' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPin(v => !v)}
+                    title={showEditPin ? 'Hide PIN' : 'Show PIN'}
+                    style={{
+                      position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.95rem',
+                      color: 'var(--color-text-muted)', padding: '0.2rem',
+                    }}
+                  >
+                    {showEditPin ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </div>
             </div>
             <div className="modal-footer">

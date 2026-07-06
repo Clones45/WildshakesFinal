@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { requirePanelAccess } from '@/lib/portal/access'
+import { requireDashboardOrFirstPanel } from '@/lib/portal/access'
 
 async function getDashboardData() {
   const supabase = await createClient()
@@ -115,7 +115,7 @@ async function getDashboardData() {
 }
 
 export default async function DashboardPage() {
-  await requirePanelAccess('master_admin', 'dashboard')
+  await requireDashboardOrFirstPanel('master_admin')
 
   const {
     todayRevenue, todayCount, franchises, recentTx, lowStock,
