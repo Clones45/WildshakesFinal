@@ -27,7 +27,8 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
         const txCount = await db.transactions.where('syncStatus').equals('pending').count()
         const holdCount = await db.localHeldOrders.where('syncStatus').equals('local').count()
         const auditCount = await db.localAuditLogs.where('syncStatus').equals('pending').count()
-        set({ pendingCount: txCount + holdCount + auditCount })
+        const shiftCount = await db.shifts.where('syncStatus').equals('pending').count()
+        set({ pendingCount: txCount + holdCount + auditCount + shiftCount })
     },
 
     syncPending: async () => {
@@ -62,6 +63,10 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
                 }
             }
 
+            // ── 3b. Sync shift / cash-drawer reports ─────────────────────────
+            const { useShiftStore } = await import('./shiftStore')
+            await useShiftStore.getState().syncPendingShifts()
+
             // ── 4. Pull latest users for offline login ──────────────────────
             const { useAuthStore } = await import('./authStore')
             const currentBranch = useAuthStore.getState().branch
@@ -88,7 +93,8 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
             const stillPending =
                 (await db.transactions.where('syncStatus').equals('pending').count()) +
                 (await db.localHeldOrders.where('syncStatus').equals('local').count()) +
-                (await db.localAuditLogs.where('syncStatus').equals('pending').count())
+                (await db.localAuditLogs.where('syncStatus').equals('pending').count()) +
+                (await db.shifts.where('syncStatus').equals('pending').count())
 
             set({ isSyncing: false, pendingCount: stillPending, lastSyncAt: new Date().toISOString() })
             if (pendingTx.length > 0 || pendingAudit.length > 0) {

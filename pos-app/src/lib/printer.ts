@@ -10,6 +10,7 @@ import { toast } from 'react-hot-toast'
 import type { HeldOrder } from '../store/holdStore'
 import type { CartItem } from '../store/cartStore'
 import type { LocalTransaction } from './db'
+import type { ShiftSummary } from '../store/shiftStore'
 
 export interface NativePrinterPlugin {
     printBase64(options: { address: string; data: string }): Promise<void>
@@ -386,4 +387,65 @@ export async function printKitchenTicket(
     ]
 
     await sendToPrinter(lines.join('\n'), 'Kitchen ticket')
+}
+
+// ── Shift Report (End Shift) ────────────────────────────────────────────────
+
+const money = (n: number | null | undefined) => `P${(n ?? 0).toFixed(2)}`
+
+export function buildShiftReportText(shift: ShiftSummary, branchName: string): string {
+    const dateStr = (iso: string) => {
+        const d = new Date(iso)
+        return `${d.toLocaleDateString('en-PH', { month: 'numeric', day: 'numeric', year: '2-digit' })} ${d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })}`
+    }
+
+    const cashierLine = `${shift.cashierName} (${shift.cashierRole})`
+
+    const otherLine = shift.otherSales > 0
+        ? [leftRight('Other (Delivery)', money(shift.otherSales))]
+        : []
+
+    return [
+        center(branchName),
+        center('Shift Report'),
+        divider,
+        `Shift number: ${shift.shiftNumber}`,
+        `POS: ${branchName}`,
+        divider,
+        'Shift opened:',
+        leftRight(cashierLine, dateStr(shift.openedAt)),
+        'Shift closed:',
+        leftRight(cashierLine, dateStr(shift.closedAt!)),
+        divider,
+        center('Cash drawer'),
+        divider,
+        leftRight('Starting cash', money(shift.startingCash)),
+        leftRight('Cash payments', money(shift.cashPayments)),
+        leftRight('Cash refunds', money(shift.cashRefunds)),
+        leftRight('Paid in', money(shift.paidIn)),
+        leftRight('Paid out', money(shift.paidOut)),
+        divider,
+        leftRight('Expected cash', money(shift.expectedCash)),
+        leftRight('Actual cash', money(shift.actualCash)),
+        leftRight('Difference', money(shift.cashDifference)),
+        divider,
+        center('Sales summary'),
+        divider,
+        leftRight('Gross sales', money(shift.grossSales)),
+        leftRight('Refunds', money(shift.refunds)),
+        leftRight('Discounts', money(shift.discounts)),
+        leftRight('Net sales', money(shift.netSales)),
+        leftRight('Cash', money(shift.cashSales)),
+        leftRight('GCash', money(shift.gcashSales)),
+        leftRight('Maya', money(shift.mayaSales)),
+        leftRight('Bank transfer', money(shift.bankTransferSales)),
+        ...otherLine,
+        divider,
+        center('*** END OF SHIFT REPORT ***'),
+        '\n\n\n',
+    ].join('\n')
+}
+
+export async function printShiftReport(shift: ShiftSummary, branchName: string): Promise<void> {
+    await sendToPrinter(buildShiftReportText(shift, branchName), 'Shift report')
 }

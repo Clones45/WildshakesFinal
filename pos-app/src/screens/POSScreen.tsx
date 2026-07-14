@@ -3,6 +3,7 @@ import { useAuthStore } from '../store/authStore'
 import { useCartStore } from '../store/cartStore'
 import { useSyncStore } from '../store/syncStore'
 import { useHoldStore } from '../store/holdStore'
+import { useShiftStore } from '../store/shiftStore'
 import { useMenuItems } from '../hooks/useMenuItems'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { db, type LocalTransaction } from '../lib/db'
@@ -20,7 +21,8 @@ import { HoldModal } from '../components/HoldModal'
 import { StockControlModal } from '../components/StockControlModal'
 import { TransactionsViewGated } from '../components/TransactionsView'
 import { DeliveryPlatformModal } from '../components/DeliveryPlatformModal'
-import { LogOut, Clock, ReceiptText, Lock, Package } from 'lucide-react'
+import { EndShiftModal } from '../components/EndShiftModal'
+import { LogOut, Clock, ReceiptText, Lock, Package, ClipboardCheck } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
 import { printKitchenTicket } from '../lib/printer'
@@ -33,6 +35,7 @@ export function POSScreen() {
     } = useCartStore()
     const { syncPending, refreshPendingCount } = useSyncStore()
     const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder, deleteHeldOrder } = useHoldStore()
+    const { ensureShiftOpen } = useShiftStore()
 
     const { products, categories, isLoading, error: menuError, reload: reloadMenu } = useMenuItems()
     useOnlineStatus()
@@ -49,6 +52,7 @@ export function POSScreen() {
     const [showTransactions, setShowTransactions] = useState(false)
     const [showStockControl, setShowStockControl] = useState(false)
     const [showDeliveryPicker, setShowDeliveryPicker] = useState(false)
+    const [showEndShift, setShowEndShift] = useState(false)
     const [managerPinCallback, setManagerPinCallback] = useState<() => void>(() => () => { })
     const [lastTransaction, setLastTransaction] = useState<LocalTransaction | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
@@ -80,6 +84,16 @@ export function POSScreen() {
     useEffect(() => {
         fetchHeldOrders()
     }, [])
+
+    // Every cashier who logs in starts (or resumes) their own shift automatically.
+    useEffect(() => {
+        if (user && branch) ensureShiftOpen(user, branch)
+    }, [user?.id, branch?.id])
+
+    const handleShiftEnded = () => {
+        setShowEndShift(false)
+        logoutCashier()
+    }
 
     const requireManager = (callback: () => void) => {
         if (user?.role === 'manager' || user?.role === 'investor') {
@@ -331,6 +345,16 @@ export function POSScreen() {
                         <span>Transactions</span>
                     </button>
 
+                    {/* End Shift button */}
+                    <button
+                        onClick={() => setShowEndShift(true)}
+                        className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-brand-50 border border-brand-200 text-brand-700 text-sm font-bold hover:bg-brand-100 transition-all"
+                        title="End Shift — count drawer and print shift report"
+                    >
+                        <ClipboardCheck size={15} className="text-brand-500" />
+                        <span>End Shift</span>
+                    </button>
+
                     <SyncStatusBar />
 
                     <div className="hidden md:block text-right">
@@ -479,6 +503,13 @@ export function POSScreen() {
             <TransactionsViewGated
                 isOpen={showTransactions}
                 onClose={() => setShowTransactions(false)}
+            />
+
+            {/* End Shift */}
+            <EndShiftModal
+                isOpen={showEndShift}
+                onClose={() => setShowEndShift(false)}
+                onShiftEnded={handleShiftEnded}
             />
         </div>
     )

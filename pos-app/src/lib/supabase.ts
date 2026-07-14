@@ -117,6 +117,35 @@ export type TransactionItem = {
     subtotal: number
 }
 
+export type Shift = {
+    id: string
+    branch_id: string
+    cashier_id: string | null
+    cashier_name: string
+    cashier_role: string
+    shift_number: number
+    local_ref: string
+    status: 'open' | 'closed'
+    opened_at: string
+    closed_at: string | null
+    starting_cash: number
+    expected_cash: number | null
+    actual_cash: number | null
+    cash_difference: number | null
+    gross_sales: number | null
+    discounts: number | null
+    refunds: number | null
+    net_sales: number | null
+    cash_sales: number | null
+    gcash_sales: number | null
+    maya_sales: number | null
+    bank_transfer_sales: number | null
+    split_sales: number | null
+    paid_in: number
+    paid_out: number
+    created_at: string
+}
+
 export type AuditLog = {
     id: string
     action_type: 'void' | 'discount' | 'inventory_adjustment' | 'price_change' | 'user_change'

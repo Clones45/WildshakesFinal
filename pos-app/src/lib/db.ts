@@ -123,6 +123,36 @@ export interface CachedIngredientStock {
     updatedAt: string
 }
 
+// ─── Shift / Cash Drawer Report (End Shift outbox) ─────────────────────────
+export interface LocalShift {
+    localRef: string          // UUID generated on device — primary key
+    branchId: string
+    cashierId: string | null
+    cashierName: string
+    cashierRole: string
+    shiftNumber: number
+    status: 'open' | 'closed'
+    openedAt: string
+    closedAt?: string
+    startingCash: number
+    expectedCash?: number
+    actualCash?: number
+    cashDifference?: number
+    grossSales?: number
+    discounts?: number
+    refunds?: number
+    netSales?: number
+    cashSales?: number
+    gcashSales?: number
+    mayaSales?: number
+    bankTransferSales?: number
+    splitSales?: number
+    paidIn: number
+    paidOut: number
+    syncStatus: 'pending' | 'synced' | 'failed'
+    supabaseId?: string       // filled after successful sync
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────
 export class WildshakesDB extends Dexie {
     transactions!: Table<LocalTransaction>
@@ -133,6 +163,7 @@ export class WildshakesDB extends Dexie {
     users!: Table<CachedUser>
     recipeLinks!: Table<CachedRecipeLink>
     ingredientStock!: Table<CachedIngredientStock>
+    shifts!: Table<LocalShift>
 
     constructor() {
         super('WildshakesNexus')
@@ -214,6 +245,19 @@ export class WildshakesDB extends Dexie {
             users: 'id, branch_id, pin_code, qr_access_token, role',
             recipeLinks: 'id, productId, inventoryItemId',
             ingredientStock: 'inventoryItemId',
+        })
+
+        // Version 10 — End Shift: local shift/cash-drawer report outbox.
+        this.version(10).stores({
+            transactions: 'localRef, syncStatus, branchId, createdAt',
+            localHeldOrders: 'localId, syncStatus, branchId, createdAt',
+            localAuditLogs: 'localId, syncStatus, createdAt',
+            products: 'id, category, name',
+            branches: 'id',
+            users: 'id, branch_id, pin_code, qr_access_token, role',
+            recipeLinks: 'id, productId, inventoryItemId',
+            ingredientStock: 'inventoryItemId',
+            shifts: 'localRef, syncStatus, branchId, cashierId, status',
         })
     }
 }
