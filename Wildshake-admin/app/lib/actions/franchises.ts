@@ -68,6 +68,27 @@ export async function createFranchise(formData: FormData) {
 
   if (branchError) console.error('[createFranchise] initial branch insert failed:', branchError.message)
 
+  // ── Step 4: Turn on the full item list (Food/Shakes/Coffee) for the new branch ──
+  if (branch) {
+    const { data: allItems, error: itemsError } = await admin
+      .from('inventory_items')
+      .select('id')
+      .eq('is_active', true)
+
+    if (itemsError) {
+      console.error('[createFranchise] failed to load inventory items to seed:', itemsError.message)
+    } else if (allItems && allItems.length > 0) {
+      const { error: tagError } = await admin.from('inventory_item_tags').insert(
+        allItems.map(item => ({
+          inventory_item_id: item.id,
+          entity_type: 'branch',
+          entity_id: branch.id,
+        }))
+      )
+      if (tagError) console.error('[createFranchise] failed to seed inventory tags:', tagError.message)
+    }
+  }
+
   // NOTE: We do NOT create a public.users profile row for the franchiser owner.
   // The franchiser logs into the web portal via Supabase Auth (email/password).
   // Managers and cashiers are separate staff the franchiser adds via Staff Management.
