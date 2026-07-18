@@ -110,7 +110,9 @@ const PICA_PICA: Record<string, number> = {
     'Nachos Cheese': 195,
     'Nachos Beef in White Sauce': 245,
     'Nachos Overload': 265,
-    'Quesadilla': 190, // default (Beef)
+    'Quesadilla Beef': 190,
+    'Quesadilla Mixed Cheese': 170,
+    'Quesadilla Salpicao': 190,
 }
 
 // ─── Rice Meals ───────────────────────────────────────────────────────────────
