@@ -9,10 +9,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request })
   }
 
+  // Prefer a secret API key + the real end-user IP so Supabase's per-IP auth
+  // rate limits are keyed per branch device, not per Vercel edge IP (every
+  // branch would otherwise share one 30-request bucket). Requires a new
+  // "secret" key from Project Settings > API Keys (the legacy service_role
+  // key is not accepted for this) in SUPABASE_SECRET_KEY, and "IP Address
+  // Forwarding" enabled under Authentication > Rate Limits. Falls back to
+  // the anon key (no forwarding, current behavior) until both are set up.
+  const secretKey = process.env.SUPABASE_SECRET_KEY
+  const forwardedFor = request.headers.get('x-forwarded-for')
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    secretKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
+      ...(secretKey && forwardedFor
+        ? { global: { headers: { 'sb-forwarded-for': forwardedFor } } }
+        : {}),
       cookies: {
         getAll() {
           return request.cookies.getAll()
@@ -28,26 +41,16 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Use getSession to avoid network request hanging in Edge middleware (Vercel timeout)
-  const { data: { session } } = await supabase.auth.getSession()
-  const user = session?.user
+  // getUser() re-validates against Supabase instead of just reading the JWT
+  // out of cookies (getSession()) — it's also where an expiring token
+  // actually gets refreshed. Doing that once, here, means every downstream
+  // layout/page auth check reuses this same already-fresh session (via the
+  // cache()-memoized server client in lib/supabase/server.ts) instead of
+  // each independently racing to refresh it — that race is what was causing
+  // "Invalid Refresh Token" / "Session not found" errors under concurrency.
+  const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-
-  // Allow login page always
-  if (pathname.startsWith('/login')) {
-    if (user) {
-      const role = (user.app_metadata as Record<string, string>)?.role
-      if (role === 'franchisee') {
-        return NextResponse.redirect(new URL('/franchiser/dashboard', request.url))
-      }
-      if (role === 'commissary') {
-        return NextResponse.redirect(new URL('/commissary-portal/dashboard', request.url))
-      }
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-    return supabaseResponse
-  }
 
   // Protected routes — require authentication
   if (!user) {
@@ -56,7 +59,7 @@ export async function middleware(request: NextRequest) {
 
   // Role check: master_admin has full access, franchisee only to /franchiser
   const role = (user.app_metadata as Record<string, string>)?.role
-  
+
   if (role === 'franchisee') {
     if (!pathname.startsWith('/franchiser')) {
       return NextResponse.redirect(new URL('/franchiser/dashboard', request.url))
@@ -80,6 +83,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|unauthorized|api/auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp|apk)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|images/|fonts/|login|unauthorized|api/auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|otf|apk)$).*)',
   ],
 }
