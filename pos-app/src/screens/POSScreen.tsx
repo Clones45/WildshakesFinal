@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../store/authStore'
-import { useCartStore } from '../store/cartStore'
+import { useCartStore, cartItemKey } from '../store/cartStore'
 import { useSyncStore } from '../store/syncStore'
 import { useHoldStore } from '../store/holdStore'
 import { useShiftStore } from '../store/shiftStore'
@@ -29,7 +29,7 @@ import { printKitchenTicket } from '../lib/printer'
 
 export function POSScreen() {
     const { user, branch, logoutCashier, releaseDevice } = useAuthStore()
-    const { items, discountType, discountAmount, total, reset,
+    const { items, discountType, discountAmount, discountItemKeys, total, reset,
         resumedHoldId, resumedHoldRef, resumedTableNumber,
         deliveryPlatform, setDeliveryPlatform,
     } = useCartStore()
@@ -253,7 +253,16 @@ export function POSScreen() {
                     branchId: branch?.id,
                     referenceTable: 'transactions',
                     notes: `${discountType} discount of ₱${disc.toFixed(2)} on order ${localRef}`,
-                    metadata: { discount_type: discountType, discount_amount: disc, total: tot },
+                    metadata: {
+                        discount_type: discountType,
+                        discount_amount: disc,
+                        total: tot,
+                        // Which lines the discount covered — 'whole order' when no per-item selection
+                        discounted_items: discountItemKeys.length === 0
+                            ? 'whole order'
+                            : items.filter(i => !i.cancelled && discountItemKeys.includes(cartItemKey(i)))
+                                .map(i => `${i.product.name}${i.variant ? ` · ${i.variant}` : ''} x${i.quantity}`),
+                    },
                 }).catch(console.error)
             }
 
