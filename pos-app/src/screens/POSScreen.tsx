@@ -224,6 +224,13 @@ export function POSScreen() {
                     subtotal: (i.overridePrice ?? i.product.price) * i.quantity,
                     notes: i.notes || undefined,
                     cancelled: i.cancelled || false,
+                    // Units this line contributed to the discount, so the receipt can
+                    // itemise it. null discountUnits = whole order, i.e. every unit.
+                    discountedUnits: discountType === 'none' || discountType === 'custom'
+                        ? undefined
+                        : discountUnits === null
+                            ? i.quantity
+                            : Math.min(discountUnits[cartItemKey(i)] ?? 0, i.quantity) || undefined,
                 })),
                 syncStatus: 'pending',
                 createdAt,

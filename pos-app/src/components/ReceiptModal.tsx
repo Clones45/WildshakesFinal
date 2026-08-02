@@ -238,6 +238,11 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                                     {item.quantity}x × ₱{item.unitPrice.toFixed(2)}
                                                 </p>
                                             )}
+                                            {!isCancelled && (item.discountedUnits ?? 0) > 0 && (
+                                                <p className="text-amber-400/80 text-[10px] pl-1">
+                                                    * {Math.min(item.discountedUnits ?? 0, item.quantity)} of {item.quantity} discounted
+                                                </p>
+                                            )}
                                             {(item as any).notes && !isCancelled && (
                                                 <p className="text-gray-500 text-[10px] italic pl-2">↳ {(item as any).notes}</p>
                                             )}
@@ -253,10 +258,19 @@ export function ReceiptModal({ isOpen, transaction, onVoid, onNewOrder }: Receip
                                     <span>₱{(transaction.totalAmount + transaction.discountAmount).toFixed(2)}</span>
                                 </div>
                                 {transaction.discountAmount > 0 && (
-                                    <div className="flex justify-between text-amber-400">
-                                        <span className="capitalize">{transaction.discountType} disc.</span>
-                                        <span>-₱{transaction.discountAmount.toFixed(2)}</span>
-                                    </div>
+                                    <>
+                                        <div className="flex justify-between text-amber-400">
+                                            <span className="capitalize">{transaction.discountType} disc.</span>
+                                            <span>-₱{transaction.discountAmount.toFixed(2)}</span>
+                                        </div>
+                                        {transaction.items
+                                            .filter(it => !(it as any).cancelled && (it.discountedUnits ?? 0) > 0)
+                                            .map((it, idx) => (
+                                                <p key={idx} className="text-amber-400/70 text-[10px] pl-2">
+                                                    * {it.productName} x{Math.min(it.discountedUnits ?? 0, it.quantity)}
+                                                </p>
+                                            ))}
+                                    </>
                                 )}
                                 <div className="flex justify-between font-bold text-sm border-t border-dashed border-surface-600 pt-1">
                                     <span className="text-white">Total</span>

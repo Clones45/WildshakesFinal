@@ -205,12 +205,22 @@ export function buildReceiptText(
         // Qty × unit price sub-line
         rows.push(`  ${item.quantity}x x P${item.unitPrice.toFixed(2)}`)
 
+        // Mark discounted units so the receipt shows exactly what the
+        // Senior/PWD discount was applied to (required to be traceable).
+        const du = item.discountedUnits ?? 0
+        if (du > 0) {
+            rows.push(`  * ${du} of ${item.quantity} discounted`)
+        }
+
         // Notes — also word-wrapped
         if ((item as any).notes)
             wordWrap(`  Note: ${(item as any).notes}`, W, '        ').forEach(l => rows.push(l))
 
         return rows
     })
+
+    // Itemised discount breakdown, printed under the totals
+    const discountedItems = activeItems.filter(i => (i.discountedUnits ?? 0) > 0)
 
 
     const orderTypeLabel = transaction.orderType === 'take-out' ? 'Take-out' : transaction.orderType === 'pickup' ? 'Pickup' : 'Dine-in'
@@ -237,8 +247,15 @@ export function buildReceiptText(
 
     const totalLines: string[] = []
     totalLines.push(leftRight('Subtotal', `P${subtotal.toFixed(2)}`))
-    if (transaction.discountAmount > 0)
+    if (transaction.discountAmount > 0) {
         totalLines.push(leftRight(`${transaction.discountType} disc.`, `-P${transaction.discountAmount.toFixed(2)}`))
+        // Spell out which units were discounted (marked "*" in the item list above)
+        for (const it of discountedItems) {
+            const n = Math.min(it.discountedUnits ?? 0, it.quantity)
+            const label = `  * ${it.productName} x${n}`
+            wordWrap(label, W, '      ').forEach(l => totalLines.push(l))
+        }
+    }
     totalLines.push(divider)
     totalLines.push(leftRight('TOTAL', `P${transaction.totalAmount.toFixed(2)}`))
     if ((transaction as any).deliveryPlatform) {

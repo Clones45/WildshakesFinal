@@ -43,6 +43,10 @@ export interface LocalTransactionItem {
     subtotal: number
     notes?: string
     cancelled?: boolean   // Marked wrong by cashier — saved for audit, excluded from receipt/total
+    // How many units of this line the Senior/PWD/Manager discount covered.
+    // Kept per item so the receipt can show exactly what was discounted (BIR
+    // requires Senior/PWD discounts to be traceable on the receipt).
+    discountedUnits?: number
 }
 
 // ─── Offline Held Order ────────────────────────────────────────────────────
