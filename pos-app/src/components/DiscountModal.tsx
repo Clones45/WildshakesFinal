@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Tag, Percent, Check } from 'lucide-react'
+import { X, Tag, Percent, Check, Plus, Minus } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useCartStore, cartItemKey, type DiscountType } from '../store/cartStore'
 
@@ -10,8 +10,8 @@ interface DiscountModalProps {
 
 const DISCOUNTS: { id: DiscountType; label: string; rate: string; icon: string; description: string }[] = [
     { id: 'none', label: 'No Discount', rate: '0%', icon: '🚫', description: 'Full price' },
-    { id: 'senior', label: 'Senior Citizen', rate: '20%', icon: '👴', description: 'With valid ID — their items only' },
-    { id: 'pwd', label: 'PWD', rate: '20%', icon: '♿', description: 'With valid ID — their items only' },
+    { id: 'senior', label: 'Senior Citizen', rate: '20%', icon: '👴', description: 'Tap the senior\'s items below' },
+    { id: 'pwd', label: 'PWD', rate: '20%', icon: '♿', description: 'Tap the PWD\'s items below' },
     { id: 'manager', label: 'Manager', rate: '15%', icon: '🛡️', description: 'Requires manager PIN' },
     { id: 'custom', label: 'Custom Amount', rate: 'Fixed', icon: '✏️', description: 'Manual entry' },
 ]
@@ -19,47 +19,63 @@ const DISCOUNTS: { id: DiscountType; label: string; rate: string; icon: string; 
 const RATES: Record<string, number> = { senior: 0.2, pwd: 0.2, manager: 0.15 }
 
 export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
-    const { items, discountType, discountItemKeys, setDiscount, subtotal } = useCartStore()
+    const { items, discountType, discountUnits, setDiscount, subtotal } = useCartStore()
     const [customAmount, setCustomAmount] = useState('')
     const [selected, setSelected] = useState<DiscountType>(discountType)
-    const [checkedKeys, setCheckedKeys] = useState<string[]>([])
+    // key → number of units of that line the discount covers
+    const [units, setUnits] = useState<Record<string, number>>({})
 
     const sub = subtotal()
     const activeItems = items.filter(i => !i.cancelled)
     const isPercent = selected === 'senior' || selected === 'pwd' || selected === 'manager'
+    const unitPrice = (i: (typeof items)[number]) => i.overridePrice ?? i.product.price
 
-    // On open: restore the current selection, defaulting to "all items"
+    const fullSelection = () =>
+        Object.fromEntries(activeItems.map(i => [cartItemKey(i), i.quantity]))
+
+    // On open: restore existing selection; whole-order (null) shows as everything selected
     useEffect(() => {
         if (!isOpen) return
         setSelected(discountType)
-        setCheckedKeys(
-            discountItemKeys.length > 0
-                ? discountItemKeys
-                : activeItems.map(cartItemKey)
-        )
+        if (discountType === 'senior' || discountType === 'pwd' || discountType === 'manager') {
+            setUnits(discountUnits === null ? fullSelection() : { ...discountUnits })
+        } else {
+            setUnits({})
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen])
 
-    const toggleKey = (key: string) =>
-        setCheckedKeys(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+    // Switching discount type: Senior/PWD start EMPTY (cashier taps the
+    // customer's items); Manager starts with the whole order selected.
+    const pickType = (type: DiscountType) => {
+        setSelected(type)
+        if (type === 'senior' || type === 'pwd') setUnits({})
+        else if (type === 'manager') setUnits(fullSelection())
+    }
 
-    const lineTotal = (i: (typeof items)[number]) => (i.overridePrice ?? i.product.price) * i.quantity
+    const setLineUnits = (key: string, n: number, max: number) =>
+        setUnits(prev => {
+            const next = { ...prev }
+            const clamped = Math.max(0, Math.min(n, max))
+            if (clamped === 0) delete next[key]
+            else next[key] = clamped
+            return next
+        })
 
-    const checkedSubtotal = activeItems
-        .filter(i => checkedKeys.includes(cartItemKey(i)))
-        .reduce((s, i) => s + lineTotal(i), 0)
-
-    const previewDiscount = isPercent ? checkedSubtotal * (RATES[selected] ?? 0) : 0
-    const allChecked = activeItems.length > 0 && activeItems.every(i => checkedKeys.includes(cartItemKey(i)))
+    const selectedCount = Object.values(units).reduce((s, n) => s + n, 0)
+    const selectedSubtotal = activeItems.reduce(
+        (s, i) => s + unitPrice(i) * Math.min(units[cartItemKey(i)] ?? 0, i.quantity), 0)
+    const previewDiscount = isPercent ? selectedSubtotal * (RATES[selected] ?? 0) : 0
+    const allSelected = activeItems.length > 0 &&
+        activeItems.every(i => (units[cartItemKey(i)] ?? 0) >= i.quantity)
 
     const handleApply = () => {
         if (selected === 'custom') {
             setDiscount('custom', parseFloat(customAmount) || 0)
         } else if (isPercent) {
-            if (checkedKeys.length === 0) return
-            // All items checked → store [] (whole order — also covers items added
-            // after this modal closes). Partial → store the exact lines.
-            setDiscount(selected, 0, allChecked ? [] : checkedKeys)
+            if (selectedCount === 0) return
+            // Everything selected → whole order (null: also covers items added later)
+            setDiscount(selected, 0, allSelected ? null : units)
         } else {
             setDiscount(selected)
         }
@@ -72,7 +88,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
         onClose()
     }
 
-    const applyDisabled = isPercent && checkedKeys.length === 0
+    const applyDisabled = isPercent && selectedCount === 0
 
     return (
         <AnimatePresence>
@@ -104,7 +120,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
                             {DISCOUNTS.map((d) => (
                                 <button
                                     key={d.id}
-                                    onClick={() => setSelected(d.id)}
+                                    onClick={() => pickType(d.id)}
                                     className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all ${selected === d.id
                                         ? 'border-amber-500 bg-amber-500/10 text-amber-300'
                                         : 'border-surface-500 bg-surface-700 text-gray-400 hover:border-surface-400'
@@ -143,7 +159,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
                                 )}
                             </AnimatePresence>
 
-                            {/* Per-item selection for percentage discounts */}
+                            {/* Per-item / per-unit selection for percentage discounts */}
                             <AnimatePresence>
                                 {isPercent && (
                                     <motion.div
@@ -154,13 +170,13 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
                                     >
                                         <div className="flex items-center justify-between px-1">
                                             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-                                                Apply to which items?
+                                                {selected === 'manager' ? 'Applies to' : "Tap the customer's items"}
                                             </p>
                                             <button
-                                                onClick={() => setCheckedKeys(allChecked ? [] : activeItems.map(cartItemKey))}
+                                                onClick={() => setUnits(allSelected ? {} : fullSelection())}
                                                 className="text-xs font-bold text-amber-400 hover:text-amber-300"
                                             >
-                                                {allChecked ? 'Unselect all' : 'Select all'}
+                                                {allSelected ? 'Clear all' : 'Whole order'}
                                             </button>
                                         </div>
 
@@ -169,35 +185,64 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
                                         ) : (
                                             activeItems.map((i) => {
                                                 const key = cartItemKey(i)
-                                                const checked = checkedKeys.includes(key)
+                                                const n = Math.min(units[key] ?? 0, i.quantity)
+                                                const isOn = n > 0
                                                 return (
-                                                    <button
+                                                    <div
                                                         key={key}
-                                                        onClick={() => toggleKey(key)}
-                                                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${checked
+                                                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-all ${isOn
                                                             ? 'border-amber-500/60 bg-amber-500/5'
-                                                            : 'border-surface-600 bg-surface-700/50 opacity-60'
+                                                            : 'border-surface-600 bg-surface-700/50'
                                                             }`}
                                                     >
-                                                        <span className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${checked ? 'bg-amber-500 border-amber-500' : 'border-surface-400'}`}>
-                                                            {checked && <Check size={13} className="text-surface-900" />}
+                                                        <button
+                                                            onClick={() => setLineUnits(key, isOn ? 0 : 1, i.quantity)}
+                                                            className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                                                        >
+                                                            <span className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${isOn ? 'bg-amber-500 border-amber-500' : 'border-surface-400'}`}>
+                                                                {isOn && <Check size={13} className="text-surface-900" />}
+                                                            </span>
+                                                            <span className="flex-1 min-w-0">
+                                                                <span className={`block text-sm truncate ${isOn ? 'text-white' : 'text-gray-400'}`}>
+                                                                    {i.product.name}{i.variant ? ` · ${i.variant}` : ''}
+                                                                </span>
+                                                                <span className="block text-xs text-gray-500">
+                                                                    ₱{unitPrice(i).toFixed(2)} each · {i.quantity} in cart
+                                                                </span>
+                                                            </span>
+                                                        </button>
+
+                                                        {/* Unit stepper — only matters for stacked lines (qty > 1) */}
+                                                        {i.quantity > 1 && isOn && (
+                                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                                <button
+                                                                    onClick={() => setLineUnits(key, n - 1, i.quantity)}
+                                                                    className="w-6 h-6 rounded-lg bg-surface-600 flex items-center justify-center hover:bg-surface-500"
+                                                                >
+                                                                    <Minus size={12} className="text-gray-300" />
+                                                                </button>
+                                                                <span className="text-sm font-bold text-amber-400 w-8 text-center">{n}/{i.quantity}</span>
+                                                                <button
+                                                                    onClick={() => setLineUnits(key, n + 1, i.quantity)}
+                                                                    className="w-6 h-6 rounded-lg bg-surface-600 flex items-center justify-center hover:bg-surface-500"
+                                                                >
+                                                                    <Plus size={12} className="text-gray-300" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+
+                                                        <span className={`text-sm font-semibold flex-shrink-0 ${isOn ? 'text-amber-400' : 'text-gray-500'}`}>
+                                                            {isOn ? `₱${(unitPrice(i) * n).toFixed(2)}` : '—'}
                                                         </span>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-sm text-white truncate">
-                                                                {i.product.name}{i.variant ? ` · ${i.variant}` : ''}
-                                                            </p>
-                                                            <p className="text-xs text-gray-500">x{i.quantity}</p>
-                                                        </div>
-                                                        <span className="text-sm font-semibold text-gray-300 flex-shrink-0">
-                                                            ₱{lineTotal(i).toFixed(2)}
-                                                        </span>
-                                                    </button>
+                                                    </div>
                                                 )
                                             })
                                         )}
 
                                         <div className="flex justify-between px-1 pt-1 text-sm">
-                                            <span className="text-gray-400 font-semibold">Discount ({(RATES[selected] * 100).toFixed(0)}% of ₱{checkedSubtotal.toFixed(2)})</span>
+                                            <span className="text-gray-400 font-semibold">
+                                                Discount ({((RATES[selected] ?? 0) * 100).toFixed(0)}% of ₱{selectedSubtotal.toFixed(2)})
+                                            </span>
                                             <span className="text-amber-400 font-bold">-₱{previewDiscount.toFixed(2)}</span>
                                         </div>
                                     </motion.div>

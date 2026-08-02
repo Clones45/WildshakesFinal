@@ -28,10 +28,10 @@ interface CartState {
     items: CartItem[]
     discountType: DiscountType
     customDiscountAmount: number
-    // Cart-line keys the discount applies to. Empty = whole order (also covers
-    // items added later); non-empty = only those lines (Senior/PWD: the law
-    // applies the 20% only to the senior's/PWD's own items, not the group's bill).
-    discountItemKeys: string[]
+    // Which units the discount covers, per cart line (key → number of units).
+    // null = whole order (also covers items added later). Per-unit matters for
+    // stacked lines: "Carbonara x3" where only the senior's 1 cup is discounted.
+    discountUnits: Record<string, number> | null
     paymentMethod: PaymentMethod
     cashTendered: number
     referenceNumber: string        // Last 6 digits for GCash/Maya, 5 for Bank Transfer
@@ -54,7 +54,7 @@ interface CartState {
     updateQty: (productId: string, qty: number) => void
     updateNotes: (productId: string, notes: string) => void
     cancelItem: (productId: string) => void   // Toggle strikethrough on item
-    setDiscount: (type: DiscountType, customAmount?: number, itemKeys?: string[]) => void
+    setDiscount: (type: DiscountType, customAmount?: number, units?: Record<string, number> | null) => void
     setPaymentMethod: (method: PaymentMethod) => void
     setCashTendered: (amount: number) => void
     setReferenceNumber: (ref: string) => void
@@ -70,7 +70,7 @@ const initialState = {
     items: [] as CartItem[],
     discountType: 'none' as DiscountType,
     customDiscountAmount: 0,
-    discountItemKeys: [] as string[],
+    discountUnits: null as Record<string, number> | null,
     paymentMethod: 'cash' as PaymentMethod,
     cashTendered: 0,
     referenceNumber: '',
@@ -87,15 +87,20 @@ export const useCartStore = create<CartState>()((set, get) => ({
     subtotal: () => get().items.filter(i => !i.cancelled).reduce((sum, i) => sum + (i.overridePrice ?? i.product.price) * i.quantity, 0),
 
     discountAmount: () => {
-        const { discountType, customDiscountAmount, discountItemKeys, items } = get()
+        const { discountType, customDiscountAmount, discountUnits, items } = get()
         if (discountType === 'custom') return customDiscountAmount
         const rate = DISCOUNT_RATES[discountType]
         if (rate === 0) return 0
         const active = items.filter(i => !i.cancelled)
-        const base = discountItemKeys.length === 0
-            ? active
-            : active.filter(i => discountItemKeys.includes(cartItemKey(i)))
-        return base.reduce((sum, i) => sum + (i.overridePrice ?? i.product.price) * i.quantity, 0) * rate
+        if (discountUnits === null) {
+            // Whole order
+            return active.reduce((sum, i) => sum + (i.overridePrice ?? i.product.price) * i.quantity, 0) * rate
+        }
+        // Only the selected units of each line (capped at the line's current qty)
+        return active.reduce((sum, i) => {
+            const units = Math.min(discountUnits[cartItemKey(i)] ?? 0, i.quantity)
+            return sum + (i.overridePrice ?? i.product.price) * units
+        }, 0) * rate
     },
 
     total: () => Math.max(0, get().subtotal() - get().discountAmount()),
@@ -136,8 +141,8 @@ export const useCartStore = create<CartState>()((set, get) => ({
             ),
         })),
 
-    setDiscount: (type, customAmount = 0, itemKeys = []) =>
-        set({ discountType: type, customDiscountAmount: customAmount, discountItemKeys: itemKeys }),
+    setDiscount: (type, customAmount = 0, units = null) =>
+        set({ discountType: type, customDiscountAmount: customAmount, discountUnits: units }),
 
     setPaymentMethod: (method) => set({ paymentMethod: method, referenceNumber: '', bankName: '' }),
 

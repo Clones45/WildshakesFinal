@@ -29,7 +29,7 @@ import { printKitchenTicket } from '../lib/printer'
 
 export function POSScreen() {
     const { user, branch, logoutCashier, releaseDevice } = useAuthStore()
-    const { items, discountType, discountAmount, discountItemKeys, total, reset,
+    const { items, discountType, discountAmount, discountUnits, total, reset,
         resumedHoldId, resumedHoldRef, resumedTableNumber,
         deliveryPlatform, setDeliveryPlatform,
     } = useCartStore()
@@ -257,11 +257,15 @@ export function POSScreen() {
                         discount_type: discountType,
                         discount_amount: disc,
                         total: tot,
-                        // Which lines the discount covered — 'whole order' when no per-item selection
-                        discounted_items: discountItemKeys.length === 0
+                        // Which units the discount covered — 'whole order' when not per-item
+                        discounted_items: discountUnits === null
                             ? 'whole order'
-                            : items.filter(i => !i.cancelled && discountItemKeys.includes(cartItemKey(i)))
-                                .map(i => `${i.product.name}${i.variant ? ` · ${i.variant}` : ''} x${i.quantity}`),
+                            : items
+                                .filter(i => !i.cancelled && (discountUnits[cartItemKey(i)] ?? 0) > 0)
+                                .map(i => {
+                                    const n = Math.min(discountUnits[cartItemKey(i)] ?? 0, i.quantity)
+                                    return `${i.product.name}${i.variant ? ` · ${i.variant}` : ''} x${n} of ${i.quantity}`
+                                }),
                     },
                 }).catch(console.error)
             }

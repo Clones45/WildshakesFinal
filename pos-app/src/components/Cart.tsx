@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useCartStore } from '../store/cartStore'
+import { useCartStore, cartItemKey } from '../store/cartStore'
 import { Minus, Plus, Tag, ShoppingCart, PauseCircle, Clock, MapPin, Pencil, Ban, Bike } from 'lucide-react'
 
 interface CartProps {
@@ -13,7 +13,7 @@ interface CartProps {
 
 export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending }: CartProps) {
     const {
-        items, discountType, updateQty, updateNotes, cancelItem,
+        items, discountType, discountUnits, updateQty, updateNotes, cancelItem,
         subtotal, discountAmount, total,
         resumedHoldId, resumedTableNumber,
         deliveryPlatform, setDeliveryPlatform,
@@ -282,13 +282,28 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                     <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
-                        className="flex justify-between text-sm font-bold"
+                        className="space-y-0.5"
                     >
-                        <span className="text-amber-500 capitalize flex items-center gap-1">
-                            <Tag size={13} />
-                            {discountType === 'custom' ? 'Custom' : discountType.charAt(0).toUpperCase() + discountType.slice(1)} Discount
-                        </span>
-                        <span className="text-amber-500">-₱{disc.toFixed(2)}</span>
+                        <div className="flex justify-between text-sm font-bold">
+                            <span className="text-amber-500 capitalize flex items-center gap-1">
+                                <Tag size={13} />
+                                {discountType === 'custom' ? 'Custom' : discountType.charAt(0).toUpperCase() + discountType.slice(1)} Discount
+                            </span>
+                            <span className="text-amber-500">-₱{disc.toFixed(2)}</span>
+                        </div>
+                        {/* Spell out exactly which units were discounted, so the cashier
+                            can see at a glance it didn't hit the whole group's bill. */}
+                        {discountUnits !== null && (
+                            <p className="text-[11px] text-amber-600/80 leading-snug pl-[18px]">
+                                {activeItems
+                                    .filter(i => (discountUnits[cartItemKey(i)] ?? 0) > 0)
+                                    .map(i => {
+                                        const n = Math.min(discountUnits[cartItemKey(i)] ?? 0, i.quantity)
+                                        return `${i.product.name}${i.quantity > 1 ? ` (${n} of ${i.quantity})` : ''}`
+                                    })
+                                    .join(', ') || 'no items selected'}
+                            </p>
+                        )}
                     </motion.div>
                 )}
 
