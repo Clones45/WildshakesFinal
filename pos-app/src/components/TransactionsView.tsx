@@ -6,8 +6,11 @@ import { ManagerPinModal } from './ManagerPinModal'
 import {
     X, ReceiptText, Loader2, Filter, RefreshCw,
     Banknote, Landmark, SplitSquareVertical,
-    CheckCircle2, XCircle, Tag, MapPin, Clock,
+    CheckCircle2, XCircle, Tag, MapPin, Clock, Printer,
 } from 'lucide-react'
+import { toast } from 'react-hot-toast'
+import { printReceipt } from '../lib/printer'
+import { db, type LocalTransaction, type LocalTransactionItem } from '../lib/db'
 
 interface TransactionsViewProps {
     isOpen: boolean
@@ -100,6 +103,7 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
     const { branch } = useAuthStore()
     const [transactions, setTransactions] = useState<TxRow[]>([])
     const [loading, setLoading] = useState(false)
+    const [reprintingId, setReprintingId] = useState<string | null>(null)
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
     const [dateFilter, setDateFilter] = useState<DateFilter>('today')
@@ -197,6 +201,81 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
     useEffect(() => {
         if (isOpen) fetchTransactions()
     }, [isOpen, fetchTransactions])
+
+    // ── Reprint ─────────────────────────────────────────────────────────────
+    // Prefer this device's own Dexie copy: it keeps fields that never reach
+    // Supabase (order type) or that only exist per-line locally (the product
+    // name with its variant, e.g. "Cafe Latte · Hot"). Falls back to rebuilding
+    // from Supabase for sales rung up on a different device or already purged.
+    const buildFromLocal = async (localRef: string): Promise<LocalTransaction | null> => {
+        try {
+            return (await db.transactions.get(localRef)) ?? null
+        } catch {
+            return null
+        }
+    }
+
+    const buildFromSupabase = async (tx: TxRow): Promise<LocalTransaction | null> => {
+        const { data, error } = await supabase
+            .from('transaction_items')
+            .select('quantity, unit_price, subtotal, notes, cancelled, discounted_units, product_id, products(name)')
+            .eq('transaction_id', tx.id)
+        if (error || !data || data.length === 0) return null
+
+        const items: LocalTransactionItem[] = data.map((r: any) => ({
+            productId: r.product_id,
+            productName: (r.products as { name: string } | null)?.name ?? 'Item',
+            quantity: r.quantity,
+            unitPrice: Number(r.unit_price),
+            subtotal: Number(r.subtotal),
+            notes: r.notes ?? undefined,
+            cancelled: r.cancelled ?? false,
+            discountedUnits: r.discounted_units ?? undefined,
+        }))
+
+        return {
+            localRef: tx.local_ref ?? tx.id,
+            branchId: branch?.id ?? '',
+            cashierId: tx.cashier_id,
+            totalAmount: Number(tx.total_amount),
+            discountType: tx.discount_type,
+            discountAmount: Number(tx.discount_amount),
+            paymentMethod: tx.payment_method,
+            referenceNumber: tx.reference_number ?? undefined,
+            bankName: tx.bank_name ?? undefined,
+            splitPayments: tx.split_payments ?? undefined,
+            status: tx.status,
+            source: 'pos',
+            tableNumber: tx.table_number ?? undefined,
+            deliveryPlatform: tx.delivery_platform ?? undefined,
+            items,
+            syncStatus: 'synced',
+            createdAt: tx.created_at,
+        }
+    }
+
+    const handleReprint = async (tx: TxRow) => {
+        setReprintingId(tx.id)
+        try {
+            const local = tx.local_ref ? await buildFromLocal(tx.local_ref) : null
+            const receipt = local ?? await buildFromSupabase(tx)
+            if (!receipt) {
+                toast.error('Could not load this receipt’s items.')
+                return
+            }
+            await printReceipt(
+                receipt,
+                branch?.name ?? 'Wild Shakes',
+                tx.cashier_name ?? 'Staff',
+                branch?.owner_email ?? undefined,
+                branch?.location ?? undefined,
+            )
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Reprint failed.')
+        } finally {
+            setReprintingId(null)
+        }
+    }
 
     return (
         <AnimatePresence>
@@ -442,6 +521,18 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                                     Reason: {tx.void_reason}
                                                 </p>
                                             )}
+
+                                            {/* Reprint */}
+                                            <button
+                                                onClick={() => handleReprint(tx)}
+                                                disabled={reprintingId === tx.id}
+                                                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-surface-600 hover:bg-surface-500 border border-surface-500 text-gray-200 text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+                                            >
+                                                {reprintingId === tx.id
+                                                    ? <Loader2 size={13} className="animate-spin" />
+                                                    : <Printer size={13} />}
+                                                {reprintingId === tx.id ? 'Printing…' : 'Reprint Receipt'}
+                                            </button>
                                         </motion.div>
                                     )
                                 })
