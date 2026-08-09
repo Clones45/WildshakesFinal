@@ -146,7 +146,7 @@ export function SizePickerModal({ baseName, emoji, options, onSelect, onClose, d
                                         </span>
                                     ) : (() => {
                                         const delPrice = deliveryPlatform
-                                            ? getDeliveryPrice(opt.product.name, opt.sizeLabel)
+                                            ? getDeliveryPrice(opt.product.name, opt.sizeLabel, opt.product.category)
                                             : null
                                         const showDel = delPrice !== null && delPrice !== opt.product.price
                                         return (

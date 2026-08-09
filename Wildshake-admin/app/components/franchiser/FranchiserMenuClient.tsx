@@ -50,7 +50,7 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
       const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
       
       if (filterCategory === 'delivery') {
-         if (!hasDeliveryPrice(p.name)) return false
+         if (!hasDeliveryPrice(p.name, p.category)) return false
       } else {
          const matchCat = filterCategory === 'All' || p.category === filterCategory
          if (!matchCat) return false
@@ -71,7 +71,7 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
     else if (p.category.includes('Grande')) qualifier = 'Grande'
     else if (p.category === 'Coffee Hot') qualifier = 'Hot'
     else if (p.category === 'Coffee Iced') qualifier = 'Cold'
-    return getDeliveryPrice(p.name, qualifier)
+    return getDeliveryPrice(p.name, qualifier, p.category)
   }
 
   const availableCount = products.filter(p => availability[p.id] !== false).length

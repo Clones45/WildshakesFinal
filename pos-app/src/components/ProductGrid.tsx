@@ -144,7 +144,7 @@ function getDisplayPrice(product: Product, deliveryPlatform: 'foodpanda' | 'grab
     if (SHAKE_SIZE_CATEGORIES.has(product.category) || COFFEE_CATEGORIES.has(product.category)) {
         return product.price // shown via size/coffee picker
     }
-    return getDeliveryPrice(product.name) ?? product.price
+    return getDeliveryPrice(product.name, undefined, product.category) ?? product.price
 }
 
 export function ProductGrid({ products, categories, isLoading, menuError, onReload, deliveryPlatform, onDeliveryTabClick }: ProductGridProps) {
@@ -179,7 +179,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                 setCoffeePicker({ product, options: coffeeOpts })
                 return
             }
-            const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, 'Hot') ?? undefined : undefined
+            const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, 'Hot', product.category) ?? undefined : undefined
             addItem(product, 'Hot', deliveryOverride)
             setFlashId(product.id)
             setTimeout(() => setFlashId(null), 350)
@@ -192,14 +192,14 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             return
         }
         // 4. Regular product — add with delivery price override if applicable
-        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name) ?? undefined : undefined
+        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, undefined, product.category) ?? undefined : undefined
         addItem(product, undefined, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
     }
 
     const handleFlavorSelect = (product: Product, flavor: FriesFlavor) => {
-        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name) ?? undefined : undefined
+        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, undefined, product.category) ?? undefined : undefined
         addItem(product, flavor, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
@@ -222,7 +222,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
         // In delivery mode: get delivery base price for this size, then apply pearl delta
         let effectiveFinalPrice = finalPrice
         if (deliveryPlatform) {
-            const deliveryBase = getDeliveryPrice(sizedProduct.name, sizeLabel)
+            const deliveryBase = getDeliveryPrice(sizedProduct.name, sizeLabel, sizedProduct.category)
             if (deliveryBase !== null) {
                 const pearlDelta = finalPrice - sizedProduct.price // e.g. +25 for add-on pearls
                 effectiveFinalPrice = deliveryBase + pearlDelta
@@ -238,7 +238,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
 
     // After coffee temp selection → add with delivery override
     const handleCoffeeSelect = (product: Product, tempLabel: 'Hot' | 'Cold') => {
-        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, tempLabel) ?? undefined : undefined
+        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, tempLabel, product.category) ?? undefined : undefined
         addItem(product, tempLabel, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)

@@ -139,7 +139,7 @@ export function CoffeePickerModal({ baseName, options, onSelect, onClose, delive
                                     ) : (() => {
                                         const tempKey = opt.label as 'Hot' | 'Cold'
                                         const delPrice = deliveryPlatform
-                                            ? getDeliveryPrice(opt.product.name, tempKey)
+                                            ? getDeliveryPrice(opt.product.name, tempKey, opt.product.category)
                                             : null
                                         const showDel = delPrice !== null && delPrice !== opt.product.price
                                         return (

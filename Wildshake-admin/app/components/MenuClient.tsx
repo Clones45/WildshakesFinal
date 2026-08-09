@@ -50,7 +50,7 @@ export default function MenuClient({
   const filtered = products.filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
     if (filterCat === 'delivery') {
-      return matchSearch && hasDeliveryPrice(p.name)
+      return matchSearch && hasDeliveryPrice(p.name, p.category)
     }
     const matchCat    = filterCat === 'all' || p.category === filterCat
     return matchSearch && matchCat
@@ -62,7 +62,7 @@ export default function MenuClient({
     else if (p.category.includes('Grande')) qualifier = 'Grande'
     else if (p.category === 'Coffee Hot') qualifier = 'Hot'
     else if (p.category === 'Coffee Iced') qualifier = 'Cold'
-    return getDeliveryPrice(p.name, qualifier)
+    return getDeliveryPrice(p.name, qualifier, p.category)
   }
 
   function openAdd()           { setEditing(null); setFormError(''); setFormSuccess(''); setShowModal(true) }
