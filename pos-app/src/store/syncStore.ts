@@ -156,19 +156,31 @@ async function pushTransaction(local: LocalTransaction) {
     if (txError) throw txError
     const transactionId = txData.id
 
-    const items = local.items.map((item) => ({
-        transaction_id: transactionId,
-        product_id: item.productId,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        subtotal: item.subtotal,
-        notes: item.notes ?? null,
-        cancelled: item.cancelled ?? false,
-        discounted_units: item.discountedUnits ?? null,
-    }))
+    // A retry must not re-insert the lines. The upsert above matches on local_ref and
+    // hands back the same transaction, so inserting again would duplicate every line and
+    // deduct its ingredients a second time. This happens whenever the server commits but
+    // the reply never reaches the tablet — the record stays 'failed' and is retried.
+    const { count: existingItems, error: countError } = await supabase
+        .from('transaction_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('transaction_id', transactionId)
+    if (countError) throw countError
 
-    const { error: itemsError } = await supabase.from('transaction_items').insert(items)
-    if (itemsError) throw itemsError
+    if (!existingItems) {
+        const items = local.items.map((item) => ({
+            transaction_id: transactionId,
+            product_id: item.productId,
+            quantity: item.quantity,
+            unit_price: item.unitPrice,
+            subtotal: item.subtotal,
+            notes: item.notes ?? null,
+            cancelled: item.cancelled ?? false,
+            discounted_units: item.discountedUnits ?? null,
+        }))
+
+        const { error: itemsError } = await supabase.from('transaction_items').insert(items)
+        if (itemsError) throw itemsError
+    }
 
     await db.transactions.update(local.localRef, { supabaseId: transactionId })
 }
