@@ -8,6 +8,7 @@ import { FlavorPickerModal, requiresFriesFlavor, type FriesFlavor } from './Flav
 import { PearlsPickerModal, type PearlOption } from './PearlsPickerModal'
 import { CoffeePickerModal, type CoffeeOption } from './CoffeePickerModal'
 import { getDeliveryPrice } from '../lib/deliveryPricing'
+import { LOW_STOCK_THRESHOLD } from '../lib/menuStockDeduction'
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     // Exact category values from Wildshakes products table
@@ -520,6 +521,11 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                 const displayPrice = getDisplayPrice(product, deliveryPlatform ?? null)
                                 const isPriceOverridden = deliveryPlatform && displayPrice !== product.price
 
+                                // Running low? Only for items the branch has put a count on.
+                                const stockLeft = product.stock_qty
+                                const isLowStock = stockLeft !== null && stockLeft !== undefined
+                                    && stockLeft > 0 && stockLeft <= LOW_STOCK_THRESHOLD
+
                                 return (
                                     <motion.button
                                         key={product.id}
@@ -531,7 +537,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                         }}
                                         exit={{ opacity: 0, scale: 0.95 }}
                                         onClick={() => handleProductTap(product)}
-                                        className={`product-card text-left relative ${inCart ? 'ring-2 ring-brand-400/60' : ''}`}
+                                        className={`product-card text-left relative ${inCart ? 'ring-2 ring-brand-400/60' : ''} ${isLowStock ? 'ring-2 ring-amber-400' : ''}`}
                                     >
                                         {/* In-cart quantity badge */}
                                         {inCart && (
@@ -557,6 +563,14 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                         <p className="font-bold text-surface-800 text-sm leading-tight line-clamp-2">
                                             {product.name}
                                         </p>
+
+                                        {/* Running-low warning — only when the branch tracks a count for this item */}
+                                        {isLowStock && (
+                                            <span className="mt-1 inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-black leading-tight">
+                                                <AlertTriangle size={10} />
+                                                Only {stockLeft} left
+                                            </span>
+                                        )}
 
                                         <div className="flex items-center justify-between mt-auto pt-1">
                                             <div className="flex flex-col">

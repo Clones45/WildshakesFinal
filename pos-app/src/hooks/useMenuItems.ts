@@ -102,11 +102,13 @@ export function useMenuItems() {
             }
 
             // ── 3. Apply branch-level unavailable items ─────────────────────────────────
+            // stock_qty rides along so the grid can warn when an item is running low.
             const prods = (allProducts as Product[]).map(p => {
+                const stock_qty = stockQuantities.has(p.id) ? stockQuantities.get(p.id)! : null
                 if (unavailableIds.has(p.id)) {
-                    return { ...p, is_available: false }
+                    return { ...p, is_available: false, stock_qty }
                 }
-                return p
+                return { ...p, stock_qty }
             })
             const cats = [...new Set(prods.map((p) => p.category))]
 

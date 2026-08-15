@@ -69,6 +69,8 @@ export type Product = {
     price: number
     image_url: string | null
     is_available: boolean
+    /** Remaining count at this branch when Stock Control has set one. null = unlimited. */
+    stock_qty?: number | null
 }
 
 export type Ingredient = {

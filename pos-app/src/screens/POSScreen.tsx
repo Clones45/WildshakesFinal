@@ -9,6 +9,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { db, type LocalTransaction } from '../lib/db'
 import { logAudit } from '../lib/auditLog'
 import { deductIngredientsForSale } from '../lib/ingredientDeduction'
+import { deductMenuStockForSale } from '../lib/menuStockDeduction'
 import { ProductGrid } from '../components/ProductGrid'
 import { Cart } from '../components/Cart'
 import { CheckoutModal, type SplitEntry } from '../components/CheckoutModal'
@@ -247,6 +248,20 @@ export function POSScreen() {
                 for (const w of warnings) {
                     toast(`⚠️ Low stock: ${w.name} — ${Math.max(0, Math.round(w.remaining * 10) / 10)}${w.unit ? ' ' + w.unit : ''} left`, { duration: 5000, icon: '📉' })
                 }
+            }).catch(console.error)
+
+            // Menu-item countdown: the "N left" a cashier set in Stock Control. Same
+            // offline-first idea — warn as soon as an item is nearly gone, so they can
+            // restock before it disappears from the menu.
+            deductMenuStockForSale(localTx.items).then(warnings => {
+                for (const w of warnings) {
+                    if (w.soldOut) {
+                        toast(`${w.name} is now SOLD OUT — removed from the menu`, { duration: 7000, icon: '🚫' })
+                    } else {
+                        toast(`${w.name} — only ${w.remaining} left. Restock soon.`, { duration: 6000, icon: '⚠️' })
+                    }
+                }
+                if (warnings.length > 0) reloadMenu()
             }).catch(console.error)
 
             // Fire-and-forget sync attempt
