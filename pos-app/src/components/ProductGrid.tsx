@@ -527,8 +527,9 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                 const displayPrice = getDisplayPrice(product, deliveryPlatform ?? null)
                                 const isPriceOverridden = deliveryPlatform && displayPrice !== product.price
 
-                                // Running low? Only for items the branch has put a count on.
-                                const stockLeft = product.stock_qty
+                                // Running low? Counts the item's own stock and anything a
+                                // shared ingredient has already been claimed for.
+                                const stockLeft = product.effective_stock ?? product.stock_qty
                                 const soldOut = isSoldOut(product)
                                 const isLowStock = !soldOut
                                     && stockLeft !== null && stockLeft !== undefined

@@ -28,9 +28,12 @@ function qtyInCart(items: CartItem[], productId: string, exceptKey?: string): nu
         .reduce((sum, i) => sum + i.quantity, 0)
 }
 
-/** The branch's remaining count, or null when the item is not tracked. */
+/**
+ * What may still be sold: the item's own count, already narrowed by any shared
+ * ingredient another counted item has claimed. null when the item is not tracked.
+ */
 function stockCap(product: Product): number | null {
-    const q = product.stock_qty
+    const q = product.effective_stock ?? product.stock_qty
     return q === null || q === undefined ? null : q
 }
 export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'other'

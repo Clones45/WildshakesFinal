@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
 import { useAuthStore } from '../store/authStore'
+import { computeEffectiveStock } from '../lib/menuAvailability'
 
 /**
  * Loads menu items from the `products` table.
@@ -121,12 +122,24 @@ export function useMenuItems() {
                 return local === null || local === undefined ? server : Math.min(server, local)
             }
 
+            // ── 2c. Share counts across items that draw on the same thing ────────
+            // Five wings is five wings, whether they go out solo or on a party tray.
+            const [recipeLinks, ingredients] = await Promise.all([
+                db.recipeLinks.toArray(),
+                db.ingredientStock.toArray(),
+            ])
+            const unitByIngredient = new Map(ingredients.map(i => [i.inventoryItemId, i.unit]))
+            const withOwnCount = (allProducts as Product[]).map(p => ({ id: p.id, stock_qty: stockFor(p.id) }))
+            const effective = computeEffectiveStock(withOwnCount, recipeLinks, unitByIngredient)
+
             // ── 3. Apply branch-level unavailable items ─────────────────────────────────
             // stock_qty rides along so the grid can warn when an item is running low.
             const prods = (allProducts as Product[]).map(p => {
                 const stock_qty = stockFor(p.id)
-                const soldOut = unavailableIds.has(p.id) || (stock_qty !== null && stock_qty <= 0)
-                return { ...p, is_available: soldOut ? false : p.is_available, stock_qty }
+                const effective_stock = effective.get(p.id) ?? null
+                const soldOut = unavailableIds.has(p.id)
+                    || (effective_stock !== null && effective_stock <= 0)
+                return { ...p, is_available: soldOut ? false : p.is_available, stock_qty, effective_stock }
             })
             const cats = [...new Set(prods.map((p) => p.category))]
 

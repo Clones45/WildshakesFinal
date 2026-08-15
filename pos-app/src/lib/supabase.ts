@@ -71,6 +71,12 @@ export type Product = {
     is_available: boolean
     /** Remaining count at this branch when Stock Control has set one. null = unlimited. */
     stock_qty?: number | null
+    /**
+     * What can actually still be sold: the item's own count, further limited by any
+     * shared ingredient another counted item has already claimed. null = untracked.
+     * This is the number the menu and the cart go by.
+     */
+    effective_stock?: number | null
 }
 
 export type Ingredient = {
