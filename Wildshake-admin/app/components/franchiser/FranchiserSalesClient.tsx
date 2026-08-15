@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type CSSProperties } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface Tx {
   total_amount: number
@@ -14,21 +15,60 @@ interface Tx {
 interface TopItem {
   quantity: number
   subtotal: number
+  cancelled?: boolean | null
   products: { name: string; category: string } | null
   transactions: { branch_id: string; status: string; created_at: string } | null
 }
 
 interface Props {
   branchName: string
+  /** Month being viewed, YYYY-MM. The server fetches only this month. */
+  month: string
+  /** Today in Manila, YYYY-MM-DD — used to cap the month picker. */
+  today: string
   transactions: Tx[]
   topItems?: TopItem[]
 }
 
-export default function FranchiserSalesClient({ branchName, transactions, topItems = [] }: Props) {
-  const [period, setPeriod] = useState('30')
+/**
+ * Which Manila day a timestamp belongs to.
+ * The branches trade on Philippine time, so an 11pm sale must not be filed under
+ * the next day just because UTC has already rolled over.
+ */
+const manilaDay = (iso: string) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date(iso))
 
-  const cutoff = new Date(Date.now() - parseInt(period) * 24 * 60 * 60 * 1000)
-  const filtered = transactions.filter(t => new Date(t.created_at) >= cutoff)
+const MONTH_LABEL = (month: string) => {
+  const [y, m] = month.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+const DAY_LABEL = (day: string) => {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+  })
+}
+
+export default function FranchiserSalesClient({
+  branchName, month, today, transactions, topItems = [],
+}: Props) {
+  const router = useRouter()
+  // '' = the whole month; otherwise a single YYYY-MM-DD
+  const [selectedDay, setSelectedDay] = useState('')
+
+  // Every day in the month, so the picker still offers days with no sales
+  const [yr, mo] = month.split('-').map(Number)
+  const daysInMonth = new Date(yr, mo, 0).getDate()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const monthDays = Array.from({ length: daysInMonth }, (_, i) => `${month}-${pad(i + 1)}`)
+    .filter(d => d <= today)   // never offer a day that hasn't happened yet
+
+  const inScope = (iso: string) =>
+    selectedDay === '' ? true : manilaDay(iso) === selectedDay
+
+  const filtered = transactions.filter(t => inScope(t.created_at))
+  const rangeLabel = selectedDay === '' ? MONTH_LABEL(month) : DAY_LABEL(selectedDay)
 
   const totalRevenue  = filtered.reduce((s, t) => s + Number(t.total_amount), 0)
   const totalDiscount = filtered.reduce((s, t) => s + Number(t.discount_amount), 0)
@@ -48,27 +88,31 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
   const foodpandaOrders = filtered.filter(t => t.delivery_platform === 'foodpanda').length
   const grabOrders = filtered.filter(t => t.delivery_platform === 'grab').length
 
-  // Daily revenue chart (last N days)
-  const days = parseInt(period)
-  const chartDays = Math.min(days, 30)
-  const chartData = Array.from({ length: chartDays }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (chartDays - 1 - i))
-    const dateStr = d.toISOString().split('T')[0]
-    const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    const revenue = filtered
-      .filter(t => t.created_at.startsWith(dateStr))
-      .reduce((s, t) => s + Number(t.total_amount), 0)
-    const count = filtered.filter(t => t.created_at.startsWith(dateStr)).length
-    return { label, revenue, count, isToday: i === chartDays - 1 }
+  // Revenue per day. One bar for a single day, otherwise every day of the month.
+  const chartDayList = selectedDay === '' ? monthDays : [selectedDay]
+  const chartData = chartDayList.map(day => {
+    const onThisDay = filtered.filter(t => manilaDay(t.created_at) === day)
+    return {
+      day,
+      label: String(Number(day.slice(8))),   // day of month, e.g. "17"
+      fullLabel: DAY_LABEL(day),
+      revenue: onThisDay.reduce((s, t) => s + Number(t.total_amount), 0),
+      count: onThisDay.length,
+      isToday: day === today,
+    }
   })
   const maxRevenue = Math.max(...chartData.map(d => d.revenue), 1)
 
-  // Top items aggregation
+  // Top items — held to the same day or month as everything else on the page.
+  // This used to sum every row the server sent regardless of the date filter, so the
+  // list disagreed with the totals above it.
   const itemMap: Record<string, { name: string; category: string; qty: number; revenue: number }> = {}
   for (const row of topItems) {
     const prod = row.products
     if (!prod) continue
+    if (row.cancelled) continue
+    const soldAt = row.transactions?.created_at
+    if (!soldAt || !inScope(soldAt)) continue
     if (!itemMap[prod.name]) itemMap[prod.name] = { name: prod.name, category: prod.category, qty: 0, revenue: 0 }
     itemMap[prod.name].qty     += Number(row.quantity)
     itemMap[prod.name].revenue += Number(row.subtotal)
@@ -85,12 +129,12 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
 
   function exportCSV() {
     const header = 'Date,Transactions,Revenue\n'
-    const rows = chartData.map(d => `${d.label},${d.count},${d.revenue.toFixed(2)}`).join('\n')
+    const rows = chartData.map(d => `${d.day},${d.count},${d.revenue.toFixed(2)}`).join('\n')
     const blob = new Blob([header + rows], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${branchName}-sales-${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `${branchName}-sales-${selectedDay || month}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -103,16 +147,34 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
           <h1>Sales Report</h1>
           <p className="page-header-subtitle">Performance analytics for {branchName}</p>
         </div>
-        <div className="flex gap-1" style={{ alignItems: 'center' }}>
+        <div className="flex gap-1" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Pick the month — reloads the page so the server fetches that month */}
+          <input
+            type="month"
+            className="form-select"
+            style={{ width: 'auto' }}
+            value={month}
+            max={today.slice(0, 7)}
+            onChange={e => {
+              const next = e.target.value
+              if (!next) return
+              setSelectedDay('')
+              router.push(`/franchiser/sales?month=${next}`)
+            }}
+            aria-label="Month"
+          />
+          {/* Then pick a day inside it, or leave it on the whole month */}
           <select
             className="form-select"
             style={{ width: 'auto' }}
-            value={period}
-            onChange={e => setPeriod(e.target.value)}
+            value={selectedDay}
+            onChange={e => setSelectedDay(e.target.value)}
+            aria-label="Day"
           >
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
-            <option value="90">Last 90 days</option>
+            <option value="">Whole month</option>
+            {monthDays.map(d => (
+              <option key={d} value={d}>{DAY_LABEL(d)}</option>
+            ))}
           </select>
           <button className="btn btn-ghost" onClick={exportCSV}>📥 Export CSV</button>
         </div>
@@ -159,7 +221,7 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
                 <div
                   key={i}
                   style={{ flex: '0 0 auto', minWidth: '28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', height: '100%', justifyContent: 'flex-end' }}
-                  title={`${d.label}: ₱${d.revenue.toFixed(0)} (${d.count} orders)`}
+                  title={`${d.fullLabel}: ₱${d.revenue.toFixed(0)} (${d.count} orders)`}
                 >
                   {d.revenue > 0 && (
                     <span style={{ fontSize: '0.55rem', color: 'var(--color-accent)', fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -178,7 +240,7 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
                     transition: 'height 0.5s ease',
                   }} />
                   <span style={{ fontSize: '0.55rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                    {chartDays <= 14 ? d.label : d.label.split(' ')[1]}
+                    {d.label}
                   </span>
                 </div>
               ))}
@@ -284,7 +346,7 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
         <div className="table-wrapper">
           <div className="table-header">
             <p className="table-title">Daily Breakdown</p>
-            <span className="badge badge-muted">Last {chartDays} days</span>
+            <span className="badge badge-muted">{rangeLabel}</span>
           </div>
           <table>
             <thead>
@@ -297,7 +359,7 @@ export default function FranchiserSalesClient({ branchName, transactions, topIte
             <tbody>
               {dailyTable.filter(d => d.revenue > 0).map((d, i) => (
                 <tr key={i}>
-                  <td style={{ fontSize: '0.82rem' }}>{d.label}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{d.fullLabel}</td>
                   <td style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>{d.count}</td>
                   <td style={{ fontWeight: 700, color: 'var(--color-accent)' }}>
                     ₱{d.revenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
