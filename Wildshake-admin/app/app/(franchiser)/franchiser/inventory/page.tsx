@@ -67,21 +67,12 @@ export default async function FranchiserInventoryPage() {
     .from('food_item_menu_links')
     .select('id, inventory_item_id, product_id')
 
-  // ── All POS products (for Menu Items tab + tag picker) ──────────────────────
+  // ── All POS products (for the food-item tag picker) ─────────────────────────
   const { data: products } = await supabase
     .from('products')
     .select('id, name, category, price, is_available')
     .order('category')
     .order('name')
-
-  // ── Menu item daily logs ─────────────────────────────────────────────────────
-  const { data: menuLogs } = branchId
-    ? await supabase
-        .from('menu_item_daily_logs')
-        .select('id, product_id, starting_stock, additional_stock, notes')
-        .eq('branch_id', branchId)
-        .eq('log_date', today)
-    : { data: [] }
 
   // ── Incoming shipments from commissary (admin → franchiser) ─────────────────
   const { data: incomingShipments } = branchId
@@ -178,34 +169,6 @@ export default async function FranchiserInventoryPage() {
       }
     }
 
-    // ── Sync menu item product availability from menu_item_daily_logs ──────
-    // Uses branch_menu_availability so it appears in Menu Availability page and POS
-    if (menuLogs && products) {
-      for (const mLog of menuLogs) {
-        const start = mLog.starting_stock ?? null
-        if (start === null) continue
-
-        const add    = mLog.additional_stock ?? 0
-        const sold   = soldMap[mLog.product_id] ?? 0
-        const ending = Math.max(0, start + add - sold)
-        const isAvailable = ending > 0
-
-        if (isAvailable) {
-          await supabase
-            .from('branch_menu_availability')
-            .delete()
-            .eq('branch_id', branchId)
-            .eq('product_id', mLog.product_id)
-        } else {
-          await supabase
-            .from('branch_menu_availability')
-            .upsert(
-              { branch_id: branchId, product_id: mLog.product_id, is_available: false, updated_at: new Date().toISOString() },
-              { onConflict: 'branch_id,product_id' }
-            )
-        }
-      }
-    }
   }
 
 
@@ -218,7 +181,6 @@ export default async function FranchiserInventoryPage() {
       todayLogs={todayLogs || []}
       today={today}
       products={products || []}
-      menuLogs={menuLogs || []}
       foodMenuLinks={foodMenuLinks || []}
       soldMap={soldMap}
       cancelledMap={cancelledMap}
