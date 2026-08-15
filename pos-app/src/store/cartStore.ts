@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { toast } from 'react-hot-toast'
 import type { Product } from '../lib/supabase'
 
 export interface CartItem {
@@ -14,6 +15,24 @@ export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'custom'
 
 // Cart lines are keyed by product + variant (same rule addItem uses to stack items)
 export const cartItemKey = (i: CartItem) => `${i.product.id}::${i.variant ?? ''}`
+
+// ─── Stock ceiling ────────────────────────────────────────────────────────────
+// When a branch has put a count on a menu item, the cart must not exceed it. The
+// same product can sit on several lines (different sizes or flavours), so the
+// ceiling applies to the total across all of them, not line by line.
+
+/** How many of this product are already in the cart, ignoring the given line. */
+function qtyInCart(items: CartItem[], productId: string, exceptKey?: string): number {
+    return items
+        .filter(i => i.product.id === productId && !i.cancelled && cartItemKey(i) !== exceptKey)
+        .reduce((sum, i) => sum + i.quantity, 0)
+}
+
+/** The branch's remaining count, or null when the item is not tracked. */
+function stockCap(product: Product): number | null {
+    const q = product.stock_qty
+    return q === null || q === undefined ? null : q
+}
 export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'other'
 
 const DISCOUNT_RATES: Record<DiscountType, number> = {
@@ -109,6 +128,18 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
     addItem: (product, variant, overridePrice) =>
         set((state) => {
+            // Never let the cart hold more than the branch has left
+            const cap = stockCap(product)
+            if (cap !== null && qtyInCart(state.items, product.id) >= cap) {
+                toast.error(
+                    cap <= 0
+                        ? `${product.name} is sold out.`
+                        : `Only ${cap} of ${product.name} left — that's all of them.`,
+                    { id: `cap-${product.id}` }
+                )
+                return state
+            }
+
             // Unique key = product.id + variant so same product in different sizes stacks separately
             const existing = state.items.find((i) => i.product.id === product.id && (i.variant ?? '') === (variant ?? ''))
             if (existing) {
@@ -126,6 +157,24 @@ export const useCartStore = create<CartState>()((set, get) => ({
     updateQty: (productId, qty) =>
         set((state) => {
             if (qty < 1) return state // Never delete via qty — use cancelItem instead
+
+            const line = state.items.find(i => i.product.id === productId)
+            if (line) {
+                const cap = stockCap(line.product)
+                if (cap !== null) {
+                    // Whatever is on this product's other lines already eats into the count
+                    const allowance = cap - qtyInCart(state.items, productId, cartItemKey(line))
+                    if (qty > allowance) {
+                        toast.error(
+                            allowance <= 0
+                                ? `${line.product.name} is sold out.`
+                                : `Only ${cap} of ${line.product.name} left.`,
+                            { id: `cap-${productId}` }
+                        )
+                        qty = Math.max(1, allowance)
+                    }
+                }
+            }
             return { items: state.items.map((i) => i.product.id === productId ? { ...i, quantity: qty } : i) }
         }),
 
