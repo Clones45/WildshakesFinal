@@ -165,9 +165,24 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
 
     const platformCfg = deliveryPlatform ? PLATFORM_CONFIG[deliveryPlatform] : null
 
+    // ─── Sold-out check ───────────────────────────────────────────────────────
+    // A shake counts as sold out only when every size of it is gone, since one card
+    // stands for all its sizes.
+    const isSoldOut = (p: Product): boolean => {
+        if (SHAKE_SIZE_CATEGORIES.has(p.category)) {
+            return !products.some(other =>
+                other.name === p.name &&
+                SHAKE_SIZE_CATEGORIES.has(other.category) &&
+                other.is_available !== false
+            )
+        }
+        return p.is_available === false
+    }
+
     // ─── Tap handlers ─────────────────────────────────────────────────────────
 
     const handleProductTap = (product: Product) => {
+        if (isSoldOut(product)) return
         // 1. Fries flavor picker takes priority
         if (requiresFriesFlavor(product.name)) {
             setFlavorPicker(product)
@@ -274,20 +289,11 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             if (!matchesCat(p)) return false
             if (!p.name.toLowerCase().includes(search.toLowerCase())) return false
 
-            // For shakes: show card if ANY size variant is available
-            if (SHAKE_SIZE_CATEGORIES.has(p.category)) {
-                return products.some(other =>
-                    other.name === p.name &&
-                    SHAKE_SIZE_CATEGORIES.has(other.category) &&
-                    other.is_available !== false
-                )
-            }
-            // For coffee: hide iced from grid — shown in picker
-            if (COFFEE_CATEGORIES.has(p.category)) {
-                if (p.category === 'Coffee Iced') return false
-                return p.is_available !== false
-            }
-            return p.is_available !== false
+            // Sold-out items stay on the grid, greyed and locked, so the cashier can see
+            // the item exists and is finished — rather than it silently disappearing.
+            // For coffee: iced is never its own card — it lives inside the Hot/Cold picker
+            if (p.category === 'Coffee Iced') return false
+            return true
         })
 
         // Deduplicate by name — one card per product name
@@ -523,7 +529,9 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
 
                                 // Running low? Only for items the branch has put a count on.
                                 const stockLeft = product.stock_qty
-                                const isLowStock = stockLeft !== null && stockLeft !== undefined
+                                const soldOut = isSoldOut(product)
+                                const isLowStock = !soldOut
+                                    && stockLeft !== null && stockLeft !== undefined
                                     && stockLeft > 0 && stockLeft <= LOW_STOCK_THRESHOLD
 
                                 return (
@@ -537,8 +545,19 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                         }}
                                         exit={{ opacity: 0, scale: 0.95 }}
                                         onClick={() => handleProductTap(product)}
-                                        className={`product-card text-left relative ${inCart ? 'ring-2 ring-brand-400/60' : ''} ${isLowStock ? 'ring-2 ring-amber-400' : ''}`}
+                                        disabled={soldOut}
+                                        aria-disabled={soldOut}
+                                        className={`product-card text-left relative ${inCart ? 'ring-2 ring-brand-400/60' : ''} ${isLowStock ? 'ring-2 ring-amber-400' : ''} ${soldOut ? 'cursor-not-allowed' : ''}`}
                                     >
+                                        {/* Sold out — card stays put but is greyed and locked */}
+                                        {soldOut && (
+                                            <div className="absolute inset-0 z-20 rounded-[inherit] bg-white/70 backdrop-grayscale flex items-center justify-center">
+                                                <span className="px-3 py-1 rounded-lg bg-surface-700/90 text-white text-xs font-black tracking-wide shadow-lg">
+                                                    SOLD OUT
+                                                </span>
+                                            </div>
+                                        )}
+
                                         {/* In-cart quantity badge */}
                                         {inCart && (
                                             <motion.span

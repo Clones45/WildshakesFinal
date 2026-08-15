@@ -101,20 +101,41 @@ export function useMenuItems() {
                 }
             }
 
+            // ── 2b. Sales not yet pushed to Supabase ─────────────────────────────
+            // The server's stock_qty only moves once a sale reaches it. While anything is
+            // still queued, the tablet's own count is the more truthful one — it already
+            // includes those sales. Taking the server number here would wind the count
+            // back up and make a sold-out item look available again.
+            const unsyncedSales = await db.transactions
+                .where('syncStatus').anyOf(['pending', 'failed']).count()
+            let localStock = new Map<string, number | null>()
+            if (unsyncedSales > 0) {
+                const cached = await db.products.toArray()
+                localStock = new Map(cached.map(p => [p.id, p.stock_qty ?? null]))
+            }
+
+            const stockFor = (id: string): number | null => {
+                const server = stockQuantities.has(id) ? stockQuantities.get(id)! : null
+                if (server === null) return null            // untracked item
+                const local = localStock.get(id)
+                return local === null || local === undefined ? server : Math.min(server, local)
+            }
+
             // ── 3. Apply branch-level unavailable items ─────────────────────────────────
             // stock_qty rides along so the grid can warn when an item is running low.
             const prods = (allProducts as Product[]).map(p => {
-                const stock_qty = stockQuantities.has(p.id) ? stockQuantities.get(p.id)! : null
-                if (unavailableIds.has(p.id)) {
-                    return { ...p, is_available: false, stock_qty }
-                }
-                return { ...p, stock_qty }
+                const stock_qty = stockFor(p.id)
+                const soldOut = unavailableIds.has(p.id) || (stock_qty !== null && stock_qty <= 0)
+                return { ...p, is_available: soldOut ? false : p.is_available, stock_qty }
             })
             const cats = [...new Set(prods.map((p) => p.category))]
 
             console.log(`[useMenuItems] Loaded ${allProducts.length} items from Supabase products`)
             if (unavailableIds.size > 0) {
                 console.log(`[useMenuItems] ${unavailableIds.size} item(s) hidden by branch override`)
+            }
+            if (unsyncedSales > 0) {
+                console.log(`[useMenuItems] ${unsyncedSales} unsynced sale(s) — keeping the tablet's own stock counts`)
             }
 
             setProducts(prods)
@@ -123,11 +144,7 @@ export function useMenuItems() {
             // ── 4. Refresh offline cache ─────────────────────────────────────
             await db.products.clear()
             await db.products.bulkPut(
-                prods.map((p) => ({
-                    ...p,
-                    stock_qty: stockQuantities.has(p.id) ? stockQuantities.get(p.id)! : null,
-                    cachedAt: new Date().toISOString()
-                }))
+                prods.map((p) => ({ ...p, cachedAt: new Date().toISOString() }))
             )
             console.log('[useMenuItems] Offline cache refreshed from products table')
         } catch (err) {
