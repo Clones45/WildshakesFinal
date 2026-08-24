@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useCartStore, cartItemKey } from '../store/cartStore'
-import { Minus, Plus, Tag, ShoppingCart, PauseCircle, Clock, MapPin, Pencil, Ban, Bike } from 'lucide-react'
+import { useCartStore, cartItemKey, remainingStock } from '../store/cartStore'
+import { Minus, Plus, Tag, ShoppingCart, PauseCircle, Clock, MapPin, Pencil, Ban, Bike, AlertTriangle } from 'lucide-react'
 
 interface CartProps {
     onCheckout: () => void
@@ -19,7 +19,9 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
         deliveryPlatform, setDeliveryPlatform,
     } = useCartStore()
 
-    const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+    // Keyed by cartItemKey, not product id — two lines can share a product
+    // (different flavours or pearl combos of the same base item).
+    const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null)
     const [noteInput, setNoteInput] = useState('')
 
     const sub = subtotal()
@@ -28,14 +30,14 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
     const activeItems = items.filter(i => !i.cancelled)
     const hasItems = activeItems.length > 0
 
-    const handleNoteEdit = (productId: string, currentNote: string) => {
-        setEditingNoteId(productId)
+    const handleNoteEdit = (key: string, currentNote: string) => {
+        setEditingNoteKey(key)
         setNoteInput(currentNote || '')
     }
 
-    const handleNoteConfirm = (productId: string) => {
-        updateNotes(productId, noteInput.trim())
-        setEditingNoteId(null)
+    const handleNoteConfirm = (key: string) => {
+        updateNotes(key, noteInput.trim())
+        setEditingNoteKey(null)
         setNoteInput('')
     }
 
@@ -138,9 +140,15 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                             <p className="text-xs text-gray-400">Tap a product to add</p>
                         </motion.div>
                     ) : (
-                        items.map((item) => (
+                        items.map((item) => {
+                        const key = cartItemKey(item)
+                        // How many more of this product the cart can still take, counting
+                        // every line of it together. null = untracked, sell freely.
+                        const remaining = remainingStock(items, item.product)
+                        const atCap = remaining !== null && remaining <= 0
+                        return (
                             <motion.div
-                                key={item.product.id}
+                                key={key}
                                 layout
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
@@ -177,9 +185,10 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
 
                                     {/* Qty controls — hidden when cancelled */}
                                     {!item.cancelled ? (
+                                        <div className="flex flex-col items-end gap-1">
                                         <div className="flex items-center gap-2">
                                             <button
-                                                onClick={() => item.quantity > 1 && updateQty(item.product.id, item.quantity - 1)}
+                                                onClick={() => item.quantity > 1 && updateQty(key, item.quantity - 1)}
                                                 disabled={item.quantity <= 1}
                                                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform border ${
                                                     item.quantity <= 1
@@ -191,11 +200,25 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                             </button>
                                             <span className="w-7 text-center font-bold text-surface-800">{item.quantity}</span>
                                             <button
-                                                onClick={() => updateQty(item.product.id, item.quantity + 1)}
-                                                className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center active:scale-90 transition-transform hover:bg-brand-200 border border-brand-200"
+                                                onClick={() => !atCap && updateQty(key, item.quantity + 1)}
+                                                disabled={atCap}
+                                                title={atCap ? `Only ${item.quantity} of ${item.product.name} left — that's all of them` : undefined}
+                                                className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform border ${
+                                                    atCap
+                                                        ? 'bg-surface-50 border-surface-100 opacity-30 cursor-not-allowed'
+                                                        : 'bg-brand-100 border-brand-200 active:scale-90 hover:bg-brand-200'
+                                                }`}
                                             >
-                                                <Plus size={13} className="text-brand-600" />
+                                                <Plus size={13} className={atCap ? 'text-surface-400' : 'text-brand-600'} />
                                             </button>
+                                        </div>
+                                        {/* Why the + is locked — same "none left" reasoning as the sold-out menu card */}
+                                        {atCap && (
+                                            <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600">
+                                                <AlertTriangle size={10} />
+                                                That's all that's left
+                                            </span>
+                                        )}
                                         </div>
                                     ) : (
                                         <span className="text-[10px] font-bold uppercase tracking-wider text-red-400 bg-red-100 px-2 py-1 rounded-full border border-red-200">
@@ -217,20 +240,20 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                     {/* Notes — only when not cancelled */}
                                     {!item.cancelled && (
                                         <div className="flex-1">
-                                            {editingNoteId === item.product.id ? (
+                                            {editingNoteKey === key ? (
                                                 <div className="flex gap-1.5 items-center">
                                                     <input
                                                         type="text"
                                                         autoFocus
                                                         value={noteInput}
                                                         onChange={e => setNoteInput(e.target.value)}
-                                                        onKeyDown={e => { if (e.key === 'Enter') handleNoteConfirm(item.product.id) }}
+                                                        onKeyDown={e => { if (e.key === 'Enter') handleNoteConfirm(key) }}
                                                         placeholder="e.g. no sugar, extra ice…"
                                                         maxLength={60}
                                                         className="flex-1 text-xs bg-brand-50 border border-brand-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-400 text-surface-700 placeholder-surface-400"
                                                     />
                                                     <button
-                                                        onClick={() => handleNoteConfirm(item.product.id)}
+                                                        onClick={() => handleNoteConfirm(key)}
                                                         className="text-xs font-bold text-brand-600 hover:text-brand-800 transition-colors px-1"
                                                     >
                                                         OK
@@ -238,7 +261,7 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                                 </div>
                                             ) : (
                                                 <button
-                                                    onClick={() => handleNoteEdit(item.product.id, item.notes || '')}
+                                                    onClick={() => handleNoteEdit(key, item.notes || '')}
                                                     className="flex items-center gap-1 text-[11px] text-surface-400 hover:text-brand-500 transition-colors"
                                                 >
                                                     <Pencil size={10} />
@@ -253,7 +276,7 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
 
                                     {/* Cancel / Uncancel toggle */}
                                     <button
-                                        onClick={() => cancelItem(item.product.id)}
+                                        onClick={() => cancelItem(key)}
                                         title={item.cancelled ? 'Restore item' : 'Mark as cancelled (wrong order)'}
                                         className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg border transition-all ${
                                             item.cancelled
@@ -266,7 +289,7 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                     </button>
                                 </div>
                             </motion.div>
-                        ))
+                        )})
                     )}
                 </AnimatePresence>
             </div>

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useHoldStore, type HeldOrder } from '../store/holdStore'
-import { useCartStore } from '../store/cartStore'
+import { useCartStore, lineKey } from '../store/cartStore'
+import { useAuthStore } from '../store/authStore'
 import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
 import { printKitchenTicket } from '../lib/printer'
@@ -28,6 +29,7 @@ function formatTime(iso: string) {
 export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
     const { heldOrders, isLoading, fetchHeldOrders, voidHeldOrder } = useHoldStore()
     const { addItem, cancelItem, reset, items, setResumedHold } = useCartStore()
+    const { branch } = useAuthStore()
 
     const [confirmResumeId, setConfirmResumeId] = useState<string | null>(null)
 
@@ -110,6 +112,11 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
         setConfirmResumeId(null)
         try {
             // ── 1. Build the product lookup from local cache ─────────────────
+            // Carries stock_qty / effective_stock through — these are what cartStore's
+            // addItem uses to cap quantity. Dropping them here (as this used to) meant a
+            // resumed order's items looked untracked no matter what the branch had set,
+            // so both re-adding and the cart's own qty stepper let a cashier go straight
+            // past a "5 left" ceiling once an order had been through Hold → Resume.
             const cachedProducts = await db.products.toArray()
             const menuLookup = new Map<string, Product>(
                 cachedProducts.map((p) => [
@@ -121,11 +128,14 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                         price: p.price,
                         image_url: p.image_url,
                         is_available: p.is_available,
+                        stock_qty: p.stock_qty,
+                        effective_stock: p.effective_stock,
                     },
                 ])
             )
 
             // ── 2. Try to fill missing products from Supabase (safe fallback) ─
+            // Rare: only products this tablet has never synced land here.
             const missingIds = order.items
                 .map((i) => i.menu_item_id)
                 .filter((id) => !menuLookup.has(id))
@@ -139,6 +149,23 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                     ;(extraProducts ?? []).forEach((p) => {
                         menuLookup.set(p.id, p as Product)
                     })
+
+                    // Attach this branch's own stock count for these products too. This
+                    // is the item's own number only, not the cross-item shared-ingredient
+                    // cascade the main menu applies — that needs the full recipe list to
+                    // compute correctly, which is more than this rare fallback warrants.
+                    // Still strictly safer than the untracked/unlimited default.
+                    if (branch?.id) {
+                        const { data: overrides } = await supabase
+                            .from('branch_menu_availability')
+                            .select('product_id, stock_qty')
+                            .eq('branch_id', branch.id)
+                            .in('product_id', missingIds)
+                        for (const o of overrides ?? []) {
+                            const p = menuLookup.get(o.product_id)
+                            if (p) p.stock_qty = o.stock_qty
+                        }
+                    }
                 } catch {
                     // Non-fatal: fallback product info will be used
                 }
@@ -167,7 +194,7 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                 }
                 // Restore cancelled state — item stays visible as struck-through
                 // in the cart until the order is checked out or voided
-                if (cancelled) cancelItem(product.id)
+                if (cancelled) cancelItem(lineKey(product.id))
             }
 
             // ── 5. Persist the resumed hold reference ────────────────────────

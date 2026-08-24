@@ -96,7 +96,8 @@ export interface CachedProduct {
     price: number
     image_url: string | null
     is_available: boolean
-    stock_qty: number | null   // null = unlimited
+    stock_qty: number | null        // null = unlimited
+    effective_stock: number | null  // stock_qty further narrowed by a shared ingredient
     cachedAt: string
 }
 

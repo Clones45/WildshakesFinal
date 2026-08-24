@@ -13,8 +13,13 @@ export interface CartItem {
 
 export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'custom'
 
-// Cart lines are keyed by product + variant (same rule addItem uses to stack items)
-export const cartItemKey = (i: CartItem) => `${i.product.id}::${i.variant ?? ''}`
+// Cart lines are keyed by product + variant (same rule addItem uses to stack items).
+// Every mutation that targets ONE line — qty, notes, cancel — goes through this key,
+// never bare product.id: the same product can sit on several lines at once (different
+// fries flavours, different pearl combos on the same shake size), and matching on
+// product.id alone would hit all of them, or the wrong one, at once.
+export const lineKey = (productId: string, variant?: string) => `${productId}::${variant ?? ''}`
+export const cartItemKey = (i: CartItem) => lineKey(i.product.id, i.variant)
 
 // ─── Stock ceiling ────────────────────────────────────────────────────────────
 // When a branch has put a count on a menu item, the cart must not exceed it. The
@@ -35,6 +40,17 @@ function qtyInCart(items: CartItem[], productId: string, exceptKey?: string): nu
 function stockCap(product: Product): number | null {
     const q = product.effective_stock ?? product.stock_qty
     return q === null || q === undefined ? null : q
+}
+
+/**
+ * How many more of this product the cart could still take, counting every line of
+ * it together. null when untracked (sell freely). Used by the UI to grey out the
+ * "+" stepper before the tap happens, rather than clamping after the fact.
+ */
+export function remainingStock(items: CartItem[], product: Product): number | null {
+    const cap = stockCap(product)
+    if (cap === null) return null
+    return Math.max(0, cap - qtyInCart(items, product.id))
 }
 export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'other'
 
@@ -71,11 +87,14 @@ interface CartState {
     resumedTableNumber: string | null
 
     // Actions
+    // removeItem / updateQty / updateNotes / cancelItem take a line key (see
+    // cartItemKey / lineKey above), not a bare product id — a product can occupy
+    // more than one line at once.
     addItem: (product: Product, variant?: string, overridePrice?: number) => void
-    removeItem: (productId: string) => void
-    updateQty: (productId: string, qty: number) => void
-    updateNotes: (productId: string, notes: string) => void
-    cancelItem: (productId: string) => void   // Toggle strikethrough on item
+    removeItem: (key: string) => void
+    updateQty: (key: string, qty: number) => void
+    updateNotes: (key: string, notes: string) => void
+    cancelItem: (key: string) => void   // Toggle strikethrough on item
     setDiscount: (type: DiscountType, customAmount?: number, units?: Record<string, number> | null) => void
     setPaymentMethod: (method: PaymentMethod) => void
     setCashTendered: (amount: number) => void
@@ -154,42 +173,41 @@ export const useCartStore = create<CartState>()((set, get) => ({
             return { items: [...state.items, { product, quantity: 1, notes: '', variant, overridePrice }] }
         }),
 
-    removeItem: (productId) =>
-        set((state) => ({ items: state.items.filter((i) => i.product.id !== productId) })),
+    removeItem: (key) =>
+        set((state) => ({ items: state.items.filter((i) => cartItemKey(i) !== key) })),
 
-    updateQty: (productId, qty) =>
+    updateQty: (key, qty) =>
         set((state) => {
             if (qty < 1) return state // Never delete via qty — use cancelItem instead
 
-            const line = state.items.find(i => i.product.id === productId)
-            if (line) {
-                const cap = stockCap(line.product)
-                if (cap !== null) {
-                    // Whatever is on this product's other lines already eats into the count
-                    const allowance = cap - qtyInCart(state.items, productId, cartItemKey(line))
-                    if (qty > allowance) {
-                        toast.error(
-                            allowance <= 0
-                                ? `${line.product.name} is sold out.`
-                                : `Only ${cap} of ${line.product.name} left.`,
-                            { id: `cap-${productId}` }
-                        )
-                        qty = Math.max(1, allowance)
-                    }
+            const line = state.items.find(i => cartItemKey(i) === key)
+            if (!line) return state
+            const cap = stockCap(line.product)
+            if (cap !== null) {
+                // Whatever is on this product's other lines already eats into the count
+                const allowance = cap - qtyInCart(state.items, line.product.id, key)
+                if (qty > allowance) {
+                    toast.error(
+                        allowance <= 0
+                            ? `${line.product.name} is sold out.`
+                            : `Only ${cap} of ${line.product.name} left.`,
+                        { id: `cap-${key}` }
+                    )
+                    qty = Math.max(1, allowance)
                 }
             }
-            return { items: state.items.map((i) => i.product.id === productId ? { ...i, quantity: qty } : i) }
+            return { items: state.items.map((i) => cartItemKey(i) === key ? { ...i, quantity: qty } : i) }
         }),
 
-    updateNotes: (productId, notes) =>
+    updateNotes: (key, notes) =>
         set((state) => ({
-            items: state.items.map((i) => i.product.id === productId ? { ...i, notes } : i),
+            items: state.items.map((i) => cartItemKey(i) === key ? { ...i, notes } : i),
         })),
 
-    cancelItem: (productId) =>
+    cancelItem: (key) =>
         set((state) => ({
             items: state.items.map((i) =>
-                i.product.id === productId ? { ...i, cancelled: !i.cancelled } : i
+                cartItemKey(i) === key ? { ...i, cancelled: !i.cancelled } : i
             ),
         })),
 
