@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
 import { useAuthStore } from '../store/authStore'
-import { computeEffectiveStock } from '../lib/menuAvailability'
+import { computeEffectiveStock, SHAREABLE_INGREDIENT_NAMES } from '../lib/menuAvailability'
 
 /**
  * Loads menu items from the `products` table.
@@ -124,13 +124,20 @@ export function useMenuItems() {
 
             // ── 2c. Share counts across items that draw on the same thing ────────
             // Five wings is five wings, whether they go out solo or on a party tray.
+            // Deliberately narrow — see SHAREABLE_INGREDIENT_NAMES for why this isn't
+            // every portion/piece ingredient (a bun is shared too, but a count on Beef
+            // Burger isn't meant to cap Crispy Chicken Burger along with it).
             const [recipeLinks, ingredients] = await Promise.all([
                 db.recipeLinks.toArray(),
                 db.ingredientStock.toArray(),
             ])
-            const unitByIngredient = new Map(ingredients.map(i => [i.inventoryItemId, i.unit]))
+            const shareableIngredientIds = new Set(
+                ingredients
+                    .filter(i => SHAREABLE_INGREDIENT_NAMES.has(i.name))
+                    .map(i => i.inventoryItemId)
+            )
             const withOwnCount = (allProducts as Product[]).map(p => ({ id: p.id, stock_qty: stockFor(p.id) }))
-            const effective = computeEffectiveStock(withOwnCount, recipeLinks, unitByIngredient)
+            const effective = computeEffectiveStock(withOwnCount, recipeLinks, shareableIngredientIds)
 
             // ── 3. Apply branch-level unavailable items ─────────────────────────────────
             // stock_qty rides along so the grid can warn when an item is running low.
