@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { requireDashboardOrFirstPanel } from '@/lib/portal/access'
+import { fetchAll } from '@/lib/supabase/fetchAll'
 
 async function getDashboardData() {
   const supabase = await createClient()
@@ -16,20 +17,23 @@ async function getDashboardData() {
   const weekAgo  = new Date(Date.now() - 7  * 24 * 60 * 60 * 1000)
   const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
+  // Period reads go through fetchAll: the API returns at most 1,000 rows per
+  // request, and 30 days across every branch is several times that.
   const [
-    { data: todayTx },
+    todayTx,
     { data: totalFranchises },
     { data: recentTx },
     { data: lowStock },
-    { data: revenueByDay },
-    { data: branchRevenue },
+    revenueByDay,
+    branchRevenue,
     { data: allBranches },
   ] = await Promise.all([
-    supabase
+    fetchAll(() => supabase
       .from('transactions')
       .select('total_amount, status, payment_method, branch_id')
       .gte('created_at', todayUTC.toISOString())
-      .eq('status', 'completed'),
+      .eq('status', 'completed')
+      .order('created_at', { ascending: true })),
 
     supabase.from('franchises').select('id, name, status, region'),
 
@@ -45,19 +49,20 @@ async function getDashboardData() {
       .filter('current_stock', 'lt', 'safety_level'),
 
     // 7-day trend
-    supabase
+    fetchAll(() => supabase
       .from('transactions')
       .select('total_amount, created_at, status, branch_id')
       .eq('status', 'completed')
       .gte('created_at', weekAgo.toISOString())
-      .order('created_at', { ascending: true }),
+      .order('created_at', { ascending: true })),
 
     // 30-day revenue per branch
-    supabase
+    fetchAll(() => supabase
       .from('transactions')
       .select('total_amount, branch_id, branches(name, franchise_id)')
       .eq('status', 'completed')
-      .gte('created_at', monthAgo.toISOString()),
+      .gte('created_at', monthAgo.toISOString())
+      .order('created_at', { ascending: true })),
 
     supabase
       .from('branches')

@@ -1,4 +1,5 @@
 import { requirePanelAccess } from '@/lib/portal/access'
+import { fetchAll } from '@/lib/supabase/fetchAll'
 import FranchiserInventoryClient from '@/components/franchiser/FranchiserInventoryClient'
 
 export const dynamic = 'force-dynamic'
@@ -97,12 +98,13 @@ export default async function FranchiserInventoryPage() {
     const dateEnd   = `${today}T23:59:59.999+08:00`
 
     // Fetch all transaction items for today at this branch (joins via transaction)
-    const { data: txItems } = await supabase
+    const txItems = await fetchAll(() => supabase
       .from('transaction_items')
       .select('product_id, quantity, cancelled, transactions!inner(branch_id, status, created_at)')
       .eq('transactions.branch_id', branchId)
       .gte('transactions.created_at', dateStart)
       .lte('transactions.created_at', dateEnd)
+      .order('id', { ascending: true }))
 
     if (txItems) {
       for (const ti of txItems) {

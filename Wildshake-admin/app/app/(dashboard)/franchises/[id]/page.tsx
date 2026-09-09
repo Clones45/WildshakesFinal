@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import FranchiseDetailClient from '@/components/admin/FranchiseDetailClient'
 import { requirePanelAccess } from '@/lib/portal/access'
+import { fetchAll } from '@/lib/supabase/fetchAll'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -46,36 +47,39 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
   // Parallel data fetch
+  // Period reads go through fetchAll: the API returns at most 1,000 rows per
+  // request, and 90 days at one busy branch is several times that.
   const [
-    { data: todayTx },
-    { data: weekTx },
-    { data: salesTx },
+    todayTx,
+    weekTx,
+    salesTx,
     { data: recentTx },
     { data: staff },
-    { data: topItems },
+    topItems,
   ] = await Promise.all([
     // Today's revenue
-    supabase.from('transactions')
+    fetchAll(() => supabase.from('transactions')
       .select('total_amount, payment_method')
       .in('branch_id', safeBranchIds)
       .eq('status', 'completed')
-      .gte('created_at', today.toISOString()),
+      .gte('created_at', today.toISOString())
+      .order('created_at', { ascending: true })),
 
     // Week revenue (chart)
-    supabase.from('transactions')
+    fetchAll(() => supabase.from('transactions')
       .select('total_amount, created_at')
       .in('branch_id', safeBranchIds)
       .eq('status', 'completed')
       .gte('created_at', weekAgo)
-      .order('created_at', { ascending: true }),
+      .order('created_at', { ascending: true })),
 
     // 90-day sales for the sales tab
-    supabase.from('transactions')
+    fetchAll(() => supabase.from('transactions')
       .select('total_amount, discount_amount, payment_method, status, created_at')
       .in('branch_id', safeBranchIds)
       .eq('status', 'completed')
       .gte('created_at', ninetyDaysAgo)
-      .order('created_at', { ascending: true }),
+      .order('created_at', { ascending: true })),
 
     // Recent transactions
     supabase.from('transactions')
@@ -92,11 +96,12 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
       .order('role').order('name'),
 
     // Top items
-    supabase.from('transaction_items')
+    fetchAll(() => supabase.from('transaction_items')
       .select('quantity, subtotal, products(name, category), transactions!inner(branch_id, status, created_at)')
       .in('transactions.branch_id', safeBranchIds)
       .eq('transactions.status', 'completed')
-      .gte('transactions.created_at', thirtyDaysAgo),
+      .gte('transactions.created_at', thirtyDaysAgo)
+      .order('id', { ascending: true })),
   ])
 
   // Stock: all globally available products + this franchise's branch overrides
@@ -122,7 +127,7 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
     { data: invLogs },
     { data: menuItemLogs },
     { data: foodMenuLinks },
-    { data: txItemsForInv },
+    txItemsForInv,
   ] = await Promise.all([
     supabase.from('inventory_categories').select('id, name, sheet_type, sort_order').order('sheet_type').order('sort_order'),
     supabase.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order').eq('is_active', true).order('sort_order'),
@@ -135,11 +140,12 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
       .in('branch_id', safeBranchIds)
       .eq('log_date', todayStr),
     supabase.from('food_item_menu_links').select('inventory_item_id, product_id'),
-    supabase.from('transaction_items')
+    fetchAll(() => supabase.from('transaction_items')
       .select('product_id, quantity, cancelled, transactions!inner(branch_id, status, created_at)')
       .in('transactions.branch_id', safeBranchIds)
       .gte('transactions.created_at', dateStart)
-      .lte('transactions.created_at', dateEnd),
+      .lte('transactions.created_at', dateEnd)
+      .order('id', { ascending: true })),
   ])
 
   // Build sold/cancelled/voided maps for today

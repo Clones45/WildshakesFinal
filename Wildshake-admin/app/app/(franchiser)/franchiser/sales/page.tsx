@@ -1,4 +1,5 @@
 import { requirePanelAccess } from '@/lib/portal/access'
+import { fetchAll } from '@/lib/supabase/fetchAll'
 import FranchiserSalesClient from '@/components/franchiser/FranchiserSalesClient'
 
 interface PageProps {
@@ -58,23 +59,26 @@ export default async function FranchiserSalesPage({ searchParams }: PageProps) {
 
   const safeBranchIds = branchIds.length > 0 ? branchIds : ['00000000-0000-0000-0000-000000000000']
 
-  const [{ data: transactions }, { data: topItems }] = await Promise.all([
-    supabase
+  // A whole month is more than the API returns in one request (Gensan: 1,396
+  // sales and 3,173 lines in Aug 2026), so page through — see fetchAll.
+  const [transactions, topItems] = await Promise.all([
+    fetchAll(() => supabase
       .from('transactions')
       .select('total_amount, discount_amount, payment_method, status, delivery_platform, created_at')
       .in('branch_id', safeBranchIds)
       .eq('status', 'completed')
       .gte('created_at', start)
       .lt('created_at', end)
-      .order('created_at', { ascending: true }),
+      .order('created_at', { ascending: true })),
 
-    supabase
+    fetchAll(() => supabase
       .from('transaction_items')
       .select('quantity, subtotal, cancelled, products(name, category), transactions!inner(branch_id, status, created_at)')
       .in('transactions.branch_id', safeBranchIds)
       .eq('transactions.status', 'completed')
       .gte('transactions.created_at', start)
-      .lt('transactions.created_at', end),
+      .lt('transactions.created_at', end)
+      .order('id', { ascending: true })),
   ])
 
   return (

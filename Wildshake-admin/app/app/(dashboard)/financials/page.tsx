@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { requirePanelAccess } from '@/lib/portal/access'
+import { fetchAll } from '@/lib/supabase/fetchAll'
 import FinancialsClient from '../../../components/FinancialsClient'
 
 export default async function FinancialsPage() {
@@ -9,16 +10,18 @@ export default async function FinancialsPage() {
   // Use a wide date range (365 days) — client-side filtering handles the display window
   const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString()
 
+  // A year across every branch is far more than the API returns in one
+  // request, so page through — see fetchAll.
   const [
-    { data: transactions },
+    transactions,
     { data: branches },
   ] = await Promise.all([
-    supabase
+    fetchAll(() => supabase
       .from('transactions')
       .select('id, total_amount, discount_amount, payment_method, status, created_at, branches(name)')
       .eq('status', 'completed')
       .gte('created_at', oneYearAgo)
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: false })),
     supabase.from('branches').select('id, name').eq('status', 'active'),
   ])
 

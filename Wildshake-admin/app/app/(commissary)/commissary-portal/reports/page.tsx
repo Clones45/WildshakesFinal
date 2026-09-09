@@ -1,4 +1,5 @@
 import { requirePanelAccess } from '@/lib/portal/access'
+import { fetchAll } from '@/lib/supabase/fetchAll'
 import CommissaryReportsClient from '@/components/commissary/CommissaryReportsClient'
 
 export default async function CommissaryReportsPage() {
@@ -28,15 +29,16 @@ export default async function CommissaryReportsPage() {
   const ninetyDaysAgo = new Date()
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
 
-  const { data: transactions } = branchIds.length > 0
-    ? await supabase
+  // 90 days across every branch is far more than the API returns in one
+  // request (the old .limit(5000) was still capped at 1,000), so page through.
+  const transactions = branchIds.length > 0
+    ? await fetchAll(() => supabase
         .from('transactions')
         .select('id, branch_id, total_amount, discount_amount, payment_method, status, created_at')
         .in('branch_id', branchIds)
         .gte('created_at', ninetyDaysAgo.toISOString())
-        .order('created_at', { ascending: false })
-        .limit(5000)
-    : { data: [] }
+        .order('created_at', { ascending: false }))
+    : []
 
   return (
     <CommissaryReportsClient

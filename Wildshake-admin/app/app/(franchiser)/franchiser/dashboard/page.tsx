@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { requireDashboardOrFirstPanel } from '@/lib/portal/access'
+import { fetchAll } from '@/lib/supabase/fetchAll'
 
 async function getFranchiserDashboardData(franchiseId: string) {
   const supabase = await createClient()
@@ -22,29 +23,32 @@ async function getFranchiserDashboardData(franchiseId: string) {
   const branchIds = branches.map(b => b.id)
   const branch = branches[0]  // primary branch for display purposes
 
+  // Period reads go through fetchAll: the API returns at most 1,000 rows per
+  // request, and a week across a franchise's branches can pass that.
   const [
-    { data: todayTx },
-    { data: weekTx },
+    todayTx,
+    weekTx,
     { data: recentTx },
-    { data: topItems },
+    topItems,
     { data: staffCount },
   ] = await Promise.all([
     // Today's completed transactions (all branches)
-    supabase
+    fetchAll(() => supabase
       .from('transactions')
       .select('total_amount, status, payment_method')
       .in('branch_id', branchIds)
       .eq('status', 'completed')
-      .gte('created_at', today.toISOString()),
+      .gte('created_at', today.toISOString())
+      .order('created_at', { ascending: true })),
 
     // Last 7 days for chart (all branches)
-    supabase
+    fetchAll(() => supabase
       .from('transactions')
       .select('total_amount, created_at, status')
       .in('branch_id', branchIds)
       .eq('status', 'completed')
       .gte('created_at', weekAgo.toISOString())
-      .order('created_at', { ascending: true }),
+      .order('created_at', { ascending: true })),
 
     // Recent transactions with cashier info (all branches)
     supabase
@@ -55,12 +59,13 @@ async function getFranchiserDashboardData(franchiseId: string) {
       .limit(15),
 
     // Top selling items via transaction_items (all branches)
-    supabase
+    fetchAll(() => supabase
       .from('transaction_items')
       .select('quantity, unit_price, subtotal, products(name, category), transactions!inner(branch_id, status, created_at)')
       .in('transactions.branch_id', branchIds)
       .eq('transactions.status', 'completed')
-      .gte('transactions.created_at', today.toISOString()),
+      .gte('transactions.created_at', today.toISOString())
+      .order('id', { ascending: true })),
 
     // Active staff count (all branches)
     supabase
