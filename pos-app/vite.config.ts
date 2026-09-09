@@ -2,11 +2,22 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Shown on the login/setup screens so anyone can tell which build a tablet is
+// running — the question that comes up every time a fix "doesn't seem to be
+// there yet". Vercel sets the commit; locally it reads "local".
+const buildStamp = `${(process.env.VERCEL_GIT_COMMIT_SHA ?? 'local').slice(0, 7)} · ${new Date().toLocaleString('en-PH', {
+  timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+})}`
+
 export default defineConfig({
+  define: { __BUILD_ID__: JSON.stringify(buildStamp) },
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // The app registers the worker itself (src/lib/appUpdate.ts) so it can
+      // decide when a new build takes effect — never mid-sale.
+      injectRegister: false,
       includeAssets: ['*.png'],
       manifest: {
         name: 'Wildshakes Nexus POS',
@@ -23,8 +34,12 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // A new worker takes control immediately; public/sw-takeover.js then
+        // hands off to the page (or reloads a page too old to answer) so a
+        // tablet never sits on a stale build.
         skipWaiting: true,
         clientsClaim: true,
+        importScripts: ['sw-takeover.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
