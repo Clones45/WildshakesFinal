@@ -11,6 +11,7 @@ import type { HeldOrder } from '../store/holdStore'
 import type { CartItem } from '../store/cartStore'
 import type { LocalTransaction } from './db'
 import type { ShiftSummary } from '../store/shiftStore'
+import { encodeRasterImage } from './escposRaster'
 
 export interface NativePrinterPlugin {
     printBase64(options: { address: string; data: string }): Promise<void>
@@ -19,6 +20,9 @@ const NativePrinter = registerPlugin<NativePrinterPlugin>('NativePrinter')
 
 const BT_PRINTER_KEY = 'nexus_bt_printer_address'
 const W = 32
+// 58 mm paper: 384 dots across the head. The 32-column text layout above assumes
+// the same paper, so the two stay in step.
+const PAPER_DOTS = 384
 
 // ── Formatting helpers ──────────────────────────────────────────────────────
 
@@ -91,49 +95,26 @@ async function buildLogoBytes(imageUrl: string, targetWidth = 256): Promise<Uint
                 ctx.drawImage(img, 0, 0, w, h)
 
                 const { data } = ctx.getImageData(0, 0, w, h)
-                const bytes: number[] = []
 
-                // Initialize printer
-                bytes.push(0x1b, 0x40)
+                // Raster (GS v 0) rather than ESC * bands — see escposRaster.ts for why:
+                // the branch printers ignore the line-spacing command band mode depends
+                // on, and printed the logo as separated horizontal strips.
+                const raster = encodeRasterImage(data, w, h, { paperDots: PAPER_DOTS })
 
-                // Center align logo
-                bytes.push(0x1b, 0x61, 0x01)
+                const head = [
+                    0x1b, 0x40,        // ESC @   initialise
+                    0x1b, 0x61, 0x01,  // ESC a 1 centre (bitmap is also pre-centred by padding)
+                ]
+                const tail = [
+                    0x1b, 0x61, 0x00,  // ESC a 0 back to left for the text that follows
+                    0x0a,              // one blank line between logo and header
+                ]
+                const bytes = new Uint8Array(head.length + raster.length + tail.length)
+                bytes.set(head, 0)
+                bytes.set(raster, head.length)
+                bytes.set(tail, head.length + raster.length)
 
-                // Set line spacing to 24 dots for seamless vertical merging
-                bytes.push(0x1b, 0x33, 24)
-
-                // Process image in vertical bands of 24 dots (ESC * 33)
-                for (let yStart = 0; yStart < h; yStart += 24) {
-                    bytes.push(0x1b, 0x2a, 33) // ESC * 33 (24-dot double density)
-                    bytes.push(w & 0xff, (w >> 8) & 0xff) // nL, nH
-                    
-                    for (let x = 0; x < w; x++) {
-                        for (let k = 0; k < 3; k++) {
-                            let byte = 0
-                            for (let b = 0; b < 8; b++) {
-                                const y = yStart + k * 8 + b
-                                if (y < h) {
-                                    const i = (y * w + x) * 4
-                                    // Calculate luminance
-                                    const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
-                                    if (lum < 128) {
-                                        byte |= (1 << (7 - b)) // Set bit if dark
-                                    }
-                                }
-                            }
-                            bytes.push(byte)
-                        }
-                    }
-                    bytes.push(0x0a) // Print and feed line
-                }
-
-                // Reset line spacing to default (ESC 2)
-                bytes.push(0x1b, 0x32)
-                
-                // Reset alignment to left
-                bytes.push(0x1b, 0x61, 0x00)
-
-                resolve(new Uint8Array(bytes))
+                resolve(bytes)
             } catch {
                 resolve(new Uint8Array(0))
             }
