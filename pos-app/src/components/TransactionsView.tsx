@@ -12,7 +12,7 @@ import {
 import { toast } from 'react-hot-toast'
 import { printReceipt } from '../lib/printer'
 import { db, type LocalTransaction, type LocalTransactionItem } from '../lib/db'
-import { MonthPicker } from './MonthPicker'
+import { DatePicker } from './DatePicker'
 
 interface TransactionsViewProps {
     isOpen: boolean
@@ -121,15 +121,6 @@ function dayLabel(ymd: string) {
     return new Date(y, m - 1, d).toLocaleDateString('en-US', {
         weekday: 'short', month: 'short', day: 'numeric',
     })
-}
-
-// Every day of `month` that has already happened, as yyyy-mm-dd — the picker
-// offers past days with no sales too, and never a day that hasn't come yet.
-function monthDayOptions(month: string, today: string): string[] {
-    const [y, m] = month.split('-').map(Number)
-    const daysInMonth = new Date(y, m, 0).getDate()
-    return Array.from({ length: daysInMonth }, (_, i) => `${month}-${pad2(i + 1)}`)
-        .filter((d) => d <= today)
 }
 
 // Bounds for the chosen filter, in the tablet's local time. Half-open: from <= t < to.
@@ -499,34 +490,16 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                             {opt.label}
                                         </button>
                                     ))}
-                                    {/* Pick a month, then a day inside it or the whole month —
-                                        the same control as the admin Sales Report. The month grid
-                                        is drawn by us (MonthPicker) so it looks identical on the
-                                        tablet, where the browser's own month input is a different
-                                        native dialog. */}
-                                    <MonthPicker
-                                        value={month}
-                                        max={today.slice(0, 7)}
+                                    {/* Any single day, or a whole month — the same calendar as the
+                                        Franchiser Portal's Sales Report, drawn by the app so it looks
+                                        identical on the tablet. */}
+                                    <DatePicker
+                                        month={month}
+                                        day={selectedDay}
+                                        today={today}
                                         active={dateFilter === 'month'}
-                                        onChange={(m) => { setMonth(m); setSelectedDay(''); setDateFilter('month') }}
-                                        onClear={() => { setSelectedDay(''); setDateFilter('today') }}
+                                        onPick={(m, d) => { setMonth(m); setSelectedDay(d); setDateFilter('month') }}
                                     />
-                                    <select
-                                        value={selectedDay}
-                                        onChange={(e) => { setSelectedDay(e.target.value); setDateFilter('month') }}
-                                        onClick={() => setDateFilter('month')}
-                                        aria-label="Day"
-                                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all outline-none cursor-pointer ${dateFilter === 'month'
-                                            ? 'bg-teal-500 border-teal-500 text-white'
-                                            : 'bg-transparent border-surface-500 text-gray-400 hover:border-surface-400'
-                                            }`}
-                                        style={{ colorScheme: 'dark' }}
-                                    >
-                                        <option value="">Whole month</option>
-                                        {monthDayOptions(month, today).map((d) => (
-                                            <option key={d} value={d}>{dayLabel(d)}</option>
-                                        ))}
-                                    </select>
                                 </div>
                             </div>
                             <div>

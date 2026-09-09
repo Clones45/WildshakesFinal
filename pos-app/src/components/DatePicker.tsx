@@ -2,42 +2,47 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 
-// A month picker drawn by the app, so it looks the same on every device.
+// One calendar for picking a single day or a whole month, drawn by the app.
 //
-// The admin Sales Report uses the browser's own <input type="month">. On a
-// desktop that is a popover with a year at the top, a 4x3 grid of months, and
-// "Clear" / "This month" links. On the tablet, the same input is handed to
-// Android, which draws a completely different native dialog. This component
-// reproduces the desktop widget so the POS matches the report exactly.
+// It is the same control as the Franchiser Portal's Sales Report (which has an
+// identical twin, SalesDatePicker) so managers learn it once. Browser-native
+// date inputs draw differently on every device — a full calendar on a desktop,
+// an unrelated spinner dialog on the tablet — which this avoids entirely.
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-function monthTitle(month: string) {
+const monthTitle = (month: string) => {
     const [y, m] = month.split('-').map(Number)
     return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
-
-interface MonthPickerProps {
-    /** Selected month, yyyy-mm. */
-    value: string
-    /** Latest selectable month, yyyy-mm — anything later is greyed out. */
-    max: string
-    /** Highlight the trigger while the month filter is the one in use. */
-    active: boolean
-    onChange: (month: string) => void
-    /** "Clear" — the caller decides what the list falls back to. */
-    onClear: () => void
+const dayTitle = (ymd: string) => {
+    const [y, m, d] = ymd.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+}
+const shiftMonth = (month: string, by: number) => {
+    const [y, m] = month.split('-').map(Number)
+    const d = new Date(y, m - 1 + by, 1)
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`
 }
 
-export function MonthPicker({ value, max, active, onChange, onClear }: MonthPickerProps) {
-    const [open, setOpen] = useState(false)
-    const [year, setYear] = useState(() => Number(value.slice(0, 4)))
-    const rootRef = useRef<HTMLDivElement>(null)
+interface DatePickerProps {
+    /** Month in view, yyyy-mm. */
+    month: string
+    /** '' = the whole month; otherwise one day, yyyy-mm-dd. */
+    day: string
+    /** Today, yyyy-mm-dd — nothing after it can be picked. */
+    today: string
+    /** Highlight the trigger while this picker's range is the one in use. */
+    active: boolean
+    onPick: (month: string, day: string) => void
+}
 
-    const [maxY, maxM] = max.split('-').map(Number)
-    const now = new Date()
-    const currentMonth = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`
+export function DatePicker({ month, day, today, active, onPick }: DatePickerProps) {
+    const [open, setOpen] = useState(false)
+    const [view, setView] = useState(month)
+    const rootRef = useRef<HTMLDivElement>(null)
+    const todayMonth = today.slice(0, 7)
 
     // Close on a tap outside, or Escape.
     useEffect(() => {
@@ -56,21 +61,24 @@ export function MonthPicker({ value, max, active, onChange, onClear }: MonthPick
         }
     }, [open])
 
-    const isFuture = (y: number, m: number) => y > maxY || (y === maxY && m > maxM)
-    const pick = (month: string) => {
-        const [y, m] = month.split('-').map(Number)
-        if (isFuture(y, m)) return
-        onChange(month)
-        setOpen(false)
-    }
+    const [vy, vm] = view.split('-').map(Number)
+    const firstWeekday = new Date(vy, vm - 1, 1).getDay()
+    const daysInView = new Date(vy, vm, 0).getDate()
+    const cells: (string | null)[] = [
+        ...Array<null>(firstWeekday).fill(null),
+        ...Array.from({ length: daysInView }, (_, i) => `${view}-${pad2(i + 1)}`),
+    ]
+    while (cells.length % 7 !== 0) cells.push(null)
+
+    const choose = (m: string, d: string) => { onPick(m, d); setOpen(false) }
 
     return (
         <div ref={rootRef} className="relative">
             <button
                 type="button"
                 onClick={() => {
-                    // Open on the year of whatever is currently selected.
-                    if (!open) setYear(Number(value.slice(0, 4)))
+                    // Open on the month currently in use.
+                    if (!open) setView(month)
                     setOpen((o) => !o)
                 }}
                 aria-haspopup="dialog"
@@ -81,82 +89,90 @@ export function MonthPicker({ value, max, active, onChange, onClear }: MonthPick
                     }`}
             >
                 <CalendarDays size={12} />
-                {monthTitle(value)}
+                {day ? dayTitle(day) : `${monthTitle(month)} · Whole month`}
             </button>
 
             <AnimatePresence>
                 {open && (
                     <motion.div
                         role="dialog"
-                        aria-label="Pick a month"
+                        aria-label="Pick a day or a month"
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
                         transition={{ duration: 0.12 }}
-                        className="absolute left-0 top-full mt-1.5 z-50 w-60 rounded-xl bg-surface-700 border border-surface-500 shadow-2xl p-3"
+                        className="absolute left-0 top-full mt-1.5 z-50 w-64 rounded-xl bg-surface-700 border border-surface-500 shadow-2xl p-3"
                     >
-                        {/* Year */}
+                        {/* Month in view */}
                         <div className="flex items-center justify-between mb-2">
                             <button
                                 type="button"
-                                onClick={() => setYear((y) => y - 1)}
-                                aria-label="Previous year"
+                                onClick={() => setView((v) => shiftMonth(v, -1))}
+                                aria-label="Previous month"
                                 className="w-7 h-7 rounded-lg text-gray-300 hover:bg-surface-600 flex items-center justify-center"
                             >
                                 <ChevronLeft size={14} />
                             </button>
-                            <span className="text-sm font-bold text-white tracking-wide">{year}</span>
+                            <span className="text-sm font-bold text-white">{monthTitle(view)}</span>
                             <button
                                 type="button"
-                                onClick={() => setYear((y) => y + 1)}
-                                disabled={year >= maxY}
-                                aria-label="Next year"
+                                onClick={() => setView((v) => shiftMonth(v, 1))}
+                                disabled={view >= todayMonth}
+                                aria-label="Next month"
                                 className="w-7 h-7 rounded-lg text-gray-300 hover:bg-surface-600 flex items-center justify-center disabled:opacity-30 disabled:hover:bg-transparent"
                             >
                                 <ChevronRight size={14} />
                             </button>
                         </div>
 
-                        {/* Months, 4 x 3 like the browser widget */}
-                        <div className="grid grid-cols-4 gap-1">
-                            {MONTHS.map((name, i) => {
-                                const key = `${year}-${pad2(i + 1)}`
-                                const selected = key === value
-                                const disabled = isFuture(year, i + 1)
+                        {/* Weekday headings */}
+                        <div className="grid grid-cols-7 mb-1">
+                            {WEEKDAYS.map((w) => (
+                                <div key={w} className="text-center text-[10px] font-semibold text-gray-500">{w}</div>
+                            ))}
+                        </div>
+
+                        {/* Days */}
+                        <div className="grid grid-cols-7 gap-0.5">
+                            {cells.map((d, i) => {
+                                if (!d) return <div key={`blank-${i}`} />
+                                const selected = d === day
+                                const isToday = d === today
+                                const disabled = d > today
                                 return (
                                     <button
-                                        key={key}
+                                        key={d}
                                         type="button"
-                                        onClick={() => pick(key)}
+                                        onClick={() => choose(view, d)}
                                         disabled={disabled}
                                         className={`h-8 rounded-lg text-xs font-semibold transition-all ${selected
                                             ? 'bg-teal-500 text-white'
                                             : disabled
                                                 ? 'text-gray-600 cursor-default'
                                                 : 'text-gray-200 hover:bg-surface-600'
-                                            }`}
+                                            } ${isToday && !selected ? 'ring-1 ring-teal-400/70' : ''}`}
                                     >
-                                        {name}
+                                        {Number(d.slice(8))}
                                     </button>
                                 )
                             })}
                         </div>
 
-                        {/* Footer links, as on the browser widget */}
+                        {/* Footer links */}
                         <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-surface-600 text-xs font-semibold">
                             <button
                                 type="button"
-                                onClick={() => { onClear(); setOpen(false) }}
-                                className="text-teal-400 hover:text-teal-300"
+                                onClick={() => choose(view, '')}
+                                className={`hover:text-teal-300 ${!day && view === month ? 'text-white' : 'text-teal-400'}`}
                             >
-                                Clear
+                                Whole month
                             </button>
                             <button
                                 type="button"
-                                onClick={() => pick(currentMonth)}
+                                onClick={() => choose(todayMonth, today)}
                                 className="text-teal-400 hover:text-teal-300"
                             >
-                                This month
+                                Today
                             </button>
                         </div>
                     </motion.div>

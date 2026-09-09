@@ -2,7 +2,7 @@ import { requirePanelAccess } from '@/lib/portal/access'
 import FranchiserSalesClient from '@/components/franchiser/FranchiserSalesClient'
 
 interface PageProps {
-  searchParams: Promise<{ month?: string }>
+  searchParams: Promise<{ month?: string; day?: string }>
 }
 
 /** Today in Manila as YYYY-MM-DD — the branches all trade on Philippine time. */
@@ -40,12 +40,20 @@ export default async function FranchiserSalesPage({ searchParams }: PageProps) {
       ? `${branches.length} branches`
       : 'My Branch'
 
-  const { month: monthParam } = await searchParams
+  const { month: monthParam, day: dayParam } = await searchParams
   const today = manilaToday()
   // Guard the param — it lands straight in a date range
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam ?? '')
     ? (monthParam as string)
     : today.slice(0, 7)
+  // A picked day rides along in the URL so it survives the reload that a change
+  // of month causes. Honoured only if it is a real day inside this month that
+  // has already happened.
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(dayParam ?? '')
+    && (dayParam as string).startsWith(`${month}-`)
+    && (dayParam as string) <= today
+    ? (dayParam as string)
+    : ''
   const { start, end } = monthRange(month)
 
   const safeBranchIds = branchIds.length > 0 ? branchIds : ['00000000-0000-0000-0000-000000000000']
@@ -74,6 +82,7 @@ export default async function FranchiserSalesPage({ searchParams }: PageProps) {
       branchName={branchName}
       month={month}
       today={today}
+      initialDay={day}
       transactions={(transactions || []) as unknown as Parameters<typeof FranchiserSalesClient>[0]['transactions']}
       topItems={(topItems || []) as unknown as Parameters<typeof FranchiserSalesClient>[0]['topItems']}
     />

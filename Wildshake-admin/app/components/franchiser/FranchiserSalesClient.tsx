@@ -2,6 +2,7 @@
 
 import { useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
+import SalesDatePicker from './SalesDatePicker'
 
 interface Tx {
   total_amount: number
@@ -24,8 +25,10 @@ interface Props {
   branchName: string
   /** Month being viewed, YYYY-MM. The server fetches only this month. */
   month: string
-  /** Today in Manila, YYYY-MM-DD — used to cap the month picker. */
+  /** Today in Manila, YYYY-MM-DD — nothing after it can be picked. */
   today: string
+  /** Day carried in the URL (YYYY-MM-DD), or '' for the whole month. */
+  initialDay?: string
   transactions: Tx[]
   topItems?: TopItem[]
 }
@@ -51,11 +54,11 @@ const DAY_LABEL = (day: string) => {
 }
 
 export default function FranchiserSalesClient({
-  branchName, month, today, transactions, topItems = [],
+  branchName, month, today, initialDay = '', transactions, topItems = [],
 }: Props) {
   const router = useRouter()
   // '' = the whole month; otherwise a single YYYY-MM-DD
-  const [selectedDay, setSelectedDay] = useState('')
+  const [selectedDay, setSelectedDay] = useState(initialDay)
 
   // Every day in the month, so the picker still offers days with no sales
   const [yr, mo] = month.split('-').map(Number)
@@ -148,34 +151,18 @@ export default function FranchiserSalesClient({
           <p className="page-header-subtitle">Performance analytics for {branchName}</p>
         </div>
         <div className="flex gap-1" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Pick the month — reloads the page so the server fetches that month */}
-          <input
-            type="month"
-            className="form-select"
-            style={{ width: 'auto' }}
-            value={month}
-            max={today.slice(0, 7)}
-            onChange={e => {
-              const next = e.target.value
-              if (!next) return
-              setSelectedDay('')
-              router.push(`/franchiser/sales?month=${next}`)
+          {/* Any single day, or a whole month — the same calendar as the POS.
+              A different month reloads the page so the server fetches it; the
+              picked day rides along in the URL. */}
+          <SalesDatePicker
+            month={month}
+            day={selectedDay}
+            today={today}
+            onPick={(m, d) => {
+              if (m === month) { setSelectedDay(d); return }
+              router.push(`/franchiser/sales?month=${m}${d ? `&day=${d}` : ''}`)
             }}
-            aria-label="Month"
           />
-          {/* Then pick a day inside it, or leave it on the whole month */}
-          <select
-            className="form-select"
-            style={{ width: 'auto' }}
-            value={selectedDay}
-            onChange={e => setSelectedDay(e.target.value)}
-            aria-label="Day"
-          >
-            <option value="">Whole month</option>
-            {monthDays.map(d => (
-              <option key={d} value={d}>{DAY_LABEL(d)}</option>
-            ))}
-          </select>
           <button className="btn btn-ghost" onClick={exportCSV}>📥 Export CSV</button>
         </div>
       </div>
