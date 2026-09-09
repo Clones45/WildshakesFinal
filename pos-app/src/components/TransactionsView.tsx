@@ -7,6 +7,7 @@ import {
     X, ReceiptText, Loader2, Filter, RefreshCw,
     Banknote, Landmark, SplitSquareVertical,
     CheckCircle2, XCircle, Tag, MapPin, Clock, Printer,
+    CalendarDays, CloudOff,
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { printReceipt } from '../lib/printer'
@@ -19,7 +20,7 @@ interface TransactionsViewProps {
 
 type PaymentFilter = 'all' | 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'split'
 type StatusFilter = 'all' | 'completed' | 'voided' | 'discounted'
-type DateFilter = 'today' | 'yesterday' | '7days' | '30days'
+type DateFilter = 'today' | 'yesterday' | '7days' | '30days' | 'custom'
 
 interface SplitPaymentEntry {
     method: string
@@ -45,6 +46,8 @@ interface TxRow {
     cashier_name?: string
     delivery_platform: 'foodpanda' | 'grab' | null
     created_at: string
+    /** True for a sale that only exists on this tablet so far (queued for sync). */
+    pending_sync?: boolean
 }
 
 const PAYMENT_ICONS: Record<string, React.ElementType> = {
@@ -99,6 +102,66 @@ function formatDateTime(iso: string) {
     })
 }
 
+// yyyy-mm-dd in the tablet's own calendar — the shape <input type="date"> speaks.
+function localDateStr(d: Date) {
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+function formatDay(ymd: string) {
+    const [y, m, d] = ymd.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString('en-PH', {
+        weekday: 'long', year: 'numeric', month: 'short', day: 'numeric',
+    })
+}
+
+// Bounds for the chosen filter, in the tablet's local time. Half-open: from <= t < to.
+// Presets that run up to "now" leave `to` undefined. A single day (Yesterday, or a
+// picked date) is closed at midnight so it shows that day only.
+function dateRange(filter: DateFilter, customDate: string): { from: Date; to?: Date } {
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const dayAfter = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+    switch (filter) {
+        case 'yesterday': {
+            const y = new Date(startOfToday)
+            y.setDate(y.getDate() - 1)
+            return { from: y, to: startOfToday }
+        }
+        case '7days':  return { from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+        case '30days': return { from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+        case 'custom': {
+            if (!customDate) return { from: startOfToday }
+            const [y, m, d] = customDate.split('-').map(Number)
+            const from = new Date(y, m - 1, d)
+            return { from, to: dayAfter(from) }
+        }
+        default: return { from: startOfToday }
+    }
+}
+
+// Shape one of this tablet's own records like a server row so the list can mix them.
+function localToRow(t: LocalTransaction): TxRow {
+    return {
+        id: t.supabaseId ?? t.localRef,
+        total_amount: t.totalAmount,
+        payment_method: t.paymentMethod,
+        reference_number: t.referenceNumber ?? null,
+        bank_name: t.bankName ?? null,
+        split_payments: t.splitPayments ?? null,
+        status: t.status,
+        discount_type: t.discountType,
+        discount_amount: t.discountAmount,
+        table_number: t.tableNumber ?? null,
+        local_ref: t.localRef,
+        void_reason: t.voidReason ?? null,
+        cashier_id: t.cashierId,
+        delivery_platform: t.deliveryPlatform ?? null,
+        created_at: t.createdAt,
+        pending_sync: t.syncStatus !== 'synced',
+    }
+}
+
 export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
     const { branch } = useAuthStore()
     const [transactions, setTransactions] = useState<TxRow[]>([])
@@ -107,50 +170,84 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
     const [dateFilter, setDateFilter] = useState<DateFilter>('today')
+    const [customDate, setCustomDate] = useState<string>('')
+    const [localOnly, setLocalOnly] = useState(false)
     const [totals, setTotals] = useState({ count: 0, revenue: 0 })
 
     const fetchTransactions = useCallback(async () => {
         if (!branch?.id) return
         setLoading(true)
         try {
-            // Calculate date range from filter
-            const now = new Date()
-            let fromDate: Date
-            if (dateFilter === 'today') {
-                fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-            } else if (dateFilter === 'yesterday') {
-                fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
-            } else if (dateFilter === '7days') {
-                fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-            } else {
-                fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+            const { from, to } = dateRange(dateFilter, customDate)
+
+            // ── Server copy: every sale that has reached Supabase, from any device ──
+            let serverRows: TxRow[] = []
+            let serverReachable = true
+            try {
+                let query = supabase
+                    .from('transactions')
+                    .select('id, total_amount, payment_method, reference_number, bank_name, split_payments, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, delivery_platform, created_at')
+                    .eq('branch_id', branch.id)
+                    .neq('status', 'pending')         // exclude held orders
+                    .gte('created_at', from.toISOString())
+                    .order('created_at', { ascending: false })
+                    .limit(500)
+                if (to) query = query.lt('created_at', to.toISOString())
+
+                if (paymentFilter !== 'all') {
+                    query = query.eq('payment_method', paymentFilter)
+                }
+
+                if (statusFilter === 'voided') {
+                    query = query.eq('status', 'voided')
+                } else if (statusFilter === 'completed') {
+                    query = query.eq('status', 'completed')
+                } else if (statusFilter === 'discounted') {
+                    query = query.eq('status', 'completed').neq('discount_type', 'none')
+                }
+
+                const { data, error } = await query
+                if (error) throw error
+                serverRows = (data ?? []) as TxRow[]
+            } catch (err) {
+                // No connection (or Supabase down): fall through to this tablet's own records.
+                console.warn('[TransactionsView] Server unreachable — showing this device\'s own records', err)
+                serverReachable = false
             }
+            setLocalOnly(!serverReachable)
 
-            let query = supabase
-                .from('transactions')
-                .select('id, total_amount, payment_method, reference_number, bank_name, split_payments, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, delivery_platform, created_at')
-                .eq('branch_id', branch.id)
-                .neq('status', 'pending')         // exclude held orders
-                .gte('created_at', fromDate.toISOString())
-                .order('created_at', { ascending: false })
-                .limit(500)
+            // ── This tablet's copy: covers sales still queued for sync, and everything
+            //    when there is no connection. A sale that hasn't synced yet is the newer
+            //    truth (e.g. a void the server hasn't heard about), so it wins.
+            const localTx = await db.transactions
+                .where('branchId').equals(branch.id)
+                .filter((t) => {
+                    const ts = new Date(t.createdAt).getTime()
+                    return t.status !== 'pending' && ts >= from.getTime() && (!to || ts < to.getTime())
+                })
+                .toArray()
+            const matchesFilters = (r: TxRow) =>
+                (paymentFilter === 'all' || r.payment_method === paymentFilter) &&
+                (statusFilter === 'all'
+                    || (statusFilter === 'voided' && r.status === 'voided')
+                    || (statusFilter === 'completed' && r.status === 'completed')
+                    || (statusFilter === 'discounted' && r.status === 'completed' && r.discount_type !== 'none'))
 
-            if (paymentFilter !== 'all') {
-                query = query.eq('payment_method', paymentFilter)
+            const unsyncedByRef = new Map(localTx.filter((t) => t.syncStatus !== 'synced').map((t) => [t.localRef, t]))
+            const seenRefs = new Set<string>()
+            const merged: TxRow[] = []
+            for (const s of serverRows) {
+                if (s.local_ref) seenRefs.add(s.local_ref)
+                const fresher = s.local_ref ? unsyncedByRef.get(s.local_ref) : undefined
+                merged.push(fresher ? { ...localToRow(fresher), id: s.id } : s)
             }
-
-            if (statusFilter === 'voided') {
-                query = query.eq('status', 'voided')
-            } else if (statusFilter === 'completed') {
-                query = query.eq('status', 'completed')
-            } else if (statusFilter === 'discounted') {
-                query = query.eq('status', 'completed').neq('discount_type', 'none')
+            for (const t of localTx) {
+                if (seenRefs.has(t.localRef)) continue
+                merged.push(localToRow(t))
             }
-
-            const { data, error } = await query
-            if (error) throw error
-
-            const rows = (data ?? []) as TxRow[]
+            const rows = merged
+                .filter(matchesFilters)
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
             // Batch-fetch cashier names
             const cashierIds = [...new Set(rows.map((r) => r.cashier_id).filter(Boolean))] as string[]
@@ -196,7 +293,7 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
         } finally {
             setLoading(false)
         }
-    }, [branch?.id, paymentFilter, statusFilter, dateFilter])
+    }, [branch?.id, paymentFilter, statusFilter, dateFilter, customDate])
 
     useEffect(() => {
         if (isOpen) fetchTransactions()
@@ -337,6 +434,12 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                 <p className="text-xs text-gray-500">Revenue</p>
                                 <p className="text-teal-400 font-bold text-lg leading-tight">₱{totals.revenue.toFixed(2)}</p>
                             </div>
+                            {localOnly && (
+                                <div className="ml-auto self-center flex items-center gap-1.5 text-amber-400/90 text-xs text-right">
+                                    <CloudOff size={13} className="flex-shrink-0" />
+                                    <span>No connection — showing this tablet's own records</span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Filters */}
@@ -346,8 +449,11 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                 <div className="flex items-center gap-2 mb-1.5">
                                     <Filter size={12} className="text-gray-500" />
                                     <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Date Range</p>
+                                    {dateFilter === 'custom' && customDate && (
+                                        <p className="ml-auto text-xs text-teal-400/90">{formatDay(customDate)}</p>
+                                    )}
                                 </div>
-                                <div className="flex gap-1.5 flex-wrap">
+                                <div className="flex gap-1.5 flex-wrap items-center">
                                     {DATE_FILTER_OPTIONS.map((opt) => (
                                         <button
                                             key={opt.id}
@@ -360,6 +466,29 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                             {opt.label}
                                         </button>
                                     ))}
+                                    {/* Any single day — taps open the tablet's own date picker */}
+                                    <label
+                                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${dateFilter === 'custom'
+                                            ? 'bg-teal-500 border-teal-500 text-white'
+                                            : 'border-surface-500 text-gray-400 hover:border-surface-400'
+                                            }`}
+                                    >
+                                        <CalendarDays size={12} />
+                                        <input
+                                            type="date"
+                                            value={customDate}
+                                            max={localDateStr(new Date())}
+                                            onChange={(e) => {
+                                                if (!e.target.value) return
+                                                setCustomDate(e.target.value)
+                                                setDateFilter('custom')
+                                            }}
+                                            onClick={() => { if (customDate) setDateFilter('custom') }}
+                                            aria-label="Pick a date"
+                                            className="bg-transparent outline-none"
+                                            style={{ colorScheme: 'dark', color: 'inherit' }}
+                                        />
+                                    </label>
                                 </div>
                             </div>
                             <div>
@@ -440,6 +569,11 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                                         ) : (
                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-bold">
                                                                 <CheckCircle2 size={10} /> Completed
+                                                            </span>
+                                                        )}
+                                                        {tx.pending_sync && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold">
+                                                                <CloudOff size={10} /> Not yet synced
                                                             </span>
                                                         )}
                                                         {isDiscounted && (
