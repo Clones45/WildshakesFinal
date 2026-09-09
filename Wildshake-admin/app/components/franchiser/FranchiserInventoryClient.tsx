@@ -72,14 +72,14 @@ interface Props {
 }
 
 /* ─── Sheet Tab Config ─────────────────────────────────────────── */
-const SHEET_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-  food:             { label: 'Food Items',        icon: '🍝', color: '#e67e22' },
-  food_2:           { label: 'Food 2',            icon: '🍕', color: '#c0392b' },
-  production:       { label: 'Production',        icon: '⚙️', color: '#607d8b' },
-  shake:            { label: 'Shakes',            icon: '🥤', color: '#d63384' },
-  coffee_general:   { label: 'Coffee',             icon: '☕', color: '#795548' },
-  commissary:       { label: 'Commissary (CSL)',   icon: '🏭', color: '#2980b9' },
-  commissary_home:  { label: 'Commissary Home',    icon: '🏠', color: '#8e44ad' },
+const SHEET_LABELS: Record<string, { label: string; icon: string; color: string; desc: string }> = {
+  food:             { label: 'Food Items',        icon: '🍝', color: '#e67e22', desc: 'Everyday food stock you buy and keep on hand — burger, wings and pasta ingredients, plus packaging and supplies.' },
+  food_2:           { label: 'Food 2',            icon: '🍕', color: '#c0392b', desc: 'The rest of your bought food stock — condiments, and the pizza, rice-meal and pica-pica ingredients.' },
+  production:       { label: 'Production',        icon: '⚙️', color: '#607d8b', desc: 'Items the branch prepares in-house — cooked beef and chicken portions, patties, meatballs and uncooked pasta.' },
+  shake:            { label: 'Shakes',            icon: '🥤', color: '#d63384', desc: 'Ingredients and cups for the fruit shakes and milkshakes.' },
+  coffee_general:   { label: 'Coffee',             icon: '☕', color: '#795548', desc: 'Coffee ingredients, plus general supplies like cups, lids and trays.' },
+  commissary:       { label: 'Commissary (CSL)',   icon: '🏭', color: '#2980b9', desc: 'Commissary store stock — counted at the central store, not the branch.' },
+  commissary_home:  { label: 'Commissary Home',    icon: '🏠', color: '#8e44ad', desc: 'Commissary home stock — counted at the central kitchen, not the branch.' },
 }
 
 /* ─── Status helper ────────────────────────────────────────────── */
@@ -500,6 +500,21 @@ export default function FranchiserInventoryClient({
         })}
       </div>
 
+      {/* What the open section is — plain-language help for staff */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
+        padding: '0.7rem 1rem', marginBottom: '1rem',
+        background: `${SHEET_LABELS[activeSheet].color}0f`,
+        borderLeft: `3px solid ${SHEET_LABELS[activeSheet].color}`,
+        borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+        fontSize: '0.82rem', color: 'var(--color-text-muted)', lineHeight: 1.45,
+      }}>
+        <span style={{ fontSize: '1.05rem', lineHeight: 1.2 }}>{SHEET_LABELS[activeSheet].icon}</span>
+        <span>
+          <strong style={{ color: SHEET_LABELS[activeSheet].color }}>{SHEET_LABELS[activeSheet].label}</strong>
+          {' — '}{SHEET_LABELS[activeSheet].desc}
+        </span>
+      </div>
 
         <div className="table-wrapper">
           <div className="table-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
