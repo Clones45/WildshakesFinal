@@ -2,10 +2,11 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import CommissarySidebar from '@/components/commissary/CommissarySidebar'
 import { getPortalPermissions } from '@/lib/portal/access'
+import { getVerifiedUser } from '@/lib/auth/verify'
 
 export default async function CommissaryPortalLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getVerifiedUser(supabase)
 
   if (!user) redirect('/login')
 

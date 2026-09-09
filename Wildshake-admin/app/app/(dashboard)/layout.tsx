@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, unstable_rethrow } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import { getPortalPermissions } from '@/lib/portal/access'
+import { getVerifiedUser } from '@/lib/auth/verify'
 
 export default async function DashboardLayout({
   children,
@@ -10,7 +11,7 @@ export default async function DashboardLayout({
 }) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getVerifiedUser(supabase)
 
     if (!user) redirect('/login')
 

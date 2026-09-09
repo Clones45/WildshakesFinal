@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { getVerifiedUser } from '@/lib/auth/verify'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -41,14 +42,14 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // getUser() re-validates against Supabase instead of just reading the JWT
-  // out of cookies (getSession()) — it's also where an expiring token
-  // actually gets refreshed. Doing that once, here, means every downstream
-  // layout/page auth check reuses this same already-fresh session (via the
-  // cache()-memoized server client in lib/supabase/server.ts) instead of
-  // each independently racing to refresh it — that race is what was causing
-  // "Invalid Refresh Token" / "Session not found" errors under concurrency.
-  const { data: { user } } = await supabase.auth.getUser()
+  // Verify the session locally against this project's asymmetric signing keys
+  // (see lib/auth/verify.ts). This does NOT call Supabase's auth server on every
+  // request the way getUser() does, so it isn't subject to the per-IP auth rate
+  // limit that — with all branches sharing one Vercel egress IP — was returning
+  // "no user" under load and bouncing signed-in users to /login. It still
+  // refreshes an expired token (via the getUser fallback), so the cookie-setting
+  // plumbing above continues to work.
+  const user = await getVerifiedUser(supabase)
 
   const { pathname } = request.nextUrl
 

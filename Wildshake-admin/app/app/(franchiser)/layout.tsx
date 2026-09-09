@@ -2,10 +2,11 @@ import { createClient } from '@/lib/supabase/server'
 import FranchiserSidebar from '@/components/franchiser/FranchiserSidebar'
 import { redirect } from 'next/navigation'
 import { getPortalPermissions } from '@/lib/portal/access'
+import { getVerifiedUser } from '@/lib/auth/verify'
 
 export default async function FranchiserLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getVerifiedUser(supabase)
 
   if (!user) redirect('/login')
 

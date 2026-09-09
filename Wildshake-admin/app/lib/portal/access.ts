@@ -1,6 +1,7 @@
 import { redirect, unstable_rethrow } from 'next/navigation'
-import type { SupabaseClient, User } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import { getVerifiedUser, type VerifiedUser } from '@/lib/auth/verify'
 import { PANELS, isPanelGranted, type GrantedPanels, type TenantType } from '@/lib/portal/panels'
 
 export interface PortalPermissions {
@@ -14,9 +15,9 @@ export interface PortalPermissions {
 // very next request instead of waiting out the token TTL.
 export async function getPortalPermissions(
   supabase: SupabaseClient,
-  user: User
+  user: VerifiedUser
 ): Promise<PortalPermissions> {
-  const isStaff = !!(user.app_metadata as Record<string, unknown> | null)?.is_staff
+  const isStaff = !!user.app_metadata?.is_staff
 
   if (!isStaff) return { isStaff: false, grantedPanels: 'all' }
 
@@ -48,7 +49,7 @@ export async function requirePanelAccess(tenantType: TenantType, panelKey: strin
 
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getVerifiedUser(supabase)
     if (!user) redirect('/login')
 
     const perms = await getPortalPermissions(supabase, user)
@@ -71,7 +72,7 @@ export async function requirePanelAccess(tenantType: TenantType, panelKey: strin
 export async function requireDashboardOrFirstPanel(tenantType: TenantType) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getVerifiedUser(supabase)
     if (!user) redirect('/login')
 
     const perms = await getPortalPermissions(supabase, user)
@@ -99,7 +100,7 @@ export async function requireDashboardOrFirstPanel(tenantType: TenantType) {
 export async function requireOwner() {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getVerifiedUser(supabase)
     if (!user) redirect('/login')
 
     const perms = await getPortalPermissions(supabase, user)
