@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 interface Category {
   id: string
   name: string
-  sheet_type: 'food' | 'shake' | 'coffee_general' | 'commissary' | 'commissary_home'
+  sheet_type: 'food' | 'food_2' | 'production' | 'shake' | 'coffee_general' | 'commissary' | 'commissary_home'
   sort_order: number
 }
 
@@ -74,6 +74,8 @@ interface Props {
 /* ─── Sheet Tab Config ─────────────────────────────────────────── */
 const SHEET_LABELS: Record<string, { label: string; icon: string; color: string }> = {
   food:             { label: 'Food Items',        icon: '🍝', color: '#e67e22' },
+  food_2:           { label: 'Food 2',            icon: '🍕', color: '#c0392b' },
+  production:       { label: 'Production',        icon: '⚙️', color: '#607d8b' },
   shake:            { label: 'Shakes',            icon: '🥤', color: '#d63384' },
   coffee_general:   { label: 'Coffee',             icon: '☕', color: '#795548' },
   commissary:       { label: 'Commissary (CSL)',   icon: '🏭', color: '#2980b9' },
@@ -392,11 +394,12 @@ export default function FranchiserInventoryClient({
   }
 
   /* ── Filter helpers ──────────────────────────────────────────── */
-  const sheetTypes = ['food', 'shake', 'coffee_general', 'commissary', 'commissary_home']
+  const sheetTypes = ['food', 'food_2', 'production', 'shake', 'coffee_general', 'commissary', 'commissary_home']
   const categoriesBySheet = categories.filter(c => c.sheet_type === activeSheet)
-  // Food, Shake, and Coffee ingredients are all recipe-linked (food_item_menu_links) and get
-  // their "Used" auto-summed from POS sales + a menu-item tag picker; Commissary sheets don't.
-  const isRecipeLinkedSheet = activeSheet === 'food' || activeSheet === 'shake' || activeSheet === 'coffee_general'
+  // Food, Food 2, Production, Shake and Coffee ingredients are all recipe-linked
+  // (food_item_menu_links) and get their "Used" auto-summed from POS sales + a menu-item
+  // tag picker; Commissary sheets don't.
+  const isRecipeLinkedSheet = ['food', 'food_2', 'production', 'shake', 'coffee_general'].includes(activeSheet)
 
   /* ── Render ──────────────────────────────────────────────────── */
   return (
