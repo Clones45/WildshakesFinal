@@ -20,7 +20,9 @@ interface TransactionsViewProps {
 
 type PaymentFilter = 'all' | 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'split'
 type StatusFilter = 'all' | 'completed' | 'voided' | 'discounted'
-type DateFilter = 'today' | 'yesterday' | '7days' | '30days' | 'custom'
+// 'month' = the month picker, optionally narrowed to one day — mirrors the
+// admin Sales Report's "pick a month, then a day or the whole month" control.
+type DateFilter = 'today' | 'yesterday' | 'month'
 
 interface SplitPaymentEntry {
     method: string
@@ -82,8 +84,6 @@ const STATUS_FILTER_OPTIONS: { id: StatusFilter; label: string }[] = [
 const DATE_FILTER_OPTIONS: { id: DateFilter; label: string }[] = [
     { id: 'today', label: 'Today' },
     { id: 'yesterday', label: 'Yesterday' },
-    { id: '7days', label: 'Last 7 Days' },
-    { id: '30days', label: 'Last 30 Days' },
 ]
 
 const PAYMENT_FILTER_OPTIONS: { id: PaymentFilter; label: string }[] = [
@@ -102,39 +102,54 @@ function formatDateTime(iso: string) {
     })
 }
 
-// yyyy-mm-dd in the tablet's own calendar — the shape <input type="date"> speaks.
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+// yyyy-mm-dd in the tablet's own calendar.
 function localDateStr(d: Date) {
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
 
-function formatDay(ymd: string) {
+// Same labels as the admin Sales Report so the two screens read alike.
+function monthLabel(month: string) {
+    const [y, m] = month.split('-').map(Number)
+    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+function dayLabel(ymd: string) {
     const [y, m, d] = ymd.split('-').map(Number)
-    return new Date(y, m - 1, d).toLocaleDateString('en-PH', {
-        weekday: 'long', year: 'numeric', month: 'short', day: 'numeric',
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
     })
 }
 
+// Every day of `month` that has already happened, as yyyy-mm-dd — the picker
+// offers past days with no sales too, and never a day that hasn't come yet.
+function monthDayOptions(month: string, today: string): string[] {
+    const [y, m] = month.split('-').map(Number)
+    const daysInMonth = new Date(y, m, 0).getDate()
+    return Array.from({ length: daysInMonth }, (_, i) => `${month}-${pad2(i + 1)}`)
+        .filter((d) => d <= today)
+}
+
 // Bounds for the chosen filter, in the tablet's local time. Half-open: from <= t < to.
-// Presets that run up to "now" leave `to` undefined. A single day (Yesterday, or a
-// picked date) is closed at midnight so it shows that day only.
-function dateRange(filter: DateFilter, customDate: string): { from: Date; to?: Date } {
+// Today runs up to "now" (no `to`); every other choice is closed at midnight so it
+// shows exactly that day or that month.
+function dateRange(filter: DateFilter, month: string, selectedDay: string): { from: Date; to?: Date } {
     const now = new Date()
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const dayAfter = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
     switch (filter) {
         case 'yesterday': {
             const y = new Date(startOfToday)
             y.setDate(y.getDate() - 1)
             return { from: y, to: startOfToday }
         }
-        case '7days':  return { from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-        case '30days': return { from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-        case 'custom': {
-            if (!customDate) return { from: startOfToday }
-            const [y, m, d] = customDate.split('-').map(Number)
-            const from = new Date(y, m - 1, d)
-            return { from, to: dayAfter(from) }
+        case 'month': {
+            if (selectedDay) {
+                const [y, m, d] = selectedDay.split('-').map(Number)
+                return { from: new Date(y, m - 1, d), to: new Date(y, m - 1, d + 1) }
+            }
+            const [y, m] = month.split('-').map(Number)
+            return { from: new Date(y, m - 1, 1), to: new Date(y, m, 1) }
         }
         default: return { from: startOfToday }
     }
@@ -170,45 +185,59 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
     const [dateFilter, setDateFilter] = useState<DateFilter>('today')
-    const [customDate, setCustomDate] = useState<string>('')
+    const today = localDateStr(new Date())
+    const [month, setMonth] = useState<string>(today.slice(0, 7))   // yyyy-mm
+    const [selectedDay, setSelectedDay] = useState<string>('')       // '' = whole month, else yyyy-mm-dd
     const [localOnly, setLocalOnly] = useState(false)
+    // A whole month at a busy branch is well over a thousand sales; render them in
+    // batches so the panel stays quick to open, with totals still over every row.
+    const [visibleCount, setVisibleCount] = useState(200)
     const [totals, setTotals] = useState({ count: 0, revenue: 0 })
 
     const fetchTransactions = useCallback(async () => {
         if (!branch?.id) return
         setLoading(true)
         try {
-            const { from, to } = dateRange(dateFilter, customDate)
+            const { from, to } = dateRange(dateFilter, month, selectedDay)
 
             // ── Server copy: every sale that has reached Supabase, from any device ──
-            let serverRows: TxRow[] = []
+            const serverRows: TxRow[] = []
             let serverReachable = true
             try {
-                let query = supabase
-                    .from('transactions')
-                    .select('id, total_amount, payment_method, reference_number, bank_name, split_payments, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, delivery_platform, created_at')
-                    .eq('branch_id', branch.id)
-                    .neq('status', 'pending')         // exclude held orders
-                    .gte('created_at', from.toISOString())
-                    .order('created_at', { ascending: false })
-                    .limit(500)
-                if (to) query = query.lt('created_at', to.toISOString())
+                const buildQuery = () => {
+                    let query = supabase
+                        .from('transactions')
+                        .select('id, total_amount, payment_method, reference_number, bank_name, split_payments, status, discount_type, discount_amount, table_number, local_ref, void_reason, cashier_id, delivery_platform, created_at')
+                        .eq('branch_id', branch.id)
+                        .neq('status', 'pending')         // exclude held orders
+                        .gte('created_at', from.toISOString())
+                        .order('created_at', { ascending: false })
+                    if (to) query = query.lt('created_at', to.toISOString())
 
-                if (paymentFilter !== 'all') {
-                    query = query.eq('payment_method', paymentFilter)
+                    if (paymentFilter !== 'all') {
+                        query = query.eq('payment_method', paymentFilter)
+                    }
+
+                    if (statusFilter === 'voided') {
+                        query = query.eq('status', 'voided')
+                    } else if (statusFilter === 'completed') {
+                        query = query.eq('status', 'completed')
+                    } else if (statusFilter === 'discounted') {
+                        query = query.eq('status', 'completed').neq('discount_type', 'none')
+                    }
+                    return query
                 }
 
-                if (statusFilter === 'voided') {
-                    query = query.eq('status', 'voided')
-                } else if (statusFilter === 'completed') {
-                    query = query.eq('status', 'completed')
-                } else if (statusFilter === 'discounted') {
-                    query = query.eq('status', 'completed').neq('discount_type', 'none')
+                // The server hands back at most 1000 rows per request, and a whole month
+                // can exceed that — page until a short page comes back.
+                const PAGE = 1000
+                for (let p = 0; p < 5; p++) {
+                    const { data, error } = await buildQuery().range(p * PAGE, (p + 1) * PAGE - 1)
+                    if (error) throw error
+                    const rows = (data ?? []) as TxRow[]
+                    serverRows.push(...rows)
+                    if (rows.length < PAGE) break
                 }
-
-                const { data, error } = await query
-                if (error) throw error
-                serverRows = (data ?? []) as TxRow[]
             } catch (err) {
                 // No connection (or Supabase down): fall through to this tablet's own records.
                 console.warn('[TransactionsView] Server unreachable — showing this device\'s own records', err)
@@ -288,12 +317,13 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                 revenue: completedRows.reduce((s, r) => s + r.total_amount, 0),
             })
             setTransactions(enriched)
+            setVisibleCount(200)
         } catch (err) {
             console.error('Failed to load transactions', err)
         } finally {
             setLoading(false)
         }
-    }, [branch?.id, paymentFilter, statusFilter, dateFilter, customDate])
+    }, [branch?.id, paymentFilter, statusFilter, dateFilter, month, selectedDay])
 
     useEffect(() => {
         if (isOpen) fetchTransactions()
@@ -449,8 +479,10 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                 <div className="flex items-center gap-2 mb-1.5">
                                     <Filter size={12} className="text-gray-500" />
                                     <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Date Range</p>
-                                    {dateFilter === 'custom' && customDate && (
-                                        <p className="ml-auto text-xs text-teal-400/90">{formatDay(customDate)}</p>
+                                    {dateFilter === 'month' && (
+                                        <p className="ml-auto text-xs text-teal-400/90">
+                                            {selectedDay ? dayLabel(selectedDay) : monthLabel(month)}
+                                        </p>
                                     )}
                                 </div>
                                 <div className="flex gap-1.5 flex-wrap items-center">
@@ -466,29 +498,47 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                             {opt.label}
                                         </button>
                                     ))}
-                                    {/* Any single day — taps open the tablet's own date picker */}
+                                    {/* Pick a month, then a day inside it or the whole month —
+                                        the same control as the admin Sales Report. */}
                                     <label
-                                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${dateFilter === 'custom'
+                                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${dateFilter === 'month'
                                             ? 'bg-teal-500 border-teal-500 text-white'
                                             : 'border-surface-500 text-gray-400 hover:border-surface-400'
                                             }`}
                                     >
                                         <CalendarDays size={12} />
                                         <input
-                                            type="date"
-                                            value={customDate}
-                                            max={localDateStr(new Date())}
+                                            type="month"
+                                            value={month}
+                                            max={today.slice(0, 7)}
                                             onChange={(e) => {
                                                 if (!e.target.value) return
-                                                setCustomDate(e.target.value)
-                                                setDateFilter('custom')
+                                                setMonth(e.target.value)
+                                                setSelectedDay('')
+                                                setDateFilter('month')
                                             }}
-                                            onClick={() => { if (customDate) setDateFilter('custom') }}
-                                            aria-label="Pick a date"
+                                            onClick={() => setDateFilter('month')}
+                                            aria-label="Month"
                                             className="bg-transparent outline-none"
                                             style={{ colorScheme: 'dark', color: 'inherit' }}
                                         />
                                     </label>
+                                    <select
+                                        value={selectedDay}
+                                        onChange={(e) => { setSelectedDay(e.target.value); setDateFilter('month') }}
+                                        onClick={() => setDateFilter('month')}
+                                        aria-label="Day"
+                                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all outline-none cursor-pointer ${dateFilter === 'month'
+                                            ? 'bg-teal-500 border-teal-500 text-white'
+                                            : 'bg-transparent border-surface-500 text-gray-400 hover:border-surface-400'
+                                            }`}
+                                        style={{ colorScheme: 'dark' }}
+                                    >
+                                        <option value="">Whole month</option>
+                                        {monthDayOptions(month, today).map((d) => (
+                                            <option key={d} value={d}>{dayLabel(d)}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                             <div>
@@ -538,7 +588,8 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                     <p className="text-xs">Try adjusting the filters</p>
                                 </div>
                             ) : (
-                                transactions.map((tx) => {
+                                <>
+                                {transactions.slice(0, visibleCount).map((tx) => {
                                     const PayIcon = PAYMENT_ICONS[tx.payment_method] ?? Banknote
                                     const payColor = PAYMENT_COLORS[tx.payment_method] ?? PAYMENT_COLORS.cash
                                     const payLabel = PAYMENT_LABELS[tx.payment_method] ?? tx.payment_method
@@ -669,7 +720,16 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                             </button>
                                         </motion.div>
                                     )
-                                })
+                                })}
+                                {transactions.length > visibleCount && (
+                                    <button
+                                        onClick={() => setVisibleCount((n) => n + 200)}
+                                        className="w-full py-2.5 rounded-xl bg-surface-700 hover:bg-surface-600 border border-surface-600 text-gray-300 text-xs font-bold transition-all"
+                                    >
+                                        Show more · {transactions.length - visibleCount} of {transactions.length} not shown
+                                    </button>
+                                )}
+                                </>
                             )}
                         </div>
                     </motion.div>
