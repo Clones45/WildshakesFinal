@@ -7,11 +7,12 @@ import {
     X, ReceiptText, Loader2, Filter, RefreshCw,
     Banknote, Landmark, SplitSquareVertical,
     CheckCircle2, XCircle, Tag, MapPin, Clock, Printer,
-    CalendarDays, CloudOff,
+    CloudOff,
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { printReceipt } from '../lib/printer'
 import { db, type LocalTransaction, type LocalTransactionItem } from '../lib/db'
+import { MonthPicker } from './MonthPicker'
 
 interface TransactionsViewProps {
     isOpen: boolean
@@ -499,30 +500,17 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                         </button>
                                     ))}
                                     {/* Pick a month, then a day inside it or the whole month —
-                                        the same control as the admin Sales Report. */}
-                                    <label
-                                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${dateFilter === 'month'
-                                            ? 'bg-teal-500 border-teal-500 text-white'
-                                            : 'border-surface-500 text-gray-400 hover:border-surface-400'
-                                            }`}
-                                    >
-                                        <CalendarDays size={12} />
-                                        <input
-                                            type="month"
-                                            value={month}
-                                            max={today.slice(0, 7)}
-                                            onChange={(e) => {
-                                                if (!e.target.value) return
-                                                setMonth(e.target.value)
-                                                setSelectedDay('')
-                                                setDateFilter('month')
-                                            }}
-                                            onClick={() => setDateFilter('month')}
-                                            aria-label="Month"
-                                            className="bg-transparent outline-none"
-                                            style={{ colorScheme: 'dark', color: 'inherit' }}
-                                        />
-                                    </label>
+                                        the same control as the admin Sales Report. The month grid
+                                        is drawn by us (MonthPicker) so it looks identical on the
+                                        tablet, where the browser's own month input is a different
+                                        native dialog. */}
+                                    <MonthPicker
+                                        value={month}
+                                        max={today.slice(0, 7)}
+                                        active={dateFilter === 'month'}
+                                        onChange={(m) => { setMonth(m); setSelectedDay(''); setDateFilter('month') }}
+                                        onClear={() => { setSelectedDay(''); setDateFilter('today') }}
+                                    />
                                     <select
                                         value={selectedDay}
                                         onChange={(e) => { setSelectedDay(e.target.value); setDateFilter('month') }}
