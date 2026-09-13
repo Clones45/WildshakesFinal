@@ -174,7 +174,7 @@ export default function CommissaryFranchiseesClient({ franchises, commissaryId }
                       </span>
                     </td>
                     <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
-                      {new Date(f.created_at).toLocaleDateString('en-PH')}
+                      {new Date(f.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}
                     </td>
                     <td>
                       <div className="flex gap-1">

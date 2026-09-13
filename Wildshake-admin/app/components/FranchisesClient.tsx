@@ -274,7 +274,7 @@ export default function FranchisesClient({ franchises, commissaryBranches }: Pro
                         </span>
                       </td>
                       <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
-                        {new Date(f.created_at).toLocaleDateString('en-PH')}
+                        {new Date(f.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}
                       </td>
                       <td>
                         <div className="flex gap-1">
@@ -339,7 +339,7 @@ export default function FranchisesClient({ franchises, commissaryBranches }: Pro
                         </span>
                       </td>
                       <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
-                        {new Date(c.created_at).toLocaleDateString('en-PH')}
+                        {new Date(c.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}
                       </td>
                       <td>
                         <div className="flex gap-1">

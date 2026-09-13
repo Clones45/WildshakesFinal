@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import { manilaDay } from '@/lib/manila'
 
 interface TxItem {
   quantity: number
@@ -55,8 +56,10 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
   const [statusFilter, setStatusFilter] = useState('all')
   const [dateFilter, setDateFilter]     = useState('30')
   const [expanded, setExpanded] = useState<string | null>(null)
+  // Taken once on mount so the render stays pure (the page is short-lived; a stale 'now' by minutes is harmless)
+  const [now] = useState(() => Date.now())
 
-  const cutoff = new Date(Date.now() - parseInt(dateFilter) * 24 * 60 * 60 * 1000)
+  const cutoff = new Date(now - parseInt(dateFilter) * 24 * 60 * 60 * 1000)
 
   const filtered = transactions.filter(tx => {
     const dateOk   = new Date(tx.created_at) >= cutoff
@@ -79,7 +82,7 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${branchName}-transactions-${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `${branchName}-transactions-${manilaDay()}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -181,9 +184,9 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                       {(tx.local_ref || tx.reference_number || tx.id).slice(-8).toUpperCase()}
                     </td>
                     <td style={{ fontSize: '0.8rem' }}>
-                      <div>{new Date(tx.created_at).toLocaleDateString('en-PH')}</div>
+                      <div>{new Date(tx.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}</div>
                       <div style={{ color: 'var(--color-text-muted)', fontSize: '0.72rem' }}>
-                        {new Date(tx.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(tx.created_at).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </td>
                     <td style={{ fontSize: '0.82rem' }}>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { manilaDay } from '@/lib/manila'
 
 interface Transaction {
   id: string
@@ -52,13 +53,13 @@ export default function FinancialsClient({ transactions, branches }: FinancialsC
   function handleExport() {
     const header = 'Date,Branch,Amount,Discount,Payment Method\n'
     const rows = filtered.map(t =>
-      `${new Date(t.created_at).toLocaleDateString('en-PH')},${t.branches?.name || ''},${t.total_amount},${t.discount_amount},${t.payment_method}`
+      `${new Date(t.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })},${t.branches?.name || ''},${t.total_amount},${t.discount_amount},${t.payment_method}`
     ).join('\n')
     const blob = new Blob([header + rows], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url
-    a.download = `wildshakes-revenue-${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `wildshakes-revenue-${manilaDay()}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -201,7 +202,7 @@ export default function FinancialsClient({ transactions, branches }: FinancialsC
             {filtered.slice(0, 50).map(t => (
               <tr key={t.id}>
                 <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                  {new Date(t.created_at).toLocaleDateString('en-PH')}
+                  {new Date(t.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}
                 </td>
                 <td>{t.branches?.name || '—'}</td>
                 <td style={{ fontWeight: 600 }}>₱{Number(t.total_amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>

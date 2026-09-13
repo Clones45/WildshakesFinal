@@ -1,10 +1,11 @@
 import { requireDashboardOrFirstPanel } from '@/lib/portal/access'
+import { manilaDay } from '@/lib/manila'
 
 export default async function CommissaryDashboardPage() {
   const { supabase, user } = await requireDashboardOrFirstPanel('commissary')
   const commissaryId = (user?.app_metadata as Record<string, string>)?.commissary_id
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = manilaDay()
 
   const [
     { data: franchises },
@@ -112,7 +113,7 @@ export default async function CommissaryDashboardPage() {
                     }`}>{s.status}</span>
                   </td>
                   <td style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                    {new Date(s.created_at).toLocaleDateString('en-PH')}
+                    {new Date(s.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}
                   </td>
                 </tr>
               ))

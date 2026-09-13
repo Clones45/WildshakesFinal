@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { manilaDay } from '@/lib/manila'
 import { revalidatePath } from 'next/cache'
 
 /* ── Create shipment (new system — uses inventory_item_id) ─────── */
@@ -62,7 +63,7 @@ export async function markShipmentReceived(shipmentId: string) {
   if (fetchErr || !shipment) return { error: 'Shipment not found.' }
   if (shipment.status !== 'in_transit') return { error: 'Shipment must be in transit to receive.' }
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = manilaDay()
 
   // Get current log for today (if any)
   const { data: existingLog } = await supabase

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useCallback, useTransition, useRef } from 'react'
+import { manilaDay } from '@/lib/manila'
 import { createClient } from '@/lib/supabase/client'
 
 /* ─── Types ────────────────────────────────────────────────────── */
@@ -341,9 +342,7 @@ export default function FranchiserInventoryClient({
   // Date.now() - 86400000, which can land on the wrong calendar day near midnight.
   async function copyFromYesterday() {
     if (!branchId) return
-    const anchor = new Date(today + 'T12:00:00')
-    anchor.setDate(anchor.getDate() - 1)
-    const yesterday = anchor.toISOString().split('T')[0]
+    const yesterday = manilaDay(new Date(today + 'T12:00:00+08:00').getTime() - 86400000)
 
     const { data: yestLogs } = await supabase
       .from('daily_inventory_logs')
@@ -426,12 +425,12 @@ export default function FranchiserInventoryClient({
         <div>
           <h1>Daily Inventory Check</h1>
           <p className="page-header-subtitle">
-            {branchName} — {new Date(today + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {branchName} — {new Date(today + 'T00:00:00+08:00').toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost btn-sm" onClick={copyFromYesterday}>
-            📋 Copy Yesterday's Ending
+            📋 Copy Yesterday&apos;s Ending
           </button>
           <a
             href="/franchiser/inventory/import"

@@ -147,7 +147,7 @@ export default async function DashboardPage() {
         <div>
           <h1>Command Center</h1>
           <p className="page-header-subtitle">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Manila', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
         <div className="flex gap-1">
@@ -411,7 +411,7 @@ export default async function DashboardPage() {
                     </span>
                   </td>
                   <td style={{ color: 'var(--color-text-muted)', fontSize: '0.78rem' }}>
-                    {new Date(tx.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(tx.created_at).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}
                   </td>
                 </tr>
               ))

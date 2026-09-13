@@ -1,11 +1,12 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { manilaDay } from '@/lib/manila'
 import { requirePanelAccess } from '@/lib/portal/access'
 import CommissaryClient from '@/components/CommissaryClient'
 
 export default async function CommissaryPage() {
   await requirePanelAccess('master_admin', 'commissary')
   const supabase = createAdminClient()
-  const today = new Date().toISOString().split('T')[0]
+  const today = manilaDay()
 
   const [
     { data: branches },

@@ -627,13 +627,13 @@ export default function CommissaryClient({
                           )}
                         </td>
                         <td style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                          {new Date(s.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                          {new Date(s.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })}
                         </td>
                         <td style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                          {s.sent_at ? new Date(s.sent_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) : '—'}
+                          {s.sent_at ? new Date(s.sent_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' }) : '—'}
                         </td>
                         <td style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                          {s.received_at ? new Date(s.received_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) : '—'}
+                          {s.received_at ? new Date(s.received_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' }) : '—'}
                         </td>
                         <td style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', maxWidth: 120 }}>{s.notes || '—'}</td>
                         <td>

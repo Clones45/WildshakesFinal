@@ -37,7 +37,7 @@ export default function FranchiserAnnouncementsClient({ announcements }: { annou
                   </span>
                 </div>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                  {new Date(announcement.created_at).toLocaleDateString()}
+                  {new Date(announcement.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}
                 </p>
                 <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{announcement.body}</p>
               </div>

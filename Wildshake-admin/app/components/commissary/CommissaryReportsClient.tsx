@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { manilaDay } from '@/lib/manila'
 
 interface Transaction {
   id: string
@@ -23,12 +24,8 @@ interface Props {
 
 export default function CommissaryReportsClient({ franchises, branches, transactions }: Props) {
   const [selectedFranchise, setSelectedFranchise] = useState('all')
-  const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date()
-    d.setDate(1)
-    return d.toISOString().split('T')[0]
-  })
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0])
+  const [dateFrom, setDateFrom] = useState(() => manilaDay().slice(0, 8) + '01')
+  const [dateTo, setDateTo] = useState(() => manilaDay())
 
   const branchIdToFranchise = Object.fromEntries(
     branches.map(b => [b.id, franchises.find(f => f.id === b.franchise_id)])
@@ -179,7 +176,7 @@ export default function CommissaryReportsClient({ franchises, branches, transact
             ) : (
               dateEntries.map(([date, revenue]) => (
                 <tr key={date}>
-                  <td>{new Date(date + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                  <td>{new Date(date + 'T00:00:00+08:00').toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-accent)' }}>{peso(revenue)}</td>
                 </tr>
               ))

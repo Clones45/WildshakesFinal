@@ -146,10 +146,10 @@ export default async function FranchiserDashboard() {
           chartData, payBreakdown, topItemsList, recentTx, activeStaff } = data
 
   const maxRevenue = Math.max(...chartData.map(d => d.revenue), 1)
-  const dateNow = new Date().toLocaleDateString('en-PH', {
+  const dateNow = new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila',
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   })
-  const timeNow = new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
+  const timeNow = new Date().toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })
 
   const payLabels: Record<string, string> = {
     cash: '💵 Cash', gcash: '📱 GCash', maya: '🟣 Maya',
@@ -359,7 +359,7 @@ export default async function FranchiserDashboard() {
                       </span>
                     </td>
                     <td style={{ color: 'var(--color-text-muted)', fontSize: '0.78rem' }}>
-                      {new Date(tx.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(tx.created_at).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}
                     </td>
                   </tr>
                 ))

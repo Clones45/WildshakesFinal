@@ -89,8 +89,10 @@ export default function FranchiseDetailClient({
   const maxChart = Math.max(...chartData.map(d => d.revenue), 1)
   const weekRevenue = chartData.reduce((s, d) => s + d.revenue, 0)
 
+  // Taken once on mount so the render stays pure (a 'now' stale by minutes is harmless here)
+  const [now] = useState(() => Date.now())
   // Sales tab calculations
-  const salesCutoff = new Date(Date.now() - parseInt(salesPeriod) * 24 * 60 * 60 * 1000)
+  const salesCutoff = new Date(now - parseInt(salesPeriod) * 24 * 60 * 60 * 1000)
   const filteredSales = salesTransactions.filter(t => new Date(t.created_at) >= salesCutoff)
   const salesRevenue = filteredSales.reduce((s, t) => s + Number(t.total_amount), 0)
   const salesDiscount = filteredSales.reduce((s, t) => s + Number(t.discount_amount), 0)
@@ -99,7 +101,7 @@ export default function FranchiseDetailClient({
   const maxPay = Math.max(...Object.values(salesPay), 1)
 
   // Delivery breakdown (from transactions prop which has delivery_platform)
-  const deliveryCutoff = new Date(Date.now() - parseInt(salesPeriod) * 24 * 60 * 60 * 1000)
+  const deliveryCutoff = new Date(now - parseInt(salesPeriod) * 24 * 60 * 60 * 1000)
   const deliveryTxs = transactions.filter(tx => tx.status === 'completed' && new Date(tx.created_at) >= deliveryCutoff && tx.delivery_platform)
   const foodpandaRevenue = deliveryTxs.filter(tx => tx.delivery_platform === 'foodpanda').reduce((s, tx) => s + Number(tx.total_amount), 0)
   const grabRevenue = deliveryTxs.filter(tx => tx.delivery_platform === 'grab').reduce((s, tx) => s + Number(tx.total_amount), 0)
@@ -305,8 +307,8 @@ export default function FranchiseDetailClient({
                 <>
                   <tr key={tx.id} onClick={() => setTxExpanded(txExpanded === tx.id ? null : tx.id)} style={{ cursor: 'pointer' }}>
                     <td style={{ fontSize: '0.8rem' }}>
-                      <div>{new Date(tx.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</div>
-                      <div style={{ color: 'var(--color-text-muted)' }}>{new Date(tx.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</div>
+                      <div>{new Date(tx.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })}</div>
+                      <div style={{ color: 'var(--color-text-muted)' }}>{new Date(tx.created_at).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}</div>
                     </td>
                     <td style={{ fontSize: '0.8rem' }}>{tx.branches?.name || '—'}</td>
                     <td style={{ fontSize: '0.8rem' }}>{tx.users?.name || '—'}</td>
@@ -367,7 +369,7 @@ export default function FranchiseDetailClient({
                   <td style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>—</td>
                   <td>{s.pin_code ? <span className="badge badge-success">✓ Set</span> : <span className="badge badge-danger">Not Set</span>}</td>
                   <td><span className={`badge badge-${s.is_active ? 'success' : 'muted'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td>
-                  <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{new Date(s.created_at).toLocaleDateString('en-PH')}</td>
+                  <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{new Date(s.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}</td>
                 </tr>
               ))}
             </tbody>

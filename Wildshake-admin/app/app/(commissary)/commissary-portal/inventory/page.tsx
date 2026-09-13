@@ -1,11 +1,12 @@
 import { requirePanelAccess } from '@/lib/portal/access'
+import { manilaDay } from '@/lib/manila'
 import CommissaryInventoryClient from '@/components/commissary/CommissaryInventoryClient'
 
 export default async function CommissaryInventoryPage() {
   const { supabase, user } = await requirePanelAccess('commissary', 'inventory')
   const commissaryId = (user?.app_metadata as Record<string, string>)?.commissary_id
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = manilaDay()
 
   const [
     { data: commissary },

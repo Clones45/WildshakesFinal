@@ -134,7 +134,7 @@ export default function CommissaryStaffClient({ staff: initialStaff }: Props) {
                   </span>
                 </td>
                 <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
-                  {new Date(member.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {new Date(member.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })}
                 </td>
                 <td>
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
