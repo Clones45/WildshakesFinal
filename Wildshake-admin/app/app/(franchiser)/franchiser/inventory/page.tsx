@@ -66,7 +66,7 @@ export default async function FranchiserInventoryPage() {
   // ── Food item ↔ Menu item links ──────────────────────────────────────────────
   const { data: foodMenuLinks } = await supabase
     .from('food_item_menu_links')
-    .select('id, inventory_item_id, product_id')
+    .select('id, inventory_item_id, product_id, quantity_per_serving')
 
   // ── All POS products (for the food-item tag picker) ─────────────────────────
   const { data: products } = await supabase
@@ -109,7 +109,7 @@ export default async function FranchiserInventoryPage() {
     if (txItems) {
       for (const ti of txItems) {
         const pid = ti.product_id
-        const tx = (ti as any).transactions
+        const tx = (ti as unknown as { transactions: { status: string } | null }).transactions
         const qty = Number(ti.quantity ?? 0)
 
         if (tx?.status === 'voided') {

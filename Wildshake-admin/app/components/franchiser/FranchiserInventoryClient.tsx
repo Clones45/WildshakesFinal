@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useState, useCallback, useTransition, useRef } from 'react'
+import React, { useState, useCallback, useTransition } from 'react'
 import { manilaDay } from '@/lib/manila'
 import { createClient } from '@/lib/supabase/client'
+import { SHEET_TYPES, SHEET_LABELS, getStockStatus, isRecipeSheet, type SheetType } from '@/lib/inventory/sheets'
 
 /* ─── Types ────────────────────────────────────────────────────── */
 interface Category {
@@ -43,6 +44,7 @@ interface FoodMenuLink {
   id: string
   inventory_item_id: string
   product_id: string
+  quantity_per_serving: number | null
 }
 
 interface IncomingShipment {
@@ -72,28 +74,7 @@ interface Props {
   incomingShipments?: IncomingShipment[]
 }
 
-/* ─── Sheet Tab Config ─────────────────────────────────────────── */
-const SHEET_LABELS: Record<string, { label: string; icon: string; color: string; desc: string }> = {
-  food:             { label: 'Food Items',        icon: '🍝', color: '#e67e22', desc: 'Everyday food stock you buy and keep on hand — burger, wings and pasta ingredients, plus packaging and supplies.' },
-  food_2:           { label: 'Food 2',            icon: '🍕', color: '#c0392b', desc: 'The rest of your bought food stock — condiments, and the pizza, rice-meal and pica-pica ingredients.' },
-  production:       { label: 'Production',        icon: '⚙️', color: '#607d8b', desc: 'Items the branch prepares in-house — cooked beef and chicken portions, patties, meatballs and uncooked pasta.' },
-  shake:            { label: 'Shakes',            icon: '🥤', color: '#d63384', desc: 'Ingredients and cups for the fruit shakes and milkshakes.' },
-  coffee_general:   { label: 'Coffee',             icon: '☕', color: '#795548', desc: 'Coffee ingredients, plus general supplies like cups, lids and trays.' },
-  commissary:       { label: 'Commissary (CSL)',   icon: '🏭', color: '#2980b9', desc: 'Commissary store stock — counted at the central store, not the branch.' },
-  commissary_home:  { label: 'Commissary Home',    icon: '🏠', color: '#8e44ad', desc: 'Commissary home stock — counted at the central kitchen, not the branch.' },
-}
-
-/* ─── Status helper ────────────────────────────────────────────── */
-function getStockStatus(ending: number | null, min: number | null) {
-  if (ending === null) return 'unset'
-  if (min === null || min === 0) {
-    if (ending === 0) return 'out'
-    return 'ok'
-  }
-  if (ending === 0) return 'out'
-  if (ending <= min) return 'low'
-  return 'ok'
-}
+// Sheet labels and the stock-status rule live in lib/inventory/sheets.ts, shared with the master admin pages.
 
 /* Shared input style */
 const inputStyle: React.CSSProperties = {
@@ -143,21 +124,16 @@ export default function FranchiserInventoryClient({
     return map
   })
 
-  /* food item → product links (editable client-side) */
-  const [links, setLinks] = useState<FoodMenuLink[]>(foodMenuLinks)
+  /* food item -> menu item links: set by head office (master admin), read-only here */
+  const links = foodMenuLinks
 
-  const [activeSheet, setActiveSheet] = useState<string>('food')
+  const [activeSheet, setActiveSheet] = useState<SheetType>('food')
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [search, setSearch] = useState('')
   const [showOnlyLow, setShowOnlyLow] = useState(false)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [shipmentProcessing, setShipmentProcessing] = useState<Record<string, boolean>>({})
   const [localShipments, setLocalShipments] = useState<IncomingShipment[]>(incomingShipments)
-
-  /* Tag picker state per food item */
-  const [tagPickerOpen, setTagPickerOpen] = useState<string | null>(null)
-  const [tagSearch, setTagSearch] = useState('')
-  const tagPickerRef = useRef<HTMLDivElement>(null)
 
   /* ── Helpers ─────────────────────────────────────────────────── */
   function showToast(msg: string) {
@@ -368,37 +344,17 @@ export default function FranchiserInventoryClient({
     })
   }
 
-  /* ── Food item tag management ─────────────────────────────────── */
+  /* ── Recipe links (read-only; head office edits them) ─────────── */
   function getLinkedProductIds(itemId: string) {
     return links.filter(l => l.inventory_item_id === itemId).map(l => l.product_id)
   }
 
-  async function toggleProductLink(inventoryItemId: string, productId: string) {
-    const existing = links.find(l => l.inventory_item_id === inventoryItemId && l.product_id === productId)
-    if (existing) {
-      // Remove link
-      setLinks(prev => prev.filter(l => l.id !== existing.id))
-      await supabase.from('food_item_menu_links').delete().eq('id', existing.id)
-    } else {
-      // Add link
-      const { data, error } = await supabase
-        .from('food_item_menu_links')
-        .insert({ inventory_item_id: inventoryItemId, product_id: productId })
-        .select('id, inventory_item_id, product_id')
-        .single()
-      if (!error && data) {
-        setLinks(prev => [...prev, data])
-      }
-    }
-  }
-
   /* ── Filter helpers ──────────────────────────────────────────── */
-  const sheetTypes = ['food', 'food_2', 'production', 'shake', 'coffee_general', 'commissary', 'commissary_home']
+  const sheetTypes = SHEET_TYPES
   const categoriesBySheet = categories.filter(c => c.sheet_type === activeSheet)
   // Food, Food 2, Production, Shake and Coffee ingredients are all recipe-linked
-  // (food_item_menu_links) and get their "Used" auto-summed from POS sales + a menu-item
-  // tag picker; Commissary sheets don't.
-  const isRecipeLinkedSheet = ['food', 'food_2', 'production', 'shake', 'coffee_general'].includes(activeSheet)
+  // (food_item_menu_links) and get their "Used" auto-summed from POS sales; Commissary sheets don't.
+  const isRecipeLinkedSheet = isRecipeSheet(activeSheet)
 
   /* ── Render ──────────────────────────────────────────────────── */
   return (
@@ -432,14 +388,6 @@ export default function FranchiserInventoryClient({
           <button className="btn btn-ghost btn-sm" onClick={copyFromYesterday}>
             📋 Copy Yesterday&apos;s Ending
           </button>
-          <a
-            href="/franchiser/inventory/import"
-            className="btn btn-ghost btn-sm"
-            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
-              border: '1px solid rgba(212,175,55,0.4)', color: 'var(--color-accent)' }}
-          >
-            📥 Import Recipes
-          </a>
         </div>
       </div>
 
@@ -542,7 +490,7 @@ export default function FranchiserInventoryClient({
 
           {isRecipeLinkedSheet && (
             <div style={{ display: 'flex', gap: '1rem', padding: '0.5rem 1rem', flexWrap: 'wrap', fontSize: '0.74rem', color: 'var(--color-text-muted)', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-              <span>🏷️ <strong>Menu Tags</strong> — link this food item to POS products</span>
+              <span>🍳 <strong>Recipe</strong> — which menu items use this ingredient, set by head office</span>
               <span style={{ color: '#16a085' }}>🔵 <strong>Used</strong> = auto-summed from POS sales of tagged products</span>
               <span style={{ color: '#16a085' }}>🟢 <strong>Ending</strong> = Starting + Additional − Used</span>
             </div>
@@ -581,7 +529,7 @@ export default function FranchiserInventoryClient({
                       <tr>
                         <th style={{ width: isRecipeLinkedSheet ? '22%' : '35%' }}>Item</th>
                         {isRecipeLinkedSheet && (
-                          <th style={{ width: '18%' }}>Menu Item Tags 🏷️</th>
+                          <th style={{ width: '18%' }}>Recipe 🍳</th>
                         )}
                         <th style={{ width: '8%', textAlign: 'center' }}>Unit</th>
                         <th style={{ width: '10%', textAlign: 'center' }}>Starting</th>
@@ -620,89 +568,30 @@ export default function FranchiserInventoryClient({
                               </div>
                             </td>
 
-                            {/* ── Tag Picker (food only) ─────────────────────── */}
+                            {/* ── Recipe (read-only; head office edits it) ── */}
                             {isRecipeLinkedSheet && (
-                              <td style={{ position: 'relative' }}>
-                                <div
-                                  style={{ cursor: 'pointer', minHeight: '32px', display: 'flex', flexWrap: 'wrap', gap: '3px', alignItems: 'center', padding: '3px 6px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--color-border)', background: 'var(--color-surface)' }}
-                                  onClick={() => {
-                                    setTagPickerOpen(tagPickerOpen === item.id ? null : item.id)
-                                    setTagSearch('')
-                                  }}
-                                >
+                              <td>
+                                <div style={{ minHeight: '32px', display: 'flex', flexWrap: 'wrap', gap: '3px', alignItems: 'center', padding: '3px 0' }}>
                                   {linkedProducts.length === 0 ? (
-                                    <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>+ Add tags…</span>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Not in any recipe</span>
                                   ) : (
-                                    linkedProducts.map(p => (
-                                      <span key={p.id} style={{
-                                        fontSize: '0.68rem', fontWeight: 600,
-                                        background: 'rgba(22,160,133,0.15)', color: '#16a085',
-                                        padding: '2px 6px', borderRadius: '999px',
-                                        border: '1px solid rgba(22,160,133,0.3)',
-                                        whiteSpace: 'nowrap',
-                                      }}>
-                                        {p.name}
-                                      </span>
-                                    ))
+                                    linkedProducts.map(p => {
+                                      const qty = links.find(l => l.inventory_item_id === item.id && l.product_id === p.id)?.quantity_per_serving ?? null
+                                      const per = qty === null ? '' : ` · ${qty}${item.unit ? ' ' + item.unit : ''}`
+                                      return (
+                                        <span key={p.id} title={qty === null ? 'No amount set' : `${qty}${item.unit ? ' ' + item.unit : ''} per serving`} style={{
+                                          fontSize: '0.68rem', fontWeight: 600,
+                                          background: 'rgba(22,160,133,0.15)', color: '#16a085',
+                                          padding: '2px 6px', borderRadius: '999px',
+                                          border: '1px solid rgba(22,160,133,0.3)',
+                                          whiteSpace: 'nowrap',
+                                        }}>
+                                          {p.name}{per}
+                                        </span>
+                                      )
+                                    })
                                   )}
                                 </div>
-
-                                {/* Dropdown */}
-                                {tagPickerOpen === item.id && (
-                                  <div
-                                    ref={tagPickerRef}
-                                    style={{
-                                      position: 'absolute', top: '100%', left: 0, zIndex: 500,
-                                      width: '260px', maxHeight: '240px', overflowY: 'auto',
-                                      background: 'var(--color-surface-2)',
-                                      border: '1px solid var(--color-border)',
-                                      borderRadius: 'var(--radius-md)',
-                                      boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                                      padding: '0.5rem',
-                                    }}
-                                    onClick={e => e.stopPropagation()}
-                                  >
-                                    <input
-                                      autoFocus
-                                      type="text"
-                                      placeholder="Search products…"
-                                      value={tagSearch}
-                                      onChange={e => setTagSearch(e.target.value)}
-                                      style={{ width: '100%', marginBottom: '0.5rem', padding: '0.3rem 0.5rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.8rem', outline: 'none' }}
-                                    />
-                                    {products
-                                      .filter(p => !tagSearch || p.name.toLowerCase().includes(tagSearch.toLowerCase()))
-                                      .map(p => {
-                                        const isLinked = linkedIds.includes(p.id)
-                                        return (
-                                          <div
-                                            key={p.id}
-                                            onClick={() => toggleProductLink(item.id, p.id)}
-                                            style={{
-                                              display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                              padding: '0.35rem 0.5rem', borderRadius: 'var(--radius-sm)',
-                                              cursor: 'pointer', fontSize: '0.8rem',
-                                              background: isLinked ? 'rgba(22,160,133,0.12)' : 'transparent',
-                                              color: isLinked ? '#16a085' : 'var(--color-text)',
-                                              fontWeight: isLinked ? 600 : 400,
-                                              marginBottom: '1px',
-                                              transition: 'background 0.1s',
-                                            }}
-                                          >
-                                            <span style={{ width: '14px', textAlign: 'center' }}>{isLinked ? '✓' : ''}</span>
-                                            <span style={{ flex: 1 }}>{p.name}</span>
-                                            <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)' }}>{p.category}</span>
-                                          </div>
-                                        )
-                                      })}
-                                    <button
-                                      onClick={() => setTagPickerOpen(null)}
-                                      style={{ width: '100%', marginTop: '0.5rem', padding: '0.3rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
-                                    >
-                                      Done
-                                    </button>
-                                  </div>
-                                )}
                               </td>
                             )}
 
@@ -812,13 +701,6 @@ export default function FranchiserInventoryClient({
         <span>💾 auto-saves on field blur</span>
       </div>
 
-      {/* Close tag picker on outside click */}
-      {tagPickerOpen && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 499 }}
-          onClick={() => setTagPickerOpen(null)}
-        />
-      )}
     </div>
   )
 }

@@ -33,6 +33,7 @@ export const PANELS: Record<TenantType, PanelDef[]> = {
     { key: 'dashboard',  label: 'Dashboard',  href: '/dashboard',  icon: '📊' },
     { key: 'franchises', label: 'Franchises', href: '/franchises', icon: '🏪' },
     { key: 'commissary', label: 'Commissary', href: '/commissary', icon: '📦' },
+    { key: 'inventory',  label: 'Inventory',  href: '/inventory',  icon: '🧾' },
     { key: 'menu',       label: 'Menu',       href: '/menu',       icon: '🍹' },
     { key: 'financials', label: 'Financials', href: '/financials', icon: '💰' },
     { key: 'broadcast',  label: 'Broadcast',  href: '/broadcast',  icon: '📣' },
