@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ClipboardCheck, Loader2, Printer, Check, AlertTriangle } from 'lucide-react'
 import { toast } from 'react-hot-toast'
-import { useShiftStore, rememberedFees, type ShiftSummary, type ShiftFees } from '../store/shiftStore'
+import { useShiftStore, rememberedCommission, type ShiftSummary, type PlatformCommission } from '../store/shiftStore'
 import { useAuthStore } from '../store/authStore'
 import { buildShiftReportText, printShiftReport } from '../lib/printer'
 
 // End Shift in three steps. Cash is not counted here: the drawer is computed
 // from the starting cash entered when the shift began, plus cash taken, minus
 // cash refunded.
-//   1. Fees   — the percentage FoodPanda and Grab keep of their gross, which
+//   1. Cut    — the percentage FoodPanda and Grab keep of their gross, which
 //               the report deducts. Prefilled with what was entered last time.
 //   2. Review — the report exactly as it will print. Cancel goes back; nothing
 //               has closed.
@@ -35,7 +35,7 @@ export function EndShiftModal({ isOpen, onClose, onShiftEnded }: EndShiftModalPr
     )
 }
 
-type Step = 'fees' | 'review' | 'done'
+type Step = 'commission' | 'review' | 'done'
 
 const clampPct = (raw: string) => Math.min(100, Math.max(0, parseFloat(raw) || 0))
 
@@ -43,24 +43,24 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
     const { branch } = useAuthStore()
     const { currentShift, isEnding, previewSummary, endShift } = useShiftStore()
 
-    const [step, setStep] = useState<Step>('fees')
-    const [fpInput, setFpInput] = useState(() => String(rememberedFees().foodpandaFeePct || ''))
-    const [grabInput, setGrabInput] = useState(() => String(rememberedFees().grabFeePct || ''))
+    const [step, setStep] = useState<Step>('commission')
+    const [fpInput, setFpInput] = useState(() => String(rememberedCommission().foodpandaCommissionPct || ''))
+    const [grabInput, setGrabInput] = useState(() => String(rememberedCommission().grabCommissionPct || ''))
     const [preview, setPreview] = useState<ShiftSummary | null>(null)
     const [closed, setClosed] = useState<ShiftSummary | null>(null)
     const [printState, setPrintState] = useState<'idle' | 'printing' | 'ok' | 'failed'>('idle')
 
-    const fees: ShiftFees = useMemo(
-        () => ({ foodpandaFeePct: clampPct(fpInput), grabFeePct: clampPct(grabInput) }),
+    const commission: PlatformCommission = useMemo(
+        () => ({ foodpandaCommissionPct: clampPct(fpInput), grabCommissionPct: clampPct(grabInput) }),
         [fpInput, grabInput],
     )
 
     // Live figures for the percentages entered so far.
     useEffect(() => {
         let cancelled = false
-        previewSummary(fees).then((p) => { if (!cancelled) setPreview(p) })
+        previewSummary(commission).then((p) => { if (!cancelled) setPreview(p) })
         return () => { cancelled = true }
-    }, [fees, previewSummary])
+    }, [commission, previewSummary])
 
     const reportText = useMemo(
         () => (preview && branch ? buildShiftReportText(preview, branch.name) : ''),
@@ -77,7 +77,7 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
     // Save first, print second — a printer problem must never lose the close.
     const proceed = async () => {
         if (!branch) return
-        const summary = await endShift(fees)
+        const summary = await endShift(commission)
         if (!summary) { toast.error('Could not close the shift.'); return }
         setClosed(summary)
         setStep('done')
@@ -86,16 +86,16 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
 
     if (!currentShift && step !== 'done') return null
     const shiftNumber = closed?.shiftNumber ?? currentShift?.shiftNumber
-    const totalFees = (preview?.foodpandaFee ?? 0) + (preview?.grabFee ?? 0)
+    const totalCommission = (preview?.foodpandaCommission ?? 0) + (preview?.grabCommission ?? 0)
 
-    const feeRow = (label: string, sales: number | undefined, value: string, setValue: (v: string) => void, fee: number | undefined) => (
+    const commissionRow = (label: string, sales: number | undefined, value: string, setValue: (v: string) => void, cut: number | undefined) => (
         <div className="rounded-xl bg-surface-700 border border-surface-600 px-3 py-2.5 space-y-1.5">
             <div className="flex items-center justify-between text-sm">
                 <span className="text-white font-semibold">{label}</span>
                 <span className="text-gray-400">sales <span className="text-white font-semibold">{money(sales)}</span></span>
             </div>
             <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 whitespace-nowrap">Fee %</span>
+                <span className="text-xs text-gray-400 whitespace-nowrap">Cut %</span>
                 <div className="relative flex-1">
                     <input
                         type="number"
@@ -107,11 +107,11 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
                         onChange={(e) => setValue(e.target.value)}
                         placeholder="0"
                         className="input-field pr-8 text-right"
-                        aria-label={`${label} fee percentage`}
+                        aria-label={`${label} commission percentage`}
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">%</span>
                 </div>
-                <span className="text-xs text-gray-400 whitespace-nowrap">= <span className="text-red-300 font-semibold">-{money(fee)}</span></span>
+                <span className="text-xs text-gray-400 whitespace-nowrap">= <span className="text-red-300 font-semibold">-{money(cut)}</span></span>
             </div>
         </div>
     )
@@ -137,7 +137,7 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
                             ? <Check size={18} className="text-teal-400" />
                             : <ClipboardCheck size={18} className="text-brand-400" />}
                         <h2 className="text-lg font-bold text-white">
-                            {step === 'fees' && `End Shift #${shiftNumber}`}
+                            {step === 'commission' && `End Shift #${shiftNumber}`}
                             {step === 'review' && 'Review shift report'}
                             {step === 'done' && `Shift #${shiftNumber} closed`}
                         </h2>
@@ -151,7 +151,7 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
 
                 {/* Body */}
                 <div className="p-5 space-y-4 overflow-y-auto">
-                    {step === 'fees' && currentShift && (
+                    {step === 'commission' && currentShift && (
                         <>
                             <div className="rounded-2xl bg-surface-700 border border-surface-600 p-4 space-y-1.5 text-sm">
                                 <div className="flex justify-between text-gray-400">
@@ -175,21 +175,21 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
 
                             <div>
                                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
-                                    Delivery platform fees
+                                    FoodPanda &amp; Grab commission
                                 </p>
                                 <div className="space-y-2">
-                                    {feeRow('FoodPanda', preview?.foodpandaSales, fpInput, setFpInput, preview?.foodpandaFee)}
-                                    {feeRow('Grab', preview?.grabSales, grabInput, setGrabInput, preview?.grabFee)}
+                                    {commissionRow('FoodPanda', preview?.foodpandaSales, fpInput, setFpInput, preview?.foodpandaCommission)}
+                                    {commissionRow('Grab', preview?.grabSales, grabInput, setGrabInput, preview?.grabCommission)}
                                 </div>
                             </div>
 
                             <div className="rounded-xl px-4 py-3 text-sm font-bold flex justify-between bg-teal-500/10 border border-teal-500/30 text-teal-400">
-                                <span>Net after delivery fees</span>
-                                <span>{money(preview?.netAfterFees)}</span>
+                                <span>Net after commission</span>
+                                <span>{money(preview?.netAfterCommission)}</span>
                             </div>
-                            {totalFees > 0 && (
+                            {totalCommission > 0 && (
                                 <p className="text-[11px] text-gray-500 text-center">
-                                    {money(totalFees)} in platform fees deducted from net sales.
+                                    {money(totalCommission)} kept by FoodPanda and Grab, deducted from net sales.
                                 </p>
                             )}
                         </>
@@ -209,9 +209,9 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
                             <div className="rounded-2xl bg-surface-700 border border-surface-600 p-4 space-y-1.5 text-sm">
                                 <div className="flex justify-between text-gray-400"><span>Cash in drawer</span><span className="text-white font-semibold">{money(closed.expectedCash)}</span></div>
                                 <div className="flex justify-between text-gray-400"><span>Net sales</span><span className="text-white font-semibold">{money(closed.netSales)}</span></div>
-                                <div className="flex justify-between text-gray-400"><span>Delivery fees</span><span className="text-red-300 font-semibold">-{money((closed.foodpandaFee ?? 0) + (closed.grabFee ?? 0))}</span></div>
+                                <div className="flex justify-between text-gray-400"><span>FoodPanda &amp; Grab cut</span><span className="text-red-300 font-semibold">-{money((closed.foodpandaCommission ?? 0) + (closed.grabCommission ?? 0))}</span></div>
                                 <div className="h-px bg-surface-600 my-2" />
-                                <div className="flex justify-between text-gray-400"><span>Net after delivery fees</span><span className="text-teal-400 font-bold">{money(closed.netAfterFees)}</span></div>
+                                <div className="flex justify-between text-gray-400"><span>Net after commission</span><span className="text-teal-400 font-bold">{money(closed.netAfterCommission)}</span></div>
                             </div>
                             <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ${printState === 'ok' ? 'bg-teal-500/10 border border-teal-500/30 text-teal-400'
                                 : printState === 'failed' ? 'bg-red-500/10 border border-red-500/30 text-red-400'
@@ -230,7 +230,7 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
 
                 {/* Footer */}
                 <div className="px-5 pb-5 pt-2 flex gap-2 flex-shrink-0">
-                    {step === 'fees' && (
+                    {step === 'commission' && (
                         <>
                             <button onClick={onClose} className="btn-ghost flex-1 text-sm">Cancel</button>
                             <button onClick={() => setStep('review')} disabled={!preview} className="btn-primary flex-1 text-sm disabled:opacity-50">
@@ -240,7 +240,7 @@ function EndShiftFlow({ onClose, onShiftEnded }: Omit<EndShiftModalProps, 'isOpe
                     )}
                     {step === 'review' && (
                         <>
-                            <button onClick={() => setStep('fees')} disabled={isEnding} className="btn-ghost flex-1 text-sm disabled:opacity-40">
+                            <button onClick={() => setStep('commission')} disabled={isEnding} className="btn-ghost flex-1 text-sm disabled:opacity-40">
                                 Cancel
                             </button>
                             <button onClick={proceed} disabled={isEnding} className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm disabled:opacity-60">

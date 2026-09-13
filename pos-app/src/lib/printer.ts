@@ -429,18 +429,18 @@ export function buildShiftReportText(
     const deliveryLines = hasDelivery
         ? [
             divider,
-            center('Delivery'),
+            center('FoodPanda & Grab cut'),
             divider,
             leftRight('FoodPanda sales', money(shift.foodpandaSales)),
-            leftRight(`FoodPanda fee (${pct(shift.foodpandaFeePct)})`, '-' + money(shift.foodpandaFee)),
-            leftRight('FoodPanda net', money((shift.foodpandaSales ?? 0) - (shift.foodpandaFee ?? 0))),
+            leftRight(`FoodPanda cut (${pct(shift.foodpandaCommissionPct)})`, '-' + money(shift.foodpandaCommission)),
+            leftRight('FoodPanda net', money((shift.foodpandaSales ?? 0) - (shift.foodpandaCommission ?? 0))),
             leftRight('Grab sales', money(shift.grabSales)),
-            leftRight(`Grab fee (${pct(shift.grabFeePct)})`, '-' + money(shift.grabFee)),
-            leftRight('Grab net', money((shift.grabSales ?? 0) - (shift.grabFee ?? 0))),
+            leftRight(`Grab cut (${pct(shift.grabCommissionPct)})`, '-' + money(shift.grabCommission)),
+            leftRight('Grab net', money((shift.grabSales ?? 0) - (shift.grabCommission ?? 0))),
         ]
         : []
-    const netAfterFeesLines = shift.netAfterFees !== undefined
-        ? [divider, leftRight('Net after delivery fees', money(shift.netAfterFees))]
+    const netAfterCommissionLines = shift.netAfterCommission !== undefined
+        ? [divider, leftRight('Net after commission', money(shift.netAfterCommission))]
         : []
 
     return [
@@ -479,7 +479,7 @@ export function buildShiftReportText(
         leftRight('Bank transfer', money(shift.bankTransferSales)),
         ...otherLine,
         ...deliveryLines,
-        ...netAfterFeesLines,
+        ...netAfterCommissionLines,
         divider,
         center('*** END OF SHIFT REPORT ***'),
         '\n\n\n',

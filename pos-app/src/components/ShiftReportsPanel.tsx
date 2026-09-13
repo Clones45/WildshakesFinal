@@ -80,7 +80,7 @@ export function ShiftReportsPanel({ branchId, branchName }: ShiftReportsPanelPro
     return (
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
             {shifts.map((s) => {
-                const fees = (s.foodpandaFee ?? 0) + (s.grabFee ?? 0)
+                const cut = (s.foodpandaCommission ?? 0) + (s.grabCommission ?? 0)
                 const isOpen = openPreview === s.localRef
                 return (
                     <div key={s.localRef} className="rounded-2xl border border-surface-600 bg-surface-700 p-4 space-y-3">
@@ -109,8 +109,8 @@ export function ShiftReportsPanel({ branchId, branchName }: ShiftReportsPanelPro
                                 <p className="text-white text-sm font-bold">{money(s.netSales)}</p>
                             </div>
                             <div className="rounded-xl bg-surface-800 py-2">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Delivery fees</p>
-                                <p className={`text-sm font-bold ${fees > 0 ? 'text-red-300' : 'text-gray-400'}`}>{fees > 0 ? '-' : ''}{money(fees)}</p>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Platform cut</p>
+                                <p className={`text-sm font-bold ${cut > 0 ? 'text-red-300' : 'text-gray-400'}`}>{cut > 0 ? '-' : ''}{money(cut)}</p>
                             </div>
                         </div>
 

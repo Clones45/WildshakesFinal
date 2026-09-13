@@ -160,14 +160,14 @@ export interface LocalShift {
     cashPayments?: number
     cashRefunds?: number
     // Delivery platforms keep a percentage of their gross. The cashier enters
-    // each platform's percentage at close; the fee and the net after fees are kept.
+    // each platform's percentage at close; the commission and the net after commission are kept.
     foodpandaSales?: number
     grabSales?: number
-    foodpandaFeePct?: number
-    grabFeePct?: number
-    foodpandaFee?: number
-    grabFee?: number
-    netAfterFees?: number
+    foodpandaCommissionPct?: number
+    grabCommissionPct?: number
+    foodpandaCommission?: number
+    grabCommission?: number
+    netAfterCommission?: number
     syncStatus: 'pending' | 'synced' | 'failed'
     /** When the last sync attempt failed — failed shifts get a breather before the next try. */
     lastSyncAttempt?: string

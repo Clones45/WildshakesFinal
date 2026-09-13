@@ -11,16 +11,16 @@ export interface ShiftSummary extends LocalShift {
 }
 
 /** The percentage each delivery platform keeps of its gross, entered at close. */
-export interface ShiftFees {
-    foodpandaFeePct: number
-    grabFeePct: number
+export interface PlatformCommission {
+    foodpandaCommissionPct: number
+    grabCommissionPct: number
 }
 
 // How long a shift that failed to sync waits before the next attempt.
 const SHIFT_RETRY_AFTER_MS = 5 * 60 * 1000
 const DEFAULT_STARTING_CASH = 3000
 const LAST_STARTING_CASH_KEY = 'ws_last_starting_cash'
-const LAST_FEES_KEY = 'ws_last_delivery_fees'
+const LAST_COMMISSION_KEY = 'ws_last_platform_commission'
 
 // The tablet remembers what was entered last time, so the usual case is one tap.
 export function rememberedStartingCash(): number {
@@ -28,12 +28,12 @@ export function rememberedStartingCash(): number {
     return Number.isFinite(v) && v > 0 ? v : DEFAULT_STARTING_CASH
 }
 
-export function rememberedFees(): ShiftFees {
+export function rememberedCommission(): PlatformCommission {
     try {
-        const v = JSON.parse(localStorage.getItem(LAST_FEES_KEY) ?? '')
-        return { foodpandaFeePct: Number(v.foodpandaFeePct) || 0, grabFeePct: Number(v.grabFeePct) || 0 }
+        const v = JSON.parse(localStorage.getItem(LAST_COMMISSION_KEY) ?? '')
+        return { foodpandaCommissionPct: Number(v.foodpandaCommissionPct) || 0, grabCommissionPct: Number(v.grabCommissionPct) || 0 }
     } catch {
-        return { foodpandaFeePct: 0, grabFeePct: 0 }
+        return { foodpandaCommissionPct: 0, grabCommissionPct: 0 }
     }
 }
 
@@ -44,8 +44,8 @@ interface ShiftState {
     isEnding: boolean
     ensureShiftOpen: (user: UserProfile, branch: Branch) => Promise<void>
     startShift: (user: UserProfile, branch: Branch, startingCash: number) => Promise<void>
-    previewSummary: (fees: ShiftFees) => Promise<ShiftSummary | null>
-    endShift: (fees: ShiftFees) => Promise<ShiftSummary | null>
+    previewSummary: (commission: PlatformCommission) => Promise<ShiftSummary | null>
+    endShift: (commission: PlatformCommission) => Promise<ShiftSummary | null>
     syncPendingShifts: () => Promise<void>
 }
 
@@ -79,7 +79,7 @@ function bucketByMethod(transactions: LocalTransaction[]): Record<string, number
 async function computeSummary(
     shift: LocalShift,
     closedAt: string,
-    fees?: ShiftFees,
+    commission?: PlatformCommission,
     countedCash?: number,
 ): Promise<ShiftSummary> {
     const shiftTx = await db.transactions
@@ -118,11 +118,11 @@ async function computeSummary(
         completed.filter(tx => tx.deliveryPlatform === p).reduce((s, tx) => s + tx.totalAmount, 0)
     const foodpandaSales = platformSales('foodpanda')
     const grabSales = platformSales('grab')
-    const foodpandaFeePct = fees?.foodpandaFeePct ?? 0
-    const grabFeePct = fees?.grabFeePct ?? 0
-    const foodpandaFee = round2(foodpandaSales * foodpandaFeePct / 100)
-    const grabFee = round2(grabSales * grabFeePct / 100)
-    const netAfterFees = round2(netSales - foodpandaFee - grabFee)
+    const foodpandaCommissionPct = commission?.foodpandaCommissionPct ?? 0
+    const grabCommissionPct = commission?.grabCommissionPct ?? 0
+    const foodpandaCommission = round2(foodpandaSales * foodpandaCommissionPct / 100)
+    const grabCommission = round2(grabSales * grabCommissionPct / 100)
+    const netAfterCommission = round2(netSales - foodpandaCommission - grabCommission)
 
     return {
         ...shift,
@@ -142,11 +142,11 @@ async function computeSummary(
         splitSales,
         foodpandaSales,
         grabSales,
-        foodpandaFeePct,
-        grabFeePct,
-        foodpandaFee,
-        grabFee,
-        netAfterFees,
+        foodpandaCommissionPct,
+        grabCommissionPct,
+        foodpandaCommission,
+        grabCommission,
+        netAfterCommission,
         syncStatus: 'pending',
         otherSales: foodpandaSales + grabSales,
         cashPayments,
@@ -164,7 +164,7 @@ export async function summaryForReprint(shift: LocalShift): Promise<ShiftSummary
     const rebuilt = await computeSummary(
         shift,
         shift.closedAt ?? new Date().toISOString(),
-        { foodpandaFeePct: shift.foodpandaFeePct ?? 0, grabFeePct: shift.grabFeePct ?? 0 },
+        { foodpandaCommissionPct: shift.foodpandaCommissionPct ?? 0, grabCommissionPct: shift.grabCommissionPct ?? 0 },
         shift.actualCash,
     )
     return {
@@ -246,23 +246,23 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
         get().syncPendingShifts()
     },
 
-    previewSummary: async (fees) => {
+    previewSummary: async (commission) => {
         const shift = get().currentShift
         if (!shift) return null
-        return computeSummary(shift, new Date().toISOString(), fees)
+        return computeSummary(shift, new Date().toISOString(), commission)
     },
 
-    endShift: async (fees) => {
+    endShift: async (commission) => {
         const shift = get().currentShift
         if (!shift) return null
 
         set({ isEnding: true })
         try {
-            const summary = await computeSummary(shift, new Date().toISOString(), fees)
+            const summary = await computeSummary(shift, new Date().toISOString(), commission)
 
             // Stored whole, receipt-only figures included, so a reprint is exact.
             await db.shifts.put(summary)
-            localStorage.setItem(LAST_FEES_KEY, JSON.stringify(fees))
+            localStorage.setItem(LAST_COMMISSION_KEY, JSON.stringify(commission))
             set({ currentShift: null, isEnding: false })
             get().syncPendingShifts()
 
@@ -313,18 +313,18 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
                     paid_in: local.paidIn,
                     paid_out: local.paidOut,
                 }
-                // Delivery columns are newer (see add_shift_delivery_fees_migration.sql).
+                // Delivery columns are newer (see add_shift_platform_commission_migration.sql).
                 // Until that migration has been run the server rejects them as unknown,
                 // so retry without rather than leave the shift stuck unsynced.
-                const extras: Record<string, unknown> = local.netAfterFees !== undefined
+                const extras: Record<string, unknown> = local.netAfterCommission !== undefined
                     ? {
                         foodpanda_sales: local.foodpandaSales ?? 0,
                         grab_sales: local.grabSales ?? 0,
-                        foodpanda_fee_pct: local.foodpandaFeePct ?? 0,
-                        grab_fee_pct: local.grabFeePct ?? 0,
-                        foodpanda_fee: local.foodpandaFee ?? 0,
-                        grab_fee: local.grabFee ?? 0,
-                        net_after_fees: local.netAfterFees,
+                        foodpanda_commission_pct: local.foodpandaCommissionPct ?? 0,
+                        grab_commission_pct: local.grabCommissionPct ?? 0,
+                        foodpanda_commission: local.foodpandaCommission ?? 0,
+                        grab_commission: local.grabCommission ?? 0,
+                        net_after_commission: local.netAfterCommission,
                     }
                     : {}
                 const upsert = (payload: Record<string, unknown>) => supabase
