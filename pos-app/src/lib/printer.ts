@@ -126,17 +126,18 @@ async function buildLogoBytes(imageUrl: string, targetWidth = 256): Promise<Uint
 
 // ── Core Bluetooth sender ───────────────────────────────────────────────────
 
-async function sendToPrinter(text: string, label: string): Promise<void> {
+/** Resolves true when the job reached the printer, false otherwise (the failure is already toasted). */
+async function sendToPrinter(text: string, label: string): Promise<boolean> {
     const isNative = !!(window as any).Capacitor?.isNativePlatform?.()
     if (!isNative) {
         toast.error('Bluetooth printing only works in the tablet app.')
-        return
+        return false
     }
 
     const address = localStorage.getItem(BT_PRINTER_KEY)
     if (!address) {
         toast.error('No printer selected. Set one via the 🔵 icon in the receipt screen.')
-        return
+        return false
     }
 
     const printingToast = toast.loading(`Printing ${label}…`)
@@ -145,8 +146,10 @@ async function sendToPrinter(text: string, label: string): Promise<void> {
         const base64Data = uint8ToBase64(textBytes)
         await NativePrinter.printBase64({ address, data: base64Data })
         toast.success(`${label} printed!`, { id: printingToast })
+        return true
     } catch (err: any) {
         toast.error(`Print failed: ${err?.message ?? 'Check Bluetooth connection'}`, { id: printingToast })
+        return false
     }
 }
 
@@ -391,7 +394,11 @@ export async function printKitchenTicket(
 
 const money = (n: number | null | undefined) => `P${(n ?? 0).toFixed(2)}`
 
-export function buildShiftReportText(shift: ShiftSummary, branchName: string): string {
+export function buildShiftReportText(
+    shift: ShiftSummary,
+    branchName: string,
+    opts: { reprint?: boolean } = {},
+): string {
     const dateStr = (iso: string) => {
         const d = new Date(iso)
         return `${d.toLocaleDateString('en-PH', { month: 'numeric', day: 'numeric', year: '2-digit' })} ${d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })}`
@@ -403,9 +410,31 @@ export function buildShiftReportText(shift: ShiftSummary, branchName: string): s
         ? [leftRight('Other (Delivery)', money(shift.otherSales))]
         : []
 
+    // How the drawer was counted, note by note — only when the cashier used the
+    // denomination counter. 'other' is loose change entered as an amount.
+    const counted = Object.entries(shift.denominations ?? {}).filter(([, n]) => n > 0)
+    const countLines = counted.length > 0
+        ? [
+            divider,
+            center('Cash count'),
+            ...counted
+                .filter(([k]) => k !== 'other')
+                .sort((a, b) => Number(b[0]) - Number(a[0]))
+                .map(([k, n]) => leftRight(`P${k} x ${n}`, money(Number(k) * n))),
+            ...counted
+                .filter(([k]) => k === 'other')
+                .map(([, n]) => leftRight('Loose change', money(n))),
+        ]
+        : []
+
+    const noteLines = shift.differenceNote
+        ? [divider, 'Difference note:', ...wordWrap(shift.differenceNote, W, '  ')]
+        : []
+
     return [
         center(branchName),
         center('Shift Report'),
+        ...(opts.reprint ? [center('*** REPRINT ***')] : []),
         divider,
         `Shift number: ${shift.shiftNumber}`,
         `POS: ${branchName}`,
@@ -426,6 +455,8 @@ export function buildShiftReportText(shift: ShiftSummary, branchName: string): s
         leftRight('Expected cash', money(shift.expectedCash)),
         leftRight('Actual cash', money(shift.actualCash)),
         leftRight('Difference', money(shift.cashDifference)),
+        ...countLines,
+        ...noteLines,
         divider,
         center('Sales summary'),
         divider,
@@ -444,6 +475,14 @@ export function buildShiftReportText(shift: ShiftSummary, branchName: string): s
     ].join('\n')
 }
 
-export async function printShiftReport(shift: ShiftSummary, branchName: string): Promise<void> {
-    await sendToPrinter(buildShiftReportText(shift, branchName), 'Shift report')
+/** Resolves true when the report reached the printer, false when it didn't (already toasted). */
+export async function printShiftReport(
+    shift: ShiftSummary,
+    branchName: string,
+    opts: { reprint?: boolean } = {},
+): Promise<boolean> {
+    return sendToPrinter(
+        buildShiftReportText(shift, branchName, opts),
+        opts.reprint ? 'Shift report (reprint)' : 'Shift report',
+    )
 }

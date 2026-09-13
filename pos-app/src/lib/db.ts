@@ -154,6 +154,15 @@ export interface LocalShift {
     splitSales?: number
     paidIn: number
     paidOut: number
+    // Receipt-only figures, kept from the close so a reprint is exact rather
+    // than recomputed from whatever sales are still on the tablet.
+    otherSales?: number
+    cashPayments?: number
+    cashRefunds?: number
+    /** Notes and coins counted at close: { "1000": 3, "500": 2, ..., "other": 12.5 } */
+    denominations?: Record<string, number>
+    /** Cashier's reason when the drawer didn't match expected; printed on the report. */
+    differenceNote?: string
     syncStatus: 'pending' | 'synced' | 'failed'
     supabaseId?: string       // filled after successful sync
 }

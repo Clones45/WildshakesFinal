@@ -10,12 +10,20 @@ export interface ShiftSummary extends LocalShift {
     cashRefunds: number   // cash given back on voided sales this shift — receipt-only
 }
 
+/** What the cashier adds at close besides the counted total. */
+export interface ShiftCloseExtras {
+    /** Required by the UI when the drawer didn't match; printed on the report. */
+    differenceNote?: string
+    /** Note-by-note count, when the denomination counter was used. */
+    denominations?: Record<string, number>
+}
+
 interface ShiftState {
     currentShift: LocalShift | null
     isEnding: boolean
     ensureShiftOpen: (user: UserProfile, branch: Branch) => Promise<void>
     previewSummary: (actualCash: number) => Promise<ShiftSummary | null>
-    endShift: (actualCash: number) => Promise<ShiftSummary | null>
+    endShift: (actualCash: number, extras?: ShiftCloseExtras) => Promise<ShiftSummary | null>
     syncPendingShifts: () => Promise<void>
 }
 
@@ -93,6 +101,23 @@ async function computeSummary(shift: LocalShift, actualCash: number, closedAt: s
     }
 }
 
+// The figures a reprint should carry. Shifts closed since the receipt-only
+// numbers started being stored are returned as-is; older ones are rebuilt from
+// this tablet's sales, which is the best available (and how they were first printed).
+export async function summaryForReprint(shift: LocalShift): Promise<ShiftSummary> {
+    if (shift.otherSales !== undefined && shift.cashPayments !== undefined && shift.cashRefunds !== undefined) {
+        return shift as ShiftSummary
+    }
+    const rebuilt = await computeSummary(shift, shift.actualCash ?? 0, shift.closedAt ?? new Date().toISOString())
+    return {
+        ...rebuilt,
+        ...shift,   // the stored close wins for everything it has
+        otherSales: rebuilt.otherSales,
+        cashPayments: rebuilt.cashPayments,
+        cashRefunds: rebuilt.cashRefunds,
+    }
+}
+
 export const useShiftStore = create<ShiftState>()((set, get) => ({
     currentShift: null,
     isEnding: false,
@@ -116,10 +141,7 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
         for (const dangling of openShifts) {
             const closedAt = new Date().toISOString()
             const summary = await computeSummary(dangling, 0, closedAt)
-            const { otherSales, cashPayments, cashRefunds, ...toStore } = summary
-            toStore.actualCash = toStore.expectedCash
-            toStore.cashDifference = 0
-            await db.shifts.update(dangling.localRef, toStore)
+            await db.shifts.put({ ...summary, actualCash: summary.expectedCash, cashDifference: 0 })
         }
         if (openShifts.length > 0) get().syncPendingShifts()
 
@@ -165,16 +187,20 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
         return computeSummary(shift, actualCash, new Date().toISOString())
     },
 
-    endShift: async (actualCash) => {
+    endShift: async (actualCash, extras = {}) => {
         const shift = get().currentShift
         if (!shift) return null
 
         set({ isEnding: true })
         try {
-            const summary = await computeSummary(shift, actualCash, new Date().toISOString())
-            const { otherSales, cashPayments, cashRefunds, ...toStore } = summary
+            const summary: ShiftSummary = {
+                ...(await computeSummary(shift, actualCash, new Date().toISOString())),
+                differenceNote: extras.differenceNote?.trim() || undefined,
+                denominations: extras.denominations,
+            }
 
-            await db.shifts.update(shift.localRef, toStore)
+            // Stored whole, receipt-only figures included, so a reprint is exact.
+            await db.shifts.put(summary)
             set({ currentShift: null, isEnding: false })
             get().syncPendingShifts()
 
@@ -190,41 +216,51 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
         const pending = await db.shifts.where('syncStatus').anyOf(['pending', 'failed']).toArray()
         for (const local of pending) {
             try {
-                const { data, error } = await supabase
+                const row = {
+                    branch_id: local.branchId,
+                    cashier_id: local.cashierId,
+                    cashier_name: local.cashierName,
+                    cashier_role: local.cashierRole,
+                    shift_number: local.shiftNumber,
+                    local_ref: local.localRef,
+                    status: local.status,
+                    opened_at: local.openedAt,
+                    closed_at: local.closedAt ?? null,
+                    starting_cash: local.startingCash,
+                    expected_cash: local.expectedCash ?? null,
+                    actual_cash: local.actualCash ?? null,
+                    cash_difference: local.cashDifference ?? null,
+                    gross_sales: local.grossSales ?? null,
+                    discounts: local.discounts ?? null,
+                    refunds: local.refunds ?? null,
+                    net_sales: local.netSales ?? null,
+                    cash_sales: local.cashSales ?? null,
+                    gcash_sales: local.gcashSales ?? null,
+                    maya_sales: local.mayaSales ?? null,
+                    bank_transfer_sales: local.bankTransferSales ?? null,
+                    split_sales: local.splitSales ?? null,
+                    paid_in: local.paidIn,
+                    paid_out: local.paidOut,
+                }
+                const upsert = (payload: Record<string, unknown>) => supabase
                     .from('shifts')
-                    .upsert(
-                        {
-                            branch_id: local.branchId,
-                            cashier_id: local.cashierId,
-                            cashier_name: local.cashierName,
-                            cashier_role: local.cashierRole,
-                            shift_number: local.shiftNumber,
-                            local_ref: local.localRef,
-                            status: local.status,
-                            opened_at: local.openedAt,
-                            closed_at: local.closedAt ?? null,
-                            starting_cash: local.startingCash,
-                            expected_cash: local.expectedCash ?? null,
-                            actual_cash: local.actualCash ?? null,
-                            cash_difference: local.cashDifference ?? null,
-                            gross_sales: local.grossSales ?? null,
-                            discounts: local.discounts ?? null,
-                            refunds: local.refunds ?? null,
-                            net_sales: local.netSales ?? null,
-                            cash_sales: local.cashSales ?? null,
-                            gcash_sales: local.gcashSales ?? null,
-                            maya_sales: local.mayaSales ?? null,
-                            bank_transfer_sales: local.bankTransferSales ?? null,
-                            split_sales: local.splitSales ?? null,
-                            paid_in: local.paidIn,
-                            paid_out: local.paidOut,
-                        },
-                        { onConflict: 'local_ref', ignoreDuplicates: false }
-                    )
+                    .upsert(payload, { onConflict: 'local_ref', ignoreDuplicates: false })
                     .select('id')
                     .single()
 
+                // The difference note has its own column (see
+                // add_shift_difference_note_migration.sql). Until that migration
+                // has been run the server rejects the unknown column, so retry
+                // without it rather than leave the shift stuck unsynced.
+                let { data, error } = local.differenceNote
+                    ? await upsert({ ...row, difference_note: local.differenceNote })
+                    : await upsert(row)
+                if (error && local.differenceNote && /difference_note/i.test(error.message ?? '')) {
+                    ({ data, error } = await upsert(row))
+                }
+
                 if (error) throw error
+                if (!data) throw new Error('Shift sync returned no row')
                 await db.shifts.update(local.localRef, { syncStatus: 'synced', supabaseId: data.id })
             } catch {
                 await db.shifts.update(local.localRef, { syncStatus: 'failed' })

@@ -13,6 +13,7 @@ import { toast } from 'react-hot-toast'
 import { printReceipt } from '../lib/printer'
 import { db, type LocalTransaction, type LocalTransactionItem } from '../lib/db'
 import { DatePicker } from './DatePicker'
+import { ShiftReportsPanel } from './ShiftReportsPanel'
 
 interface TransactionsViewProps {
     isOpen: boolean
@@ -181,6 +182,8 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
     const [month, setMonth] = useState<string>(today.slice(0, 7))   // yyyy-mm
     const [selectedDay, setSelectedDay] = useState<string>('')       // '' = whole month, else yyyy-mm-dd
     const [localOnly, setLocalOnly] = useState(false)
+    // Sales list, or the closed shift reports (for reprinting) — same manager gate.
+    const [mode, setMode] = useState<'sales' | 'shifts'>('sales')
     // A whole month at a busy branch is well over a thousand sales; render them in
     // batches so the panel stays quick to open, with totals still over every row.
     const [visibleCount, setVisibleCount] = useState(200)
@@ -445,6 +448,27 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                             </div>
                         </div>
 
+                        {/* Sales, or shift reports for reprinting */}
+                        <div className="px-4 pt-3 flex gap-1.5 flex-shrink-0">
+                            {(['sales', 'shifts'] as const).map((m) => (
+                                <button
+                                    key={m}
+                                    onClick={() => setMode(m)}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${mode === m
+                                        ? 'bg-brand-500 border-brand-500 text-white'
+                                        : 'border-surface-500 text-gray-400 hover:border-surface-400'
+                                        }`}
+                                >
+                                    {m === 'sales' ? 'Sales' : 'Shift reports'}
+                                </button>
+                            ))}
+                        </div>
+
+                        {mode === 'shifts' && branch && (
+                            <ShiftReportsPanel branchId={branch.id} branchName={branch.name} />
+                        )}
+
+                        {mode === 'sales' && (<>
                         {/* Summary bar */}
                         <div className="px-5 py-3 border-b border-surface-700 flex gap-4 bg-surface-900/40 flex-shrink-0">
                             <div>
@@ -693,6 +717,7 @@ export function TransactionsView({ isOpen, onClose }: TransactionsViewProps) {
                                 </>
                             )}
                         </div>
+                        </>)}
                     </motion.div>
                 </>
             )}
