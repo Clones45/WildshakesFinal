@@ -5,30 +5,51 @@ import { supabase } from '../lib/supabase'
 import type { UserProfile, Branch } from '../lib/supabase'
 
 export interface ShiftSummary extends LocalShift {
-    otherSales: number    // delivery ('other') sales — receipt-only, not synced
+    otherSales: number    // delivery (FoodPanda + Grab) sales — receipt-only
     cashPayments: number  // gross cash taken in this shift, before voids — receipt-only
     cashRefunds: number   // cash given back on voided sales this shift — receipt-only
 }
 
+/** The percentage each delivery platform keeps of its gross, entered at close. */
+export interface ShiftFees {
+    foodpandaFeePct: number
+    grabFeePct: number
+}
+
 // How long a shift that failed to sync waits before the next attempt.
 const SHIFT_RETRY_AFTER_MS = 5 * 60 * 1000
+const DEFAULT_STARTING_CASH = 3000
+const LAST_STARTING_CASH_KEY = 'ws_last_starting_cash'
+const LAST_FEES_KEY = 'ws_last_delivery_fees'
 
-/** What the cashier adds at close besides the counted total. */
-export interface ShiftCloseExtras {
-    /** Required by the UI when the drawer didn't match; printed on the report. */
-    differenceNote?: string
-    /** Note-by-note count, when the denomination counter was used. */
-    denominations?: Record<string, number>
+// The tablet remembers what was entered last time, so the usual case is one tap.
+export function rememberedStartingCash(): number {
+    const v = Number(localStorage.getItem(LAST_STARTING_CASH_KEY))
+    return Number.isFinite(v) && v > 0 ? v : DEFAULT_STARTING_CASH
+}
+
+export function rememberedFees(): ShiftFees {
+    try {
+        const v = JSON.parse(localStorage.getItem(LAST_FEES_KEY) ?? '')
+        return { foodpandaFeePct: Number(v.foodpandaFeePct) || 0, grabFeePct: Number(v.grabFeePct) || 0 }
+    } catch {
+        return { foodpandaFeePct: 0, grabFeePct: 0 }
+    }
 }
 
 interface ShiftState {
     currentShift: LocalShift | null
+    /** This cashier has no open shift; they must enter the starting cash to begin one. */
+    awaitingStart: boolean
     isEnding: boolean
     ensureShiftOpen: (user: UserProfile, branch: Branch) => Promise<void>
-    previewSummary: (actualCash: number) => Promise<ShiftSummary | null>
-    endShift: (actualCash: number, extras?: ShiftCloseExtras) => Promise<ShiftSummary | null>
+    startShift: (user: UserProfile, branch: Branch, startingCash: number) => Promise<void>
+    previewSummary: (fees: ShiftFees) => Promise<ShiftSummary | null>
+    endShift: (fees: ShiftFees) => Promise<ShiftSummary | null>
     syncPendingShifts: () => Promise<void>
 }
+
+const round2 = (n: number) => Math.round(n * 100) / 100
 
 // ── Bucket a set of transactions' payment amounts by method, decomposing ────
 // split payments into their component methods so cash/gcash/etc always
@@ -50,7 +71,17 @@ function bucketByMethod(transactions: LocalTransaction[]): Record<string, number
 // Pure computation shared by the live preview (modal, before confirming) and
 // the final close (which persists the result) — kept in one place so the
 // numbers a cashier sees are guaranteed to match what gets printed.
-async function computeSummary(shift: LocalShift, actualCash: number, closedAt: string): Promise<ShiftSummary> {
+//
+// Cash is not counted at close: the drawer is taken as expected (starting cash
+// entered at the start of the shift, plus cash taken, minus cash refunded).
+// `countedCash` exists only so shifts closed under the old counted flow keep
+// their recorded figure on a reprint.
+async function computeSummary(
+    shift: LocalShift,
+    closedAt: string,
+    fees?: ShiftFees,
+    countedCash?: number,
+): Promise<ShiftSummary> {
     const shiftTx = await db.transactions
         .where('branchId').equals(shift.branchId)
         .filter(tx =>
@@ -75,11 +106,23 @@ async function computeSummary(shift: LocalShift, actualCash: number, closedAt: s
     const cashPayments = completedBuckets.cash + voidedBuckets.cash
     const cashRefunds = voidedBuckets.cash
     const expectedCash = shift.startingCash + cashPayments - cashRefunds + shift.paidIn - shift.paidOut
+    const actualCash = countedCash ?? expectedCash
     const cashDifference = actualCash - expectedCash
 
     const splitSales = completed
         .filter(tx => tx.paymentMethod === 'split')
         .reduce((s, tx) => s + tx.totalAmount, 0)
+
+    // Delivery: what each platform sold (at the platform's prices) and what it keeps.
+    const platformSales = (p: 'foodpanda' | 'grab') =>
+        completed.filter(tx => tx.deliveryPlatform === p).reduce((s, tx) => s + tx.totalAmount, 0)
+    const foodpandaSales = platformSales('foodpanda')
+    const grabSales = platformSales('grab')
+    const foodpandaFeePct = fees?.foodpandaFeePct ?? 0
+    const grabFeePct = fees?.grabFeePct ?? 0
+    const foodpandaFee = round2(foodpandaSales * foodpandaFeePct / 100)
+    const grabFee = round2(grabSales * grabFeePct / 100)
+    const netAfterFees = round2(netSales - foodpandaFee - grabFee)
 
     return {
         ...shift,
@@ -97,8 +140,15 @@ async function computeSummary(shift: LocalShift, actualCash: number, closedAt: s
         mayaSales: completedBuckets.maya,
         bankTransferSales: completedBuckets.bank_transfer,
         splitSales,
+        foodpandaSales,
+        grabSales,
+        foodpandaFeePct,
+        grabFeePct,
+        foodpandaFee,
+        grabFee,
+        netAfterFees,
         syncStatus: 'pending',
-        otherSales: completedBuckets.other,
+        otherSales: foodpandaSales + grabSales,
         cashPayments,
         cashRefunds,
     }
@@ -111,7 +161,12 @@ export async function summaryForReprint(shift: LocalShift): Promise<ShiftSummary
     if (shift.otherSales !== undefined && shift.cashPayments !== undefined && shift.cashRefunds !== undefined) {
         return shift as ShiftSummary
     }
-    const rebuilt = await computeSummary(shift, shift.actualCash ?? 0, shift.closedAt ?? new Date().toISOString())
+    const rebuilt = await computeSummary(
+        shift,
+        shift.closedAt ?? new Date().toISOString(),
+        { foodpandaFeePct: shift.foodpandaFeePct ?? 0, grabFeePct: shift.grabFeePct ?? 0 },
+        shift.actualCash,
+    )
     return {
         ...rebuilt,
         ...shift,   // the stored close wins for everything it has
@@ -123,6 +178,7 @@ export async function summaryForReprint(shift: LocalShift): Promise<ShiftSummary
 
 export const useShiftStore = create<ShiftState>()((set, get) => ({
     currentShift: null,
+    awaitingStart: false,
     isEnding: false,
 
     ensureShiftOpen: async (user, branch) => {
@@ -133,21 +189,26 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
 
         const existing = openShifts.find(s => s.cashierId === user.id)
         if (existing) {
-            set({ currentShift: existing })
+            set({ currentShift: existing, awaitingStart: false })
             return
         }
 
         // A previous cashier logged out without tapping "End Shift", leaving their
-        // shift dangling open. Auto-close it (actual cash = expected, since nobody
-        // counted the drawer) so its time window can't overlap the new shift and
+        // shift dangling open. Auto-close it (cash taken as expected, since nobody
+        // was there) so its time window can't overlap the new shift and
         // double-count sales when it's eventually reported.
         for (const dangling of openShifts) {
-            const closedAt = new Date().toISOString()
-            const summary = await computeSummary(dangling, 0, closedAt)
-            await db.shifts.put({ ...summary, actualCash: summary.expectedCash, cashDifference: 0 })
+            const summary = await computeSummary(dangling, new Date().toISOString())
+            await db.shifts.put(summary)
         }
         if (openShifts.length > 0) get().syncPendingShifts()
 
+        // No shift yet: the cashier enters the starting cash first (StartShiftModal
+        // calls startShift). Nothing opens until they do.
+        set({ currentShift: null, awaitingStart: true })
+    },
+
+    startShift: async (user, branch, startingCash) => {
         // Best-effort: keep shift numbers trending upward even across a device swap.
         let nextNumber = (await db.shifts.where('branchId').equals(branch.id).count()) + 1
         if (navigator.onLine) {
@@ -173,37 +234,35 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
             shiftNumber: nextNumber,
             status: 'open',
             openedAt: new Date().toISOString(),
-            startingCash: 3000,
+            startingCash,
             paidIn: 0,
             paidOut: 0,
             syncStatus: 'pending',
         }
 
         await db.shifts.add(shift)
-        set({ currentShift: shift })
+        localStorage.setItem(LAST_STARTING_CASH_KEY, String(startingCash))
+        set({ currentShift: shift, awaitingStart: false })
         get().syncPendingShifts()
     },
 
-    previewSummary: async (actualCash) => {
+    previewSummary: async (fees) => {
         const shift = get().currentShift
         if (!shift) return null
-        return computeSummary(shift, actualCash, new Date().toISOString())
+        return computeSummary(shift, new Date().toISOString(), fees)
     },
 
-    endShift: async (actualCash, extras = {}) => {
+    endShift: async (fees) => {
         const shift = get().currentShift
         if (!shift) return null
 
         set({ isEnding: true })
         try {
-            const summary: ShiftSummary = {
-                ...(await computeSummary(shift, actualCash, new Date().toISOString())),
-                differenceNote: extras.differenceNote?.trim() || undefined,
-                denominations: extras.denominations,
-            }
+            const summary = await computeSummary(shift, new Date().toISOString(), fees)
 
             // Stored whole, receipt-only figures included, so a reprint is exact.
             await db.shifts.put(summary)
+            localStorage.setItem(LAST_FEES_KEY, JSON.stringify(fees))
             set({ currentShift: null, isEnding: false })
             get().syncPendingShifts()
 
@@ -254,20 +313,29 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
                     paid_in: local.paidIn,
                     paid_out: local.paidOut,
                 }
+                // Delivery columns are newer (see add_shift_delivery_fees_migration.sql).
+                // Until that migration has been run the server rejects them as unknown,
+                // so retry without rather than leave the shift stuck unsynced.
+                const extras: Record<string, unknown> = local.netAfterFees !== undefined
+                    ? {
+                        foodpanda_sales: local.foodpandaSales ?? 0,
+                        grab_sales: local.grabSales ?? 0,
+                        foodpanda_fee_pct: local.foodpandaFeePct ?? 0,
+                        grab_fee_pct: local.grabFeePct ?? 0,
+                        foodpanda_fee: local.foodpandaFee ?? 0,
+                        grab_fee: local.grabFee ?? 0,
+                        net_after_fees: local.netAfterFees,
+                    }
+                    : {}
                 const upsert = (payload: Record<string, unknown>) => supabase
                     .from('shifts')
                     .upsert(payload, { onConflict: 'local_ref', ignoreDuplicates: false })
                     .select('id')
                     .single()
 
-                // The difference note has its own column (see
-                // add_shift_difference_note_migration.sql). Until that migration
-                // has been run the server rejects the unknown column, so retry
-                // without it rather than leave the shift stuck unsynced.
-                let { data, error } = local.differenceNote
-                    ? await upsert({ ...row, difference_note: local.differenceNote })
-                    : await upsert(row)
-                if (error && local.differenceNote && /difference_note/i.test(error.message ?? '')) {
+                let { data, error } = await upsert({ ...row, ...extras })
+                const unknownColumn = error && (error.code === 'PGRST204' || /column/i.test(error.message ?? ''))
+                if (unknownColumn && Object.keys(extras).length > 0) {
                     ({ data, error } = await upsert(row))
                 }
 

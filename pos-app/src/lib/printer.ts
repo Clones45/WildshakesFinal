@@ -410,25 +410,37 @@ export function buildShiftReportText(
         ? [leftRight('Other (Delivery)', money(shift.otherSales))]
         : []
 
-    // How the drawer was counted, note by note — only when the cashier used the
-    // denomination counter. 'other' is loose change entered as an amount.
-    const counted = Object.entries(shift.denominations ?? {}).filter(([, n]) => n > 0)
-    const countLines = counted.length > 0
+    // Cash is computed, not counted: the start-of-shift float replaced the
+    // end-of-shift count. Only a shift closed under the old counted flow can
+    // carry a difference, so those two lines print only when there is one.
+    const countedLines = shift.cashDifference !== undefined && Math.abs(shift.cashDifference) >= 0.01
         ? [
-            divider,
-            center('Cash count'),
-            ...counted
-                .filter(([k]) => k !== 'other')
-                .sort((a, b) => Number(b[0]) - Number(a[0]))
-                .map(([k, n]) => leftRight(`P${k} x ${n}`, money(Number(k) * n))),
-            ...counted
-                .filter(([k]) => k === 'other')
-                .map(([, n]) => leftRight('Loose change', money(n))),
+            leftRight('Actual cash', money(shift.actualCash)),
+            leftRight('Difference', money(shift.cashDifference)),
         ]
         : []
 
-    const noteLines = shift.differenceNote
-        ? [divider, 'Difference note:', ...wordWrap(shift.differenceNote, W, '  ')]
+    // Delivery platforms keep a percentage of their gross; the cashier enters it at close.
+    const pct = (n: number | undefined) => {
+        const v = n ?? 0
+        return `${Number.isInteger(v) ? v : v.toFixed(1)}%`
+    }
+    const hasDelivery = (shift.foodpandaSales ?? 0) > 0 || (shift.grabSales ?? 0) > 0
+    const deliveryLines = hasDelivery
+        ? [
+            divider,
+            center('Delivery'),
+            divider,
+            leftRight('FoodPanda sales', money(shift.foodpandaSales)),
+            leftRight(`FoodPanda fee (${pct(shift.foodpandaFeePct)})`, '-' + money(shift.foodpandaFee)),
+            leftRight('FoodPanda net', money((shift.foodpandaSales ?? 0) - (shift.foodpandaFee ?? 0))),
+            leftRight('Grab sales', money(shift.grabSales)),
+            leftRight(`Grab fee (${pct(shift.grabFeePct)})`, '-' + money(shift.grabFee)),
+            leftRight('Grab net', money((shift.grabSales ?? 0) - (shift.grabFee ?? 0))),
+        ]
+        : []
+    const netAfterFeesLines = shift.netAfterFees !== undefined
+        ? [divider, leftRight('Net after delivery fees', money(shift.netAfterFees))]
         : []
 
     return [
@@ -452,11 +464,8 @@ export function buildShiftReportText(
         leftRight('Paid in', money(shift.paidIn)),
         leftRight('Paid out', money(shift.paidOut)),
         divider,
-        leftRight('Expected cash', money(shift.expectedCash)),
-        leftRight('Actual cash', money(shift.actualCash)),
-        leftRight('Difference', money(shift.cashDifference)),
-        ...countLines,
-        ...noteLines,
+        leftRight('Cash in drawer', money(shift.expectedCash)),
+        ...countedLines,
         divider,
         center('Sales summary'),
         divider,
@@ -469,6 +478,8 @@ export function buildShiftReportText(
         leftRight('Maya', money(shift.mayaSales)),
         leftRight('Bank transfer', money(shift.bankTransferSales)),
         ...otherLine,
+        ...deliveryLines,
+        ...netAfterFeesLines,
         divider,
         center('*** END OF SHIFT REPORT ***'),
         '\n\n\n',

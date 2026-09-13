@@ -23,6 +23,7 @@ import { StockControlModal } from '../components/StockControlModal'
 import { TransactionsViewGated } from '../components/TransactionsView'
 import { DeliveryPlatformModal } from '../components/DeliveryPlatformModal'
 import { EndShiftModal } from '../components/EndShiftModal'
+import { StartShiftModal } from '../components/StartShiftModal'
 import { LogOut, Clock, ReceiptText, Lock, Package, ClipboardCheck } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
@@ -539,6 +540,9 @@ export function POSScreen() {
                 isOpen={showTransactions}
                 onClose={() => setShowTransactions(false)}
             />
+
+            {/* Start Shift — asks for the drawer's cash when this cashier has no open shift */}
+            <StartShiftModal />
 
             {/* End Shift */}
             <EndShiftModal

@@ -80,8 +80,7 @@ export function ShiftReportsPanel({ branchId, branchName }: ShiftReportsPanelPro
     return (
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
             {shifts.map((s) => {
-                const diff = s.cashDifference ?? 0
-                const diffClass = Math.abs(diff) < 0.01 ? 'text-teal-400' : diff > 0 ? 'text-amber-400' : 'text-red-400'
+                const fees = (s.foodpandaFee ?? 0) + (s.grabFee ?? 0)
                 const isOpen = openPreview === s.localRef
                 return (
                     <div key={s.localRef} className="rounded-2xl border border-surface-600 bg-surface-700 p-4 space-y-3">
@@ -102,24 +101,18 @@ export function ShiftReportsPanel({ branchId, branchName }: ShiftReportsPanelPro
 
                         <div className="grid grid-cols-3 gap-2 text-center">
                             <div className="rounded-xl bg-surface-800 py-2">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Expected</p>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Cash in drawer</p>
                                 <p className="text-white text-sm font-bold">{money(s.expectedCash)}</p>
                             </div>
                             <div className="rounded-xl bg-surface-800 py-2">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Counted</p>
-                                <p className="text-white text-sm font-bold">{money(s.actualCash)}</p>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Net sales</p>
+                                <p className="text-white text-sm font-bold">{money(s.netSales)}</p>
                             </div>
                             <div className="rounded-xl bg-surface-800 py-2">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Difference</p>
-                                <p className={`text-sm font-bold ${diffClass}`}>{diff >= 0 ? '+' : ''}{money(diff)}</p>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Delivery fees</p>
+                                <p className={`text-sm font-bold ${fees > 0 ? 'text-red-300' : 'text-gray-400'}`}>{fees > 0 ? '-' : ''}{money(fees)}</p>
                             </div>
                         </div>
-
-                        {s.differenceNote && (
-                            <p className="text-xs text-gray-300 italic px-2 py-1.5 bg-surface-800 rounded-lg border border-surface-600">
-                                Note: {s.differenceNote}
-                            </p>
-                        )}
 
                         {isOpen && previewText[s.localRef] && (
                             <pre className="text-[11px] leading-snug text-gray-200 bg-surface-900 rounded-xl p-3 overflow-x-auto font-mono whitespace-pre">

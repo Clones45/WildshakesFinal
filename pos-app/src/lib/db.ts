@@ -159,10 +159,15 @@ export interface LocalShift {
     otherSales?: number
     cashPayments?: number
     cashRefunds?: number
-    /** Notes and coins counted at close: { "1000": 3, "500": 2, ..., "other": 12.5 } */
-    denominations?: Record<string, number>
-    /** Cashier's reason when the drawer didn't match expected; printed on the report. */
-    differenceNote?: string
+    // Delivery platforms keep a percentage of their gross. The cashier enters
+    // each platform's percentage at close; the fee and the net after fees are kept.
+    foodpandaSales?: number
+    grabSales?: number
+    foodpandaFeePct?: number
+    grabFeePct?: number
+    foodpandaFee?: number
+    grabFee?: number
+    netAfterFees?: number
     syncStatus: 'pending' | 'synced' | 'failed'
     /** When the last sync attempt failed — failed shifts get a breather before the next try. */
     lastSyncAttempt?: string
