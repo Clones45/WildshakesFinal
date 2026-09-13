@@ -164,6 +164,8 @@ export interface LocalShift {
     /** Cashier's reason when the drawer didn't match expected; printed on the report. */
     differenceNote?: string
     syncStatus: 'pending' | 'synced' | 'failed'
+    /** When the last sync attempt failed — failed shifts get a breather before the next try. */
+    lastSyncAttempt?: string
     supabaseId?: string       // filled after successful sync
 }
 

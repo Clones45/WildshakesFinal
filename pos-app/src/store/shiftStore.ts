@@ -10,6 +10,9 @@ export interface ShiftSummary extends LocalShift {
     cashRefunds: number   // cash given back on voided sales this shift — receipt-only
 }
 
+// How long a shift that failed to sync waits before the next attempt.
+const SHIFT_RETRY_AFTER_MS = 5 * 60 * 1000
+
 /** What the cashier adds at close besides the counted total. */
 export interface ShiftCloseExtras {
     /** Required by the UI when the drawer didn't match; printed on the report. */
@@ -214,7 +217,16 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
     syncPendingShifts: async () => {
         if (!navigator.onLine) return
         const pending = await db.shifts.where('syncStatus').anyOf(['pending', 'failed']).toArray()
+        const now = Date.now()
         for (const local of pending) {
+            // A shift whose sync just failed gets a breather instead of a retry on
+            // every 30-second cycle. The usual cause is server-side (a policy that
+            // refuses the write), which hammering never fixes — it only fills the
+            // logs; see add_shifts_update_policy_migration.sql for the one it did.
+            if (
+                local.syncStatus === 'failed' && local.lastSyncAttempt &&
+                now - new Date(local.lastSyncAttempt).getTime() < SHIFT_RETRY_AFTER_MS
+            ) continue
             try {
                 const row = {
                     branch_id: local.branchId,
@@ -262,8 +274,9 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
                 if (error) throw error
                 if (!data) throw new Error('Shift sync returned no row')
                 await db.shifts.update(local.localRef, { syncStatus: 'synced', supabaseId: data.id })
-            } catch {
-                await db.shifts.update(local.localRef, { syncStatus: 'failed' })
+            } catch (err) {
+                console.warn(`[shifts] Shift #${local.shiftNumber} did not sync:`, (err as { message?: string })?.message ?? err)
+                await db.shifts.update(local.localRef, { syncStatus: 'failed', lastSyncAttempt: new Date().toISOString() })
             }
         }
     },
