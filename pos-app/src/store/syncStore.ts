@@ -123,8 +123,17 @@ async function pushTransaction(local: LocalTransaction) {
         return
     }
 
-    // ── Path B: brand-new transaction — upsert + insert items ───────────────
-    const { data: txData, error: txError } = await supabase
+    // ── Path B: brand-new transaction — insert (or nothing) + insert items ──
+    //
+    // "Insert, or do nothing if this local_ref is already on the server" — never
+    // an UPDATE. The transactions policy lets the POS insert a sale and void one,
+    // but refuses any update that leaves a sale 'completed' (42501). The old
+    // "or update" form meant a retry of a sale the server already had (the reply
+    // never reached the tablet, or a later step below failed) hit that refusal
+    // on every cycle and could never recover — one Gensan sale from 3 Sep sat
+    // half-synced, with no line items, for ten days. With DO NOTHING the retry
+    // is accepted, the id is looked up by local_ref, and the rest completes.
+    const { data: inserted, error: txError } = await supabase
         .from('transactions')
         .upsert(
             {
@@ -148,13 +157,34 @@ async function pushTransaction(local: LocalTransaction) {
                 voided_by: local.voidedBy ?? null,
                 created_at: local.createdAt,
             },
-            { onConflict: 'local_ref', ignoreDuplicates: false }
+            { onConflict: 'local_ref', ignoreDuplicates: true }
         )
         .select('id')
-        .single()
 
     if (txError) throw txError
-    const transactionId = txData.id
+    let transactionId: string | undefined = inserted?.[0]?.id
+
+    if (!transactionId) {
+        // Already there from an earlier attempt: pick up its id and carry on.
+        const { data: existing, error: findError } = await supabase
+            .from('transactions')
+            .select('id, status')
+            .eq('local_ref', local.localRef)
+            .maybeSingle()
+        if (findError) throw findError
+        if (!existing) throw new Error('Sale was neither inserted nor found by local_ref')
+        transactionId = existing.id as string
+
+        // If it was voided on the tablet while stuck, the server still says
+        // 'completed' — apply the void through the update the policy does allow.
+        if (local.status === 'voided' && existing.status !== 'voided') {
+            const { error: voidError } = await supabase
+                .from('transactions')
+                .update({ status: 'voided', void_reason: local.voidReason ?? null, voided_by: local.voidedBy ?? null })
+                .eq('id', transactionId)
+            if (voidError) throw voidError
+        }
+    }
 
     // A retry must not re-insert the lines. The upsert above matches on local_ref and
     // hands back the same transaction, so inserting again would duplicate every line and
