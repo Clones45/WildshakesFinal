@@ -6,10 +6,14 @@ import { fetchAll } from '@/lib/supabase/fetchAll'
 async function getFranchiserDashboardData(franchiseId: string) {
   const supabase = await createClient()
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // The branches trade on Philippine time. "Today" starts at midnight in Manila,
+  // not on the server's clock (UTC on Vercel, i.e. 8 AM Manila) — otherwise the
+  // morning's sales sit under yesterday until 8 AM.
+  const manilaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(d)
+  const today = new Date(`${manilaDay(new Date())}T00:00:00+08:00`)
 
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  // The chart shows today and the six days before it.
+  const weekAgo = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000)
 
   // Get ALL branches for this franchise
   const { data: branches } = await supabase
@@ -87,14 +91,13 @@ async function getFranchiserDashboardData(franchiseId: string) {
     payBreakdown[t.payment_method] = (payBreakdown[t.payment_method] || 0) + Number(t.total_amount)
   }
 
-  // Chart: 7-day revenue
+  // Chart: 7-day revenue, each bar one Manila calendar day
   const chartData = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (6 - i))
-    const label   = d.toLocaleDateString('en-US', { weekday: 'short' })
-    const dateStr = d.toISOString().split('T')[0]
+    const d = new Date(today.getTime() - (6 - i) * 24 * 60 * 60 * 1000)
+    const dateStr = manilaDay(d)
+    const label   = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Manila' })
     const revenue = (weekTx || [])
-      .filter(t => t.created_at.startsWith(dateStr))
+      .filter(t => manilaDay(new Date(t.created_at)) === dateStr)
       .reduce((s, t) => s + Number(t.total_amount), 0)
     return { label, revenue, isToday: i === 6 }
   })

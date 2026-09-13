@@ -61,7 +61,7 @@ export default async function FranchiserSalesPage({ searchParams }: PageProps) {
 
   // A whole month is more than the API returns in one request (Gensan: 1,396
   // sales and 3,173 lines in Aug 2026), so page through — see fetchAll.
-  const [transactions, topItems] = await Promise.all([
+  const [transactions, topItems, shifts] = await Promise.all([
     fetchAll(() => supabase
       .from('transactions')
       .select('total_amount, discount_amount, payment_method, status, delivery_platform, created_at')
@@ -79,6 +79,17 @@ export default async function FranchiserSalesPage({ searchParams }: PageProps) {
       .gte('transactions.created_at', start)
       .lt('transactions.created_at', end)
       .order('id', { ascending: true })),
+
+    // Every shift opened in the month, newest first. select('*') on purpose: the
+    // commission columns arrive with a migration the client runs, and naming
+    // them here would fail until then.
+    fetchAll(() => supabase
+      .from('shifts')
+      .select('*')
+      .in('branch_id', safeBranchIds)
+      .gte('opened_at', start)
+      .lt('opened_at', end)
+      .order('opened_at', { ascending: false })),
   ])
 
   return (
@@ -87,6 +98,7 @@ export default async function FranchiserSalesPage({ searchParams }: PageProps) {
       month={month}
       today={today}
       initialDay={day}
+      shifts={(shifts || []) as unknown as Parameters<typeof FranchiserSalesClient>[0]['shifts']}
       transactions={(transactions || []) as unknown as Parameters<typeof FranchiserSalesClient>[0]['transactions']}
       topItems={(topItems || []) as unknown as Parameters<typeof FranchiserSalesClient>[0]['topItems']}
     />

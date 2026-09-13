@@ -21,8 +21,28 @@ interface TopItem {
   transactions: { branch_id: string; status: string; created_at: string } | null
 }
 
+// A row of public.shifts. The commission fields exist only once the client has
+// run add_shift_platform_commission_migration.sql, so they are optional here.
+interface ShiftRow {
+  id: string
+  shift_number: number
+  cashier_name: string
+  cashier_role: string
+  status: string
+  opened_at: string
+  closed_at: string | null
+  starting_cash: number | null
+  expected_cash: number | null
+  net_sales: number | null
+  foodpanda_commission?: number | null
+  grab_commission?: number | null
+  net_after_commission?: number | null
+}
+
 interface Props {
   branchName: string
+  /** Shifts opened in the month being viewed, newest first. */
+  shifts?: ShiftRow[]
   /** Month being viewed, YYYY-MM. The server fetches only this month. */
   month: string
   /** Today in Manila, YYYY-MM-DD — nothing after it can be picked. */
@@ -53,8 +73,12 @@ const DAY_LABEL = (day: string) => {
   })
 }
 
+const peso = (n: number | null | undefined) =>
+  '₱' + Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const manilaDateTime = (iso: string) =>
+  new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
 export default function FranchiserSalesClient({
-  branchName, month, today, initialDay = '', transactions, topItems = [],
+  branchName, month, today, initialDay = '', transactions, topItems = [], shifts = [],
 }: Props) {
   const router = useRouter()
   // '' = the whole month; otherwise a single YYYY-MM-DD
@@ -357,6 +381,71 @@ export default function FranchiserSalesClient({
                 <tr>
                   <td colSpan={3} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2rem' }}>
                     No sales data for this period
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Shifts — who worked, when, and what each shift closed with */}
+      <div className="table-wrapper" style={{ marginTop: '1.5rem' }}>
+        <div className="table-header">
+          <p className="table-title">Shifts</p>
+          <span className="badge badge-muted">{rangeLabel}</span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Shift</th>
+                <th>Cashier</th>
+                <th>Opened</th>
+                <th>Closed</th>
+                <th>Starting cash</th>
+                <th>Cash in drawer</th>
+                <th>Net sales</th>
+                <th>FoodPanda &amp; Grab cut</th>
+                <th>Net after commission</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shifts
+                .filter(s => selectedDay === '' ? true : manilaDay(s.opened_at) === selectedDay)
+                .map(s => {
+                  const open = s.status === 'open'
+                  // Still open but opened on an earlier day: its cashier never ended it.
+                  const stale = open && manilaDay(s.opened_at) < today
+                  const hasCommission = s.net_after_commission !== undefined && s.net_after_commission !== null
+                  const cut = Number(s.foodpanda_commission ?? 0) + Number(s.grab_commission ?? 0)
+                  const muted = { fontSize: '0.82rem', color: 'var(--color-text-muted)' } as const
+                  return (
+                    <tr key={s.id}>
+                      <td style={{ fontSize: '0.82rem', fontWeight: 600 }}>#{s.shift_number}</td>
+                      <td style={{ fontSize: '0.82rem' }}>
+                        {s.cashier_name} <span style={muted}>({s.cashier_role})</span>
+                      </td>
+                      <td style={muted}>{manilaDateTime(s.opened_at)}</td>
+                      <td style={{ fontSize: '0.82rem' }}>
+                        {open ? (
+                          <span style={{ fontWeight: 600, color: stale ? 'var(--color-danger-light)' : 'var(--color-warning)' }}>
+                            {stale ? 'Still open — never ended' : 'Open now'}
+                          </span>
+                        ) : manilaDateTime(s.closed_at as string)}
+                      </td>
+                      <td style={{ fontSize: '0.82rem' }}>{peso(s.starting_cash)}</td>
+                      <td style={{ fontSize: '0.82rem' }}>{open ? '—' : peso(s.expected_cash)}</td>
+                      <td style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--color-accent)' }}>{open ? '—' : peso(s.net_sales)}</td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--color-danger-light)' }}>{open || !hasCommission ? '—' : '-' + peso(cut)}</td>
+                      <td style={{ fontSize: '0.82rem', fontWeight: 700 }}>{open || !hasCommission ? '—' : peso(s.net_after_commission)}</td>
+                    </tr>
+                  )
+                })}
+              {shifts.filter(s => selectedDay === '' ? true : manilaDay(s.opened_at) === selectedDay).length === 0 && (
+                <tr>
+                  <td colSpan={9} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2rem' }}>
+                    No shifts for this period
                   </td>
                 </tr>
               )}

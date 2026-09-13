@@ -40,8 +40,11 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
   const branchIds = (branches || []).map(b => b.id)
   const safeBranchIds = branchIds.length > 0 ? branchIds : ['00000000-0000-0000-0000-000000000000']
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // Philippine time: "today" starts at midnight in Manila, not on the server's
+  // clock (UTC on Vercel, i.e. 8 AM Manila).
+  const manilaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(d)
+  const todayStr = manilaDay(new Date())
+  const today = new Date(`${todayStr}T00:00:00+08:00`)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -117,9 +120,9 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
   ])
 
   // ── Inventory (read-only view for master admin) ────────────────────────────
-  const todayStr = new Date().toISOString().split('T')[0]
-  const dateStart = `${todayStr}T00:00:00.000Z`
-  const dateEnd   = `${todayStr}T23:59:59.999Z`
+  // Same Manila day as above — the POS files daily inventory logs by Manila date.
+  const dateStart = `${todayStr}T00:00:00+08:00`
+  const dateEnd   = `${todayStr}T23:59:59.999+08:00`
 
   const [
     { data: invCategories },
@@ -164,13 +167,13 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
   const todayRevenue = (todayTx || []).reduce((s, t) => s + Number(t.total_amount), 0)
   const todayOrders  = (todayTx || []).length
 
+  // 7-day chart, each bar one Manila calendar day (today = Manila midnight, above)
   const chartData = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (6 - i))
-    const label   = d.toLocaleDateString('en-US', { weekday: 'short' })
-    const dateStr = d.toISOString().split('T')[0]
+    const d = new Date(today.getTime() - (6 - i) * 24 * 60 * 60 * 1000)
+    const dateStr = manilaDay(d)
+    const label   = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Manila' })
     const revenue = (weekTx || [])
-      .filter(t => t.created_at.startsWith(dateStr))
+      .filter(t => manilaDay(new Date(t.created_at)) === dateStr)
       .reduce((s, t) => s + Number(t.total_amount), 0)
     return { label, revenue, isToday: i === 6 }
   })
