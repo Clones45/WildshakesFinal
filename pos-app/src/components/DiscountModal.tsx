@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Tag, Percent, Check, Plus, Minus } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { useCartStore, cartItemKey, type DiscountType } from '../store/cartStore'
+import { useCartStore, cartItemKey, staffDiscountPerUnit, STAFF_DISCOUNT_PETITE, STAFF_DISCOUNT_OTHER, type DiscountType } from '../store/cartStore'
 
 interface DiscountModalProps {
     isOpen: boolean
@@ -14,6 +14,7 @@ const DISCOUNTS: { id: DiscountType; label: string; rate: string; icon: string; 
     { id: 'pwd', label: 'PWD', rate: '20%', icon: '♿', description: 'Tap the PWD\'s items below' },
     { id: 'manager', label: 'Manager', rate: '15%', icon: '🛡️', description: 'Requires manager PIN' },
     { id: 'owner', label: 'Owner', rate: '20%', icon: '👑', description: 'For the owner - requires manager PIN' },
+    { id: 'staff', label: 'Staff Discount (SD)', rate: '₱10 / ₱20', icon: '🧑‍🍳', description: '₱10 off each Petite shake, ₱20 off each other item - requires manager PIN' },
     { id: 'custom', label: 'Custom Amount', rate: 'Fixed', icon: '✏️', description: 'Manual entry' },
 ]
 
@@ -29,6 +30,8 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
     const sub = subtotal()
     const activeItems = items.filter(i => !i.cancelled)
     const isPercent = selected === 'senior' || selected === 'pwd' || selected === 'manager' || selected === 'owner'
+    // Staff Discount also picks units, but takes fixed pesos off each one instead of a percentage
+    const isPerItem = isPercent || selected === 'staff'
     const unitPrice = (i: (typeof items)[number]) => i.overridePrice ?? i.product.price
 
     const fullSelection = () =>
@@ -38,7 +41,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
     useEffect(() => {
         if (!isOpen) return
         setSelected(discountType)
-        if (discountType === 'senior' || discountType === 'pwd' || discountType === 'manager' || discountType === 'owner') {
+        if (discountType === 'senior' || discountType === 'pwd' || discountType === 'manager' || discountType === 'owner' || discountType === 'staff') {
             setUnits(discountUnits === null ? fullSelection() : { ...discountUnits })
         } else {
             setUnits({})
@@ -51,7 +54,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
     const pickType = (type: DiscountType) => {
         setSelected(type)
         if (type === 'senior' || type === 'pwd') setUnits({})
-        else if (type === 'manager' || type === 'owner') setUnits(fullSelection())
+        else if (type === 'manager' || type === 'owner' || type === 'staff') setUnits(fullSelection())
     }
 
     const setLineUnits = (key: string, n: number, max: number) =>
@@ -66,14 +69,16 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
     const selectedCount = Object.values(units).reduce((s, n) => s + n, 0)
     const selectedSubtotal = activeItems.reduce(
         (s, i) => s + unitPrice(i) * Math.min(units[cartItemKey(i)] ?? 0, i.quantity), 0)
-    const previewDiscount = isPercent ? selectedSubtotal * (RATES[selected] ?? 0) : 0
+    const selectedStaffDiscount = activeItems.reduce(
+        (s, i) => s + staffDiscountPerUnit(i) * Math.min(units[cartItemKey(i)] ?? 0, i.quantity), 0)
+    const previewDiscount = selected === 'staff' ? selectedStaffDiscount : isPercent ? selectedSubtotal * (RATES[selected] ?? 0) : 0
     const allSelected = activeItems.length > 0 &&
         activeItems.every(i => (units[cartItemKey(i)] ?? 0) >= i.quantity)
 
     const handleApply = () => {
         if (selected === 'custom') {
             setDiscount('custom', parseFloat(customAmount) || 0)
-        } else if (isPercent) {
+        } else if (isPerItem) {
             if (selectedCount === 0) return
             // Everything selected → whole order (null: also covers items added later)
             setDiscount(selected, 0, allSelected ? null : units)
@@ -89,7 +94,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
         onClose()
     }
 
-    const applyDisabled = isPercent && selectedCount === 0
+    const applyDisabled = isPerItem && selectedCount === 0
 
     return (
         <AnimatePresence>
@@ -162,7 +167,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
 
                             {/* Per-item / per-unit selection for percentage discounts */}
                             <AnimatePresence>
-                                {isPercent && (
+                                {isPerItem && (
                                     <motion.div
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}
@@ -171,7 +176,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
                                     >
                                         <div className="flex items-center justify-between px-1">
                                             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-                                                {selected === 'manager' || selected === 'owner' ? 'Applies to' : "Tap the customer's items"}
+                                                {selected === 'manager' || selected === 'owner' || selected === 'staff' ? 'Applies to' : "Tap the customer's items"}
                                             </p>
                                             <button
                                                 onClick={() => setUnits(allSelected ? {} : fullSelection())}
@@ -242,7 +247,9 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
 
                                         <div className="flex justify-between px-1 pt-1 text-sm">
                                             <span className="text-gray-400 font-semibold">
-                                                Discount ({((RATES[selected] ?? 0) * 100).toFixed(0)}% of ₱{selectedSubtotal.toFixed(2)})
+                                                {selected === 'staff'
+                                                    ? `Staff discount (₱${STAFF_DISCOUNT_PETITE} per Petite shake, ₱${STAFF_DISCOUNT_OTHER} per other item)`
+                                                    : `Discount (${((RATES[selected] ?? 0) * 100).toFixed(0)}% of ₱${selectedSubtotal.toFixed(2)})`}
                                             </span>
                                             <span className="text-amber-400 font-bold">-₱{previewDiscount.toFixed(2)}</span>
                                         </div>

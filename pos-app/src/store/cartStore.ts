@@ -11,7 +11,17 @@ export interface CartItem {
     overridePrice?: number // Used when an add-on changes the effective price (e.g. +₱25 for Add-on Pearls)
 }
 
-export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'owner' | 'custom'
+export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'owner' | 'staff' | 'custom'
+
+// Staff Discount (SD): a fixed peso amount off each unit, not a percentage.
+// ₱10 off a Petite fruitshake or milkshake, ₱20 off any other menu item.
+export const STAFF_DISCOUNT_PETITE = 10
+export const STAFF_DISCOUNT_OTHER = 20
+export const isPetiteShake = (product: Pick<Product, 'category'>) =>
+    /^(Fruitshakes|Milkshakes) Petite$/i.test(product.category ?? '')
+/** Pesos off one unit under the Staff Discount, never more than the unit itself costs. */
+export const staffDiscountPerUnit = (item: Pick<CartItem, 'product' | 'overridePrice'>) =>
+    Math.min(isPetiteShake(item.product) ? STAFF_DISCOUNT_PETITE : STAFF_DISCOUNT_OTHER, item.overridePrice ?? item.product.price)
 
 // Cart lines are keyed by product + variant (same rule addItem uses to stack items).
 // Every mutation that targets ONE line — qty, notes, cancel — goes through this key,
@@ -60,6 +70,7 @@ const DISCOUNT_RATES: Record<DiscountType, number> = {
     pwd: 0.20,
     manager: 0.15,
     owner: 0.20,
+    staff: 0,      // fixed pesos per unit, see staffDiscountPerUnit
     custom: 0,
 }
 
@@ -131,9 +142,16 @@ export const useCartStore = create<CartState>()((set, get) => ({
     discountAmount: () => {
         const { discountType, customDiscountAmount, discountUnits, items } = get()
         if (discountType === 'custom') return customDiscountAmount
+        const active = items.filter(i => !i.cancelled)
+        if (discountType === 'staff') {
+            // Fixed pesos per unit: whole order, or only the selected units of each line
+            return active.reduce((sum, i) => {
+                const units = discountUnits === null ? i.quantity : Math.min(discountUnits[cartItemKey(i)] ?? 0, i.quantity)
+                return sum + staffDiscountPerUnit(i) * units
+            }, 0)
+        }
         const rate = DISCOUNT_RATES[discountType]
         if (rate === 0) return 0
-        const active = items.filter(i => !i.cancelled)
         if (discountUnits === null) {
             // Whole order
             return active.reduce((sum, i) => sum + (i.overridePrice ?? i.product.price) * i.quantity, 0) * rate

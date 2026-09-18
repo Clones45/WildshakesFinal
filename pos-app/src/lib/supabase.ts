@@ -107,7 +107,7 @@ export type Transaction = {
     branch_id: string
     cashier_id: string | null
     total_amount: number
-    discount_type: 'none' | 'senior' | 'pwd' | 'manager' | 'owner' | 'custom'
+    discount_type: 'none' | 'senior' | 'pwd' | 'manager' | 'owner' | 'staff' | 'custom'
     discount_amount: number
     payment_method: 'cash' | 'gcash' | 'card' | 'other'
     status: 'completed' | 'voided' | 'pending'

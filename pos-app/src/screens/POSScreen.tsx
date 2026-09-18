@@ -172,7 +172,7 @@ export function POSScreen() {
         if (items.length === 0) return
         setIsProcessing(true)
 
-        if ((discountType === 'manager' || discountType === 'owner') && user?.role === 'cashier') {
+        if ((discountType === 'manager' || discountType === 'owner' || discountType === 'staff') && user?.role === 'cashier') {
             setIsProcessing(false)
             requireManager(() => processCheckout(method, tendered, refNumber, bank, orderType, splits))
             return
