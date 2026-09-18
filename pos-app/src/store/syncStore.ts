@@ -133,33 +133,43 @@ async function pushTransaction(local: LocalTransaction) {
     // on every cycle and could never recover — one Gensan sale from 3 Sep sat
     // half-synced, with no line items, for ten days. With DO NOTHING the retry
     // is accepted, the id is looked up by local_ref, and the rest completes.
-    const { data: inserted, error: txError } = await supabase
+    const row = {
+        branch_id: local.branchId,
+        cashier_id: local.cashierId,
+        total_amount: local.totalAmount,
+        discount_type: local.discountType,
+        discount_amount: local.discountAmount,
+        payment_method: ['foodpanda', 'grab'].includes(local.paymentMethod) ? 'other' : local.paymentMethod,
+        reference_number: local.referenceNumber ?? null,
+        bank_name: local.bankName ?? null,
+        split_payments: local.splitPayments ?? null,
+        cash_tendered: local.cashTendered ?? null,
+        change_given: local.changeGiven ?? null,
+        status: local.status,
+        source: local.source,
+        local_ref: local.localRef,
+        table_number: local.tableNumber ?? null,
+        delivery_platform: local.deliveryPlatform ?? null,
+        void_reason: local.voidReason ?? null,
+        voided_by: local.voidedBy ?? null,
+        created_at: local.createdAt,
+    }
+    let { data: inserted, error: txError } = await supabase
         .from('transactions')
-        .upsert(
-            {
-                branch_id: local.branchId,
-                cashier_id: local.cashierId,
-                total_amount: local.totalAmount,
-                discount_type: local.discountType,
-                discount_amount: local.discountAmount,
-                payment_method: ['foodpanda', 'grab'].includes(local.paymentMethod) ? 'other' : local.paymentMethod,
-                reference_number: local.referenceNumber ?? null,
-                bank_name: local.bankName ?? null,
-                split_payments: local.splitPayments ?? null,
-                cash_tendered: local.cashTendered ?? null,
-                change_given: local.changeGiven ?? null,
-                status: local.status,
-                source: local.source,
-                local_ref: local.localRef,
-                table_number: local.tableNumber ?? null,
-                delivery_platform: local.deliveryPlatform ?? null,
-                void_reason: local.voidReason ?? null,
-                voided_by: local.voidedBy ?? null,
-                created_at: local.createdAt,
-            },
-            { onConflict: 'local_ref', ignoreDuplicates: true }
-        )
+        .upsert(row, { onConflict: 'local_ref', ignoreDuplicates: true })
         .select('id')
+
+    // The server only accepts the discount types it was created with. Until
+    // add_owner_discount_migration.sql has been run, a sale with a newer type
+    // (Owner) is recorded as "custom" for the same amount rather than left stuck
+    // unsynced; the audit log entry still names the real type.
+    if (txError && txError.code === '23514' && /discount_type/.test(txError.message) && row.discount_type !== 'custom') {
+        console.warn('[sync] server refused discount type', row.discount_type, '- saving as custom (run add_owner_discount_migration.sql)')
+        ;({ data: inserted, error: txError } = await supabase
+            .from('transactions')
+            .upsert({ ...row, discount_type: 'custom' }, { onConflict: 'local_ref', ignoreDuplicates: true })
+            .select('id'))
+    }
 
     if (txError) throw txError
     let transactionId: string | undefined = inserted?.[0]?.id

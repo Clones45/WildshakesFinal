@@ -13,10 +13,11 @@ const DISCOUNTS: { id: DiscountType; label: string; rate: string; icon: string; 
     { id: 'senior', label: 'Senior Citizen', rate: '20%', icon: '👴', description: 'Tap the senior\'s items below' },
     { id: 'pwd', label: 'PWD', rate: '20%', icon: '♿', description: 'Tap the PWD\'s items below' },
     { id: 'manager', label: 'Manager', rate: '15%', icon: '🛡️', description: 'Requires manager PIN' },
+    { id: 'owner', label: 'Owner', rate: '20%', icon: '👑', description: 'For the owner - requires manager PIN' },
     { id: 'custom', label: 'Custom Amount', rate: 'Fixed', icon: '✏️', description: 'Manual entry' },
 ]
 
-const RATES: Record<string, number> = { senior: 0.2, pwd: 0.2, manager: 0.15 }
+const RATES: Record<string, number> = { senior: 0.2, pwd: 0.2, manager: 0.15, owner: 0.2 }
 
 export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
     const { items, discountType, discountUnits, setDiscount, subtotal } = useCartStore()
@@ -27,7 +28,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
 
     const sub = subtotal()
     const activeItems = items.filter(i => !i.cancelled)
-    const isPercent = selected === 'senior' || selected === 'pwd' || selected === 'manager'
+    const isPercent = selected === 'senior' || selected === 'pwd' || selected === 'manager' || selected === 'owner'
     const unitPrice = (i: (typeof items)[number]) => i.overridePrice ?? i.product.price
 
     const fullSelection = () =>
@@ -37,7 +38,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
     useEffect(() => {
         if (!isOpen) return
         setSelected(discountType)
-        if (discountType === 'senior' || discountType === 'pwd' || discountType === 'manager') {
+        if (discountType === 'senior' || discountType === 'pwd' || discountType === 'manager' || discountType === 'owner') {
             setUnits(discountUnits === null ? fullSelection() : { ...discountUnits })
         } else {
             setUnits({})
@@ -46,11 +47,11 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
     }, [isOpen])
 
     // Switching discount type: Senior/PWD start EMPTY (cashier taps the
-    // customer's items); Manager starts with the whole order selected.
+    // customer's items); Manager and Owner start with the whole order selected.
     const pickType = (type: DiscountType) => {
         setSelected(type)
         if (type === 'senior' || type === 'pwd') setUnits({})
-        else if (type === 'manager') setUnits(fullSelection())
+        else if (type === 'manager' || type === 'owner') setUnits(fullSelection())
     }
 
     const setLineUnits = (key: string, n: number, max: number) =>
@@ -170,7 +171,7 @@ export function DiscountModal({ isOpen, onClose }: DiscountModalProps) {
                                     >
                                         <div className="flex items-center justify-between px-1">
                                             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-                                                {selected === 'manager' ? 'Applies to' : "Tap the customer's items"}
+                                                {selected === 'manager' || selected === 'owner' ? 'Applies to' : "Tap the customer's items"}
                                             </p>
                                             <button
                                                 onClick={() => setUnits(allSelected ? {} : fullSelection())}

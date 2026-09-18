@@ -11,7 +11,7 @@ export interface CartItem {
     overridePrice?: number // Used when an add-on changes the effective price (e.g. +₱25 for Add-on Pearls)
 }
 
-export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'custom'
+export type DiscountType = 'none' | 'senior' | 'pwd' | 'manager' | 'owner' | 'custom'
 
 // Cart lines are keyed by product + variant (same rule addItem uses to stack items).
 // Every mutation that targets ONE line — qty, notes, cancel — goes through this key,
@@ -59,6 +59,7 @@ const DISCOUNT_RATES: Record<DiscountType, number> = {
     senior: 0.20,
     pwd: 0.20,
     manager: 0.15,
+    owner: 0.20,
     custom: 0,
 }
 
