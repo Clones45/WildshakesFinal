@@ -1,30 +1,17 @@
--- Migration: let the POS close a shift it opened
+-- Shifts: let the POS (anon key) update its own shift rows.
 --
--- The POS syncs shifts with an upsert: it INSERTs the row when a shift opens,
--- then the same upsert UPDATEs that row when the shift closes. Row Level
--- Security on public.shifts allowed the POS (anonymous) role to INSERT but not
--- UPDATE, so every shift that reached the server while still open could never
--- be closed there. It stayed "open" forever and the tablet retried every 30 s,
--- producing a steady stream of
+-- History:
+--   * The client first applied this as policy "shifts_update_pos" with USING (status = 'open'),
+--     so a tablet could close an open shift.
+--   * 2026-09-18: widened to open OR closed (migration shifts_update_allow_resend_of_closed).
+--     The POS syncs a shift as "insert, or update if it exists" and retries until it succeeds;
+--     re-sending a shift the server already had as closed (e.g. with the commission figures
+--     that had no columns until then) was refused on every retry, ~3,000 errors a day.
+--     A tablet is the only writer of its own shifts (local_ref is unique per tablet), so the
+--     re-send is safe, and a shift can never leave the open/closed pair.
 --
---   42501: new row violates row-level security policy (USING expression)
---          for table "shifts"
---
--- (Postgres raises that when an upsert's conflicting row fails the UPDATE
--- policy's USING check.) Verified 2026-09-13: the same upsert succeeds with the
--- service key and is refused with the POS key.
---
--- This grants UPDATE only while a row is still open, so once a shift is closed
--- it cannot be altered through the POS key. Permissive policies are OR-ed, so
--- adding this alongside any existing policy is safe.
---
--- After running it, every tablet's stuck closes sync themselves within a few
--- minutes and the errors stop. Verify with:
---   select policyname, cmd, roles, qual, with_check from pg_policies where tablename = 'shifts';
+-- Already applied to the live project; kept here as the record.
 
-CREATE POLICY "POS can close an open shift"
-    ON public.shifts
-    FOR UPDATE
-    TO anon
-    USING (status = 'open')
-    WITH CHECK (true);
+ALTER POLICY shifts_update_pos ON public.shifts
+  USING (status = ANY (ARRAY['open'::text, 'closed'::text]))
+  WITH CHECK (status = ANY (ARRAY['open'::text, 'closed'::text]));
