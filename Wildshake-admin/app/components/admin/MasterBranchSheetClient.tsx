@@ -4,8 +4,9 @@ import React, { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import SalesDatePicker from '@/components/franchiser/SalesDatePicker'
 import { SHEET_TYPES, SHEET_LABELS, isRecipeSheet, getStockStatus, computeEnding, type SheetType } from '@/lib/inventory/sheets'
+import { buildSheetRows, toCsv, SHEET_CSV_HEADER, downloadCsv, safeFilename } from '@/lib/inventory/csv'
 import {
-  saveDailyLog, copyPreviousDay, setBranchAvailability,
+  saveDailyLog, copyPreviousDay, setBranchAvailability, exportBranchSheetsCsv,
   type ItemRow, type CategoryRow, type LinkRow, type LogRow, type AvailabilityRow,
 } from '@/lib/actions/masterInventory'
 
@@ -140,6 +141,19 @@ export default function MasterBranchSheetClient({
   const sheetCategories = categories.filter(c => c.sheet_type === sheet)
   const isPast = day < today
 
+  /* ── CSV exports: this branch from what is on screen; every branch via the server ── */
+  function exportThisBranch() {
+    const rows = buildSheetRows({ branchName, day, categories, items, logs: Object.values(logs), links, products })
+    downloadCsv(`${safeFilename(branchName)}-inventory-${day}.csv`, toCsv(SHEET_CSV_HEADER, rows))
+    say(`📥 Exported ${rows.length} items for ${branchName}, ${day}.`)
+  }
+  const exportAllBranches = () => run('export', () => exportBranchSheetsCsv({ branch_id: 'all', day }), r => {
+    if ('csv' in r && r.csv) {
+      downloadCsv(r.filename, r.csv)
+      say(`📥 Exported ${r.rows} rows across ${r.branches} branches for ${day}.`)
+    }
+  })
+
   return (
     <div>
       {toast && (
@@ -166,6 +180,8 @@ export default function MasterBranchSheetClient({
             today={today}
             onPick={(m, d) => go(branchId, d || (m === today.slice(0, 7) ? today : `${m}-01`))}
           />
+          <button className="btn btn-ghost btn-sm" onClick={exportThisBranch}>📥 Export CSV</button>
+          <button className="btn btn-ghost btn-sm" disabled={!!busy.export} onClick={exportAllBranches}>{busy.export ? '⏳ Preparing…' : '📥 Export all branches'}</button>
           <button className="btn btn-ghost btn-sm" disabled={!!busy.copy} onClick={copyPrevious}>📋 Copy previous day&apos;s ending</button>
           <a href="/inventory" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>⚙️ Setup</a>
         </div>

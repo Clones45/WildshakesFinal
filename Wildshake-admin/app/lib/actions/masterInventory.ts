@@ -19,6 +19,8 @@ import { getPortalPermissions } from '@/lib/portal/access'
 import { isPanelGranted } from '@/lib/portal/panels'
 import { manilaDay } from '@/lib/manila'
 import { isSheetType, computeEnding } from '@/lib/inventory/sheets'
+import { fetchAll } from '@/lib/supabase/fetchAll'
+import { buildSheetRows, toCsv, SHEET_CSV_HEADER, safeFilename } from '@/lib/inventory/csv'
 
 type Fail = { error: string }
 type Actor = { email: string; authId: string }
@@ -669,6 +671,49 @@ export async function setBranchAvailability(input: { branch_id: string; product_
   })
   bump()
   return { ok: true as const, historyRecorded, row: { product_id: input.product_id, is_available: input.is_available, stock_qty: stockQty } as AvailabilityRow }
+}
+
+// ---------------------------------------------------------------------------
+// CSV export of branch daily sheets (read-only: nothing written, nothing logged)
+// ---------------------------------------------------------------------------
+
+export async function exportBranchSheetsCsv(input: { branch_id: string | 'all'; day: string }) {
+  const g = await requireMaster(); if ('error' in g) return g
+  if (!isYmd(input.day)) return { error: 'Bad date.' }
+  const admin = createAdminClient()
+
+  const { data: branches } = await admin.from('branches').select('id, name').order('name')
+  const targets = (branches ?? []).filter(b => input.branch_id === 'all' || b.id === input.branch_id)
+  if (targets.length === 0) return { error: 'That branch no longer exists.' }
+  const ids = targets.map(b => b.id as string)
+
+  const [{ data: categories }, { data: items }, { data: products }, tags, logs, links] = await Promise.all([
+    admin.from('inventory_categories').select('id, name, sheet_type, sort_order'),
+    admin.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order, is_active').eq('is_active', true),
+    admin.from('products').select('id, name, category'),
+    fetchAll(() => admin.from('inventory_item_tags').select('inventory_item_id, entity_id').eq('entity_type', 'branch').in('entity_id', ids).order('id')),
+    fetchAll(() => admin.from('daily_inventory_logs').select('branch_id, inventory_item_id, starting_stock, additional_stock, used_stock, notes').eq('log_date', input.day).in('branch_id', ids).order('id')),
+    fetchAll(() => admin.from('food_item_menu_links').select('inventory_item_id, product_id, quantity_per_serving').order('id')),
+  ])
+
+  const rows: unknown[][] = []
+  for (const b of targets) {
+    const tagged = new Set((tags as { inventory_item_id: string; entity_id: string }[]).filter(t => t.entity_id === b.id).map(t => t.inventory_item_id))
+    rows.push(...buildSheetRows({
+      branchName: b.name as string,
+      day: input.day,
+      categories: (categories ?? []) as CategoryRow[],
+      items: ((items ?? []) as ItemRow[]).filter(i => tagged.has(i.id)),
+      logs: (logs as (LogRow & { branch_id: string })[]).filter(l => l.branch_id === b.id),
+      links: links as LinkRow[],
+      products: (products ?? []) as { id: string; name: string; category: string }[],
+    }))
+  }
+
+  const filename = input.branch_id === 'all'
+    ? `all-branches-inventory-${input.day}.csv`
+    : `${safeFilename(targets[0].name as string)}-inventory-${input.day}.csv`
+  return { ok: true as const, historyRecorded: true, csv: toCsv(SHEET_CSV_HEADER, rows), filename, rows: rows.length, branches: targets.length }
 }
 
 // ---------------------------------------------------------------------------

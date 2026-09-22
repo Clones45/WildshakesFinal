@@ -2,6 +2,8 @@
 
 import React, { useMemo, useState } from 'react'
 import { SHEET_TYPES, SHEET_LABELS, isRecipeSheet, type SheetType } from '@/lib/inventory/sheets'
+import { buildItemsRows, toCsv, ITEMS_CSV_HEADER, downloadCsv } from '@/lib/inventory/csv'
+import { manilaDay } from '@/lib/manila'
 import {
   createItem, updateItem, setItemActive, deleteItem, moveItem, setItemBranches,
   createCategory, renameCategory, moveCategory, deleteCategory,
@@ -156,6 +158,13 @@ export default function MasterInventoryClient(props: Props) {
   const info = SHEET_LABELS[sheet]
   const retiredCount = items.filter(i => !i.is_active).length
 
+  /* ── Export the whole item list (all sheets, branches, recipes) as CSV ── */
+  function exportItems() {
+    const rows = buildItemsRows({ categories, items, branches, itemBranches, links, products })
+    downloadCsv(`inventory-items-${manilaDay()}.csv`, toCsv(ITEMS_CSV_HEADER, rows))
+    say(`📥 Exported ${rows.length} items.`)
+  }
+
   return (
     <div>
       {toast && (
@@ -181,6 +190,7 @@ export default function MasterInventoryClient(props: Props) {
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <a href="/inventory/branches" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>🏪 Branch sheets</a>
           <a href="/inventory/import" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>📥 Import recipes</a>
+          <button className="btn btn-ghost btn-sm" onClick={exportItems}>📥 Export items CSV</button>
           <button className="btn btn-primary btn-sm" onClick={() => setNewItemOpen(true)}>＋ New item</button>
         </div>
       </div>

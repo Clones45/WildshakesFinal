@@ -4,6 +4,7 @@ import React, { useState, useCallback, useTransition } from 'react'
 import { manilaDay } from '@/lib/manila'
 import { createClient } from '@/lib/supabase/client'
 import { SHEET_TYPES, SHEET_LABELS, getStockStatus, isRecipeSheet, type SheetType } from '@/lib/inventory/sheets'
+import { buildSheetRows, toCsv, SHEET_CSV_HEADER, downloadCsv, safeFilename } from '@/lib/inventory/csv'
 
 /* ─── Types ────────────────────────────────────────────────────── */
 interface Category {
@@ -145,6 +146,16 @@ export default function FranchiserInventoryClient({
     items.filter(i => i.category_id === catId && (
       !search || i.name.toLowerCase().includes(search.toLowerCase())
     )), [items, search])
+
+  /* ── Export today's sheet (every section) as a CSV file ───────── */
+  function exportCSV() {
+    const rows = buildSheetRows({
+      branchName, day: today, categories, items,
+      logs: Object.values(logs), links, products,
+    })
+    downloadCsv(`${safeFilename(branchName)}-inventory-${today}.csv`, toCsv(SHEET_CSV_HEADER, rows))
+    showToast(`📥 Exported ${rows.length} items for ${today}.`)
+  }
 
   /* Compute ending for food item: starting + additional - used */
   function foodEnding(item: InventoryItem) {
@@ -385,6 +396,7 @@ export default function FranchiserInventoryClient({
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost btn-sm" onClick={exportCSV}>📥 Export CSV</button>
           <button className="btn btn-ghost btn-sm" onClick={copyFromYesterday}>
             📋 Copy Yesterday&apos;s Ending
           </button>
