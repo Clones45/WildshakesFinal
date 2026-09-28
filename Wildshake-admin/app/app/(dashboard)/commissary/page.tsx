@@ -46,8 +46,7 @@ export default async function CommissaryPage() {
       .from('inventory_items')
       .select('id, category_id, name, unit, min_stock_level, sort_order, is_active')
       .eq('is_active', true)
-      .order('category_id')
-      .order('sort_order'),
+      .order('name'),
 
     // All shipments
     supabase

@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import SalesDatePicker from '@/components/franchiser/SalesDatePicker'
-import { SHEET_TYPES, SHEET_LABELS, isRecipeSheet, getStockStatus, computeEnding, type SheetType } from '@/lib/inventory/sheets'
+import { SHEET_TYPES, SHEET_LABELS, isRecipeSheet, getStockStatus, computeEnding, byName, type SheetType } from '@/lib/inventory/sheets'
 import { buildSheetRows, toCsv, SHEET_CSV_HEADER, downloadCsv, safeFilename } from '@/lib/inventory/csv'
 import {
   saveDailyLog, copyPreviousDay, setBranchAvailability, exportBranchSheetsCsv,
@@ -247,7 +247,7 @@ export default function MasterBranchSheetClient({
             {sheetCategories.map(cat => {
               const rows = items.filter(i => i.category_id === cat.id
                 && (!search || i.name.toLowerCase().includes(search.toLowerCase()))
-                && (!showOnlyLow || ['low', 'out'].includes(getStockStatus(ending(i), i.min_stock_level))))
+                && (!showOnlyLow || ['low', 'out'].includes(getStockStatus(ending(i), i.min_stock_level)))).sort(byName)
               if (rows.length === 0) return null
               return (
                 <div key={cat.id} style={{ marginBottom: '2rem' }}>

@@ -23,7 +23,7 @@ export const SHEET_LABELS: Record<SheetType, { label: string; icon: string; colo
   production:      { label: 'Production',       icon: '⚙️', color: '#607d8b', desc: 'Items the branch prepares in-house — cooked beef and chicken portions, patties, sauces made on site.' },
   shake:           { label: 'Shakes',           icon: '🥤', color: '#d63384', desc: 'Ingredients and cups for the fruit shakes and milkshakes.' },
   coffee_general:  { label: 'Coffee',           icon: '☕', color: '#795548', desc: 'Coffee ingredients, plus general supplies like cups, lids and trays.' },
-  commissary:      { label: 'Commissary (CSL)', icon: '🏭', color: '#2980b9', desc: 'Commissary store stock — counted at the central store, not the branch.' },
+  commissary:      { label: 'Commissary Store', icon: '🏭', color: '#2980b9', desc: 'Commissary store stock — counted at the central store, not the branch.' },
   commissary_home: { label: 'Commissary Home',  icon: '🏠', color: '#8e44ad', desc: 'Commissary home stock — counted at the central kitchen, not the branch.' },
 }
 
@@ -42,3 +42,12 @@ export function computeEnding(start: number | null, add: number | null, used: nu
   if (start === null) return null
   return Math.max(0, start + (add ?? 0) - (used ?? 0))
 }
+
+/**
+ * Items are always listed A to Z inside their category, on every screen and in every
+ * export, so staff can find a line quickly. Case does not matter and numbers sort as
+ * numbers ("Brown Bag # 3" before "Brown Bag # 5", "Cup 12oz" before "Cup 16oz").
+ * Categories keep the order head office set for them on the Categories tab.
+ */
+const nameCollator = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
+export const byName = <T extends { name: string }>(a: T, b: T): number => nameCollator.compare(a.name, b.name)

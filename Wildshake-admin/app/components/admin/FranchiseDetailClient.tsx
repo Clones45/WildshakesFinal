@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
+import { byName } from '@/lib/inventory/sheets'
 
 interface Branch { id: string; name: string; location: string | null; active_device_id: string | null; status: string }
 interface StaffMember { id: string; name: string; email: string | null; role: string; pin_code: string | null; is_active: boolean; created_at: string }
@@ -591,7 +592,7 @@ export default function FranchiseDetailClient({
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   {sheetCategories.map(cat => {
-                    const catItemList = sheetItems.filter(i => i.category_id === cat.id)
+                    const catItemList = sheetItems.filter(i => i.category_id === cat.id).sort(byName)
                     if (catItemList.length === 0) return null
                     return (
                       <div key={cat.id} className="table-wrapper">

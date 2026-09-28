@@ -6,6 +6,7 @@ import {
   logShipment, updateShipmentStatus, createIngredient, setInventoryLevel,
 } from '@/lib/actions/commissary'
 import { createInventoryItem, updateInventoryItemStatus, setInventoryItemTags } from '@/lib/actions/inventorySetup'
+import { byName } from '@/lib/inventory/sheets'
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface Branch {
@@ -90,7 +91,7 @@ export default function CommissaryClient({
 
   // Sheet type labels
   const SHEET_LABELS: Record<string, string> = {
-    commissary: '🏭 Commissary (CSL)',
+    commissary: '🏭 Commissary Store',
     commissary_home: '🏠 Commissary Home',
     food: '🍝 Food',
     food_2: '🍕 Food 2',
@@ -400,7 +401,7 @@ export default function CommissaryClient({
               value={sheetFilter} onChange={e => setSheetFilter(e.target.value)}
             >
               <option value="all">All Sheets</option>
-              <option value="commissary">🏭 Commissary (CSL)</option>
+              <option value="commissary">🏭 Commissary Store</option>
               <option value="commissary_home">🏠 Commissary Home</option>
               <option value="food">🍝 Food</option>
               <option value="food_2">🍕 Food 2</option>
@@ -431,10 +432,7 @@ export default function CommissaryClient({
             const rows: { item: CommItem; log: DailyLog | undefined; ending: number | null; status: string }[] = []
 
             for (const cat of cats) {
-              const catItems = commItems.filter(i => {
-                if (i.category_id !== cat.id) return false
-                return true
-              })
+              const catItems = commItems.filter(i => i.category_id === cat.id).sort(byName)
               for (const item of catItems) {
                 const log = logMap[logKey(comm.id, item.id)]
                 const start = log?.starting_stock ?? null
@@ -693,7 +691,7 @@ export default function CommissaryClient({
           {inventoryCategories
             .filter(c => catalogSheet === 'all' || c.sheet_type === catalogSheet)
             .map(cat => {
-              const catItems = inventoryItems.filter(i => i.category_id === cat.id)
+              const catItems = inventoryItems.filter(i => i.category_id === cat.id).sort(byName)
               return (
                 <div key={cat.id} className="table-wrapper" style={{ marginBottom: '1.25rem' }}>
                   <div className="table-header">
@@ -799,7 +797,7 @@ export default function CommissaryClient({
                       <option value="">Select item…</option>
                       {commCategories.map(cat => (
                         <optgroup key={cat.id} label={`${cat.sheet_type === 'commissary_home' ? '🏠' : '🏭'} ${cat.name}`}>
-                          {commItems.filter(i => i.category_id === cat.id).map(i => (
+                          {commItems.filter(i => i.category_id === cat.id).sort(byName).map(i => (
                             <option key={i.id} value={i.id}>{i.name}{i.unit ? ` (${i.unit})` : ''}</option>
                           ))}
                         </optgroup>

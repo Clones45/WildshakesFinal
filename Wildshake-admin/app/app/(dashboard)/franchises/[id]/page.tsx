@@ -133,7 +133,7 @@ export default async function FranchiseDetailPage({ params, searchParams }: Page
     txItemsForInv,
   ] = await Promise.all([
     supabase.from('inventory_categories').select('id, name, sheet_type, sort_order').order('sheet_type').order('sort_order'),
-    supabase.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order').eq('is_active', true).order('sort_order'),
+    supabase.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order').eq('is_active', true).order('name'),
     supabase.from('daily_inventory_logs')
       .select('id, inventory_item_id, starting_stock, additional_stock, used_stock, ending_stock, notes')
       .in('branch_id', safeBranchIds)

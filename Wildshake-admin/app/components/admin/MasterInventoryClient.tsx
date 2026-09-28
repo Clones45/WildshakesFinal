@@ -1,11 +1,11 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { SHEET_TYPES, SHEET_LABELS, isRecipeSheet, type SheetType } from '@/lib/inventory/sheets'
+import { SHEET_TYPES, SHEET_LABELS, isRecipeSheet, byName, type SheetType } from '@/lib/inventory/sheets'
 import { buildItemsRows, toCsv, ITEMS_CSV_HEADER, downloadCsv } from '@/lib/inventory/csv'
 import { manilaDay } from '@/lib/manila'
 import {
-  createItem, updateItem, setItemActive, deleteItem, moveItem, setItemBranches,
+  createItem, updateItem, setItemActive, deleteItem, setItemBranches,
   createCategory, renameCategory, moveCategory, deleteCategory,
   setRecipeLink, removeRecipeLink,
   type ItemRow, type CategoryRow, type LinkRow,
@@ -134,7 +134,7 @@ export default function MasterInventoryClient(props: Props) {
   const visibleItems = (catId: string) =>
     items.filter(i => i.category_id === catId
       && (showRetired || i.is_active)
-      && (!search || i.name.toLowerCase().includes(search.toLowerCase())))
+      && (!search || i.name.toLowerCase().includes(search.toLowerCase()))).sort(byName)
 
   const saveItemField = (item: ItemRow, patch: Parameters<typeof updateItem>[1]) =>
     run(item.id, () => updateItem(item.id, patch), r => {
@@ -149,10 +149,6 @@ export default function MasterInventoryClient(props: Props) {
       if ('branch_ids' in r && r.branch_ids) setBranchMap(m => ({ ...m, [item.id]: r.branch_ids as string[] }))
     })
   }
-
-  const reorderItems = (order: string[]) =>
-    setItems(list => list.map(i => (order.includes(i.id) ? { ...i, sort_order: order.indexOf(i.id) + 1 } : i))
-      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)))
 
   /* ── Render helpers ───────────────────────────────────────── */
   const info = SHEET_LABELS[sheet]
@@ -248,6 +244,7 @@ export default function MasterInventoryClient(props: Props) {
             </div>
             <div style={{ padding: '0.5rem 1rem', fontSize: '0.74rem', color: 'var(--color-text-muted)', background: 'var(--color-surface-2)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
               <span>✏️ Name, unit and minimum save when you leave the box</span>
+              <span>🔤 Items are listed A to Z inside each category</span>
               <span>🏪 Click a branch to show or hide the item there</span>
               {isRecipeSheet(sheet) && <span>🍳 Recipe = which menu items use it and how much per serving</span>}
             </div>
@@ -282,7 +279,7 @@ export default function MasterInventoryClient(props: Props) {
                           </tr>
                         </thead>
                         <tbody>
-                          {rows.map((item, idx) => {
+                          {rows.map(item => {
                             const mine = itemBranches[item.id] ?? []
                             const itemLinks = linksByItem[item.id] ?? []
                             const canDelete = (logCounts[item.id] ?? 0) === 0 && itemLinks.length === 0
@@ -336,10 +333,6 @@ export default function MasterInventoryClient(props: Props) {
                                 </td>
                                 <td>
                                   <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                    <button style={smallBtn} title="Move up" disabled={idx === 0 || isBusy}
-                                      onClick={() => run(item.id, () => moveItem(item.id, 'up'), r => { if ('order' in r && r.order) reorderItems(r.order as string[]) })}>▲</button>
-                                    <button style={smallBtn} title="Move down" disabled={idx === rows.length - 1 || isBusy}
-                                      onClick={() => run(item.id, () => moveItem(item.id, 'down'), r => { if ('order' in r && r.order) reorderItems(r.order as string[]) })}>▼</button>
                                     {item.is_active ? (
                                       <button style={smallBtn} disabled={isBusy}
                                         onClick={() => { if (confirm(`Retire "${item.name}"? It disappears from every branch sheet but keeps its history. You can restore it later.`)) run(item.id, () => setItemActive(item.id, false), r => { if ('item' in r && r.item) setItems(l => l.map(i => (i.id === item.id ? r.item : i))) }, 'Retired.') }}>
@@ -406,6 +399,7 @@ export default function MasterInventoryClient(props: Props) {
                 title={`${productById[recipeProduct]?.name ?? 'Menu item'} — ingredients per serving`}
                 rows={(linksByProduct[recipeProduct] ?? []).map(l => ({ link: l, label: itemById[l.inventory_item_id]?.name ?? 'Unknown item', unit: itemById[l.inventory_item_id]?.unit ?? null }))}
                 options={items.filter(i => i.is_active && isRecipeSheet(catById[i.category_id]?.sheet_type ?? '') && !(linksByProduct[recipeProduct] ?? []).some(l => l.inventory_item_id === i.id))
+                  .sort(byName)
                   .map(i => ({ id: i.id, label: `${i.name}${i.unit ? ` (${i.unit})` : ''}`, group: catById[i.category_id]?.name ?? '' }))}
                 optionLabel="Add ingredient"
                 side="item"

@@ -46,7 +46,7 @@ export default async function MasterBranchSheetPage({
     { data: overrides },
   ] = await Promise.all([
     admin.from('inventory_categories').select('id, name, sheet_type, sort_order').order('sheet_type').order('sort_order').order('name'),
-    admin.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order, is_active').eq('is_active', true).order('sort_order').order('name'),
+    admin.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order, is_active').eq('is_active', true).order('name'),
     admin.from('inventory_item_tags').select('inventory_item_id').eq('entity_type', 'branch').eq('entity_id', branchId),
     admin.from('daily_inventory_logs').select('id, branch_id, inventory_item_id, log_date, starting_stock, additional_stock, used_stock, notes').eq('branch_id', branchId).eq('log_date', day),
     fetchAll(() => admin.from('food_item_menu_links').select('id, inventory_item_id, product_id, quantity_per_serving').order('id')),

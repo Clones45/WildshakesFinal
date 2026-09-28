@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useTransition } from 'react'
 import { setScopedItemTags } from '@/lib/actions/inventorySetup'
+import { byName } from '@/lib/inventory/sheets'
 
 interface Category { id: string; name: string; sheet_type: string }
 interface InventoryItem {
@@ -38,8 +39,8 @@ interface Props {
 }
 
 const SHEET_LABELS: Record<string, string> = {
-  commissary: '🏭 CSL',
-  commissary_home: '🏠 Home',
+  commissary: '🏭 Commissary Store',
+  commissary_home: '🏠 Commissary Home',
   food: '🍝 Food',
   food_2: '🍕 Food 2',
   production: '⚙️ Production',
@@ -263,7 +264,7 @@ export default function CommissaryInventoryClient({
           // Main Stock (self) always sees all items assigned to the commissary
           if (branch.franchise_id === 'self') return true
           return tags.some(t => t.entity_id === branch.id)
-        })
+        }).sort(byName)
 
         if (branchItems.length === 0 && search === '') return null // Skip branches with no assigned items
 

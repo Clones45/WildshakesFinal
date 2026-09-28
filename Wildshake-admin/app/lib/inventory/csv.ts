@@ -4,7 +4,7 @@
  * Pure functions: they take the same rows the pages already hold and return text.
  * Files open cleanly in Excel (UTF-8 byte-order mark, CRLF line endings, quoted cells).
  */
-import { SHEET_TYPES, SHEET_LABELS, getStockStatus, computeEnding, isSheetType } from './sheets'
+import { SHEET_TYPES, SHEET_LABELS, getStockStatus, computeEnding, isSheetType, byName } from './sheets'
 
 export interface CsvCategory { id: string; name: string; sheet_type: string; sort_order: number }
 export interface CsvItem {
@@ -43,6 +43,7 @@ export const safeFilename = (s: string): string =>
 
 const STATUS_LABEL = { unset: 'Not counted', ok: 'OK', low: 'Low', out: 'Out' } as const
 
+/** Categories keep the order head office set for them; items inside them are A to Z (byName). */
 const bySort = <T extends { sort_order: number; name: string }>(a: T, b: T) =>
   a.sort_order - b.sort_order || a.name.localeCompare(b.name)
 
@@ -95,7 +96,7 @@ export function buildSheetRows(input: {
   const unitOf = new Map(input.items.map(i => [i.id, i.unit]))
   const recipes = recipeIndex(input.links ?? [], input.products ?? [], unitOf)
   const cats = [...input.categories].sort(bySort)
-  const items = input.items.filter(i => i.is_active !== false).sort(bySort)
+  const items = input.items.filter(i => i.is_active !== false).sort(byName)
   const rows: unknown[][] = []
   for (const sheet of sheetOrder(cats)) {
     for (const cat of cats.filter(c => c.sheet_type === sheet)) {
@@ -132,7 +133,7 @@ export function buildItemsRows(input: {
   const unitOf = new Map(input.items.map(i => [i.id, i.unit]))
   const recipes = recipeIndex(input.links, input.products, unitOf)
   const cats = [...input.categories].sort(bySort)
-  const items = [...input.items].sort(bySort)
+  const items = [...input.items].sort(byName)
   const rows: unknown[][] = []
   for (const sheet of sheetOrder(cats)) {
     for (const cat of cats.filter(c => c.sheet_type === sheet)) {

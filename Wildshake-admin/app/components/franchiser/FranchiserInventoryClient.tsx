@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useTransition } from 'react'
 import { manilaDay } from '@/lib/manila'
 import { createClient } from '@/lib/supabase/client'
-import { SHEET_TYPES, SHEET_LABELS, getStockStatus, isRecipeSheet, type SheetType } from '@/lib/inventory/sheets'
+import { SHEET_TYPES, SHEET_LABELS, getStockStatus, isRecipeSheet, byName, type SheetType } from '@/lib/inventory/sheets'
 import { buildSheetRows, toCsv, SHEET_CSV_HEADER, downloadCsv, safeFilename } from '@/lib/inventory/csv'
 
 /* ─── Types ────────────────────────────────────────────────────── */
@@ -145,7 +145,7 @@ export default function FranchiserInventoryClient({
   const itemsByCategory = useCallback((catId: string) =>
     items.filter(i => i.category_id === catId && (
       !search || i.name.toLowerCase().includes(search.toLowerCase())
-    )), [items, search])
+    )).sort(byName), [items, search])
 
   /* ── Export today's sheet (every section) as a CSV file ───────── */
   function exportCSV() {

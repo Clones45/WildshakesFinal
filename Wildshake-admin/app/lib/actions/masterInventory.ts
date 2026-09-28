@@ -270,29 +270,6 @@ export async function deleteItem(id: string) {
   return { ok: true as const, historyRecorded }
 }
 
-/** Swap an item with its neighbour inside its category. Cosmetic, so not written to history. */
-export async function moveItem(id: string, direction: 'up' | 'down') {
-  const g = await requireMaster(); if ('error' in g) return g
-  const admin = createAdminClient()
-  const { data: item } = await admin.from('inventory_items').select('id, category_id, sort_order').eq('id', id).maybeSingle()
-  if (!item) return { error: 'That item no longer exists.' }
-  const { data: siblings } = await admin
-    .from('inventory_items').select('id, sort_order')
-    .eq('category_id', item.category_id).order('sort_order').order('name')
-  const order = (siblings ?? []).map(s => s.id as string)
-  const i = order.indexOf(id)
-  const j = direction === 'up' ? i - 1 : i + 1
-  if (i < 0 || j < 0 || j >= order.length) return { ok: true as const, historyRecorded: true, order }
-  // Renumber 1..n so equal sort_order values can never make the swap a no-op.
-  ;[order[i], order[j]] = [order[j], order[i]]
-  for (let k = 0; k < order.length; k++) {
-    const { error } = await admin.from('inventory_items').update({ sort_order: k + 1 }).eq('id', order[k])
-    if (error) return { error: error.message }
-  }
-  bump()
-  return { ok: true as const, historyRecorded: true, order }
-}
-
 // ---------------------------------------------------------------------------
 // Branch tags (which branches see an item)
 // ---------------------------------------------------------------------------

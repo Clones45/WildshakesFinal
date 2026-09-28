@@ -32,7 +32,7 @@ export default async function FranchiserInventoryPage() {
     .from('inventory_items')
     .select('id, category_id, name, unit, min_stock_level, sort_order')
     .eq('is_active', true)
-    .order('sort_order')
+    .order('name')
 
   // ── Tag-based filtering: only show items tagged to this branch or untagged (global) ──
   const { data: myBranchTags } = branchId
