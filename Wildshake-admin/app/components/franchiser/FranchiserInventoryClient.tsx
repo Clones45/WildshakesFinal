@@ -73,6 +73,9 @@ interface Props {
   cancelledMap: Record<string, number>
   voidedMap: Record<string, number>
   incomingShipments?: IncomingShipment[]
+  /** Sheet to open first and whether to start with the Low/Out filter on (from ?sheet=&low=1). */
+  initialSheet?: SheetType
+  initialLowOnly?: boolean
 }
 
 // Sheet labels and the stock-status rule live in lib/inventory/sheets.ts, shared with the master admin pages.
@@ -114,6 +117,7 @@ export default function FranchiserInventoryClient({
   products, foodMenuLinks,
   soldMap, cancelledMap, voidedMap,
   incomingShipments = [],
+  initialSheet, initialLowOnly = false,
 }: Props) {
   const supabase = createClient()
   const [, startTransition] = useTransition()
@@ -128,10 +132,10 @@ export default function FranchiserInventoryClient({
   /* food item -> menu item links: set by head office (master admin), read-only here */
   const links = foodMenuLinks
 
-  const [activeSheet, setActiveSheet] = useState<SheetType>('food')
+  const [activeSheet, setActiveSheet] = useState<SheetType>(initialSheet ?? 'food')
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [search, setSearch] = useState('')
-  const [showOnlyLow, setShowOnlyLow] = useState(false)
+  const [showOnlyLow, setShowOnlyLow] = useState(initialLowOnly)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [shipmentProcessing, setShipmentProcessing] = useState<Record<string, boolean>>({})
   const [localShipments, setLocalShipments] = useState<IncomingShipment[]>(incomingShipments)

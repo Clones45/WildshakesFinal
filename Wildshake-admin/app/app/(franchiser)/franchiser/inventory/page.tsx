@@ -1,12 +1,16 @@
 import { requirePanelAccess } from '@/lib/portal/access'
 import { fetchAll } from '@/lib/supabase/fetchAll'
 import FranchiserInventoryClient from '@/components/franchiser/FranchiserInventoryClient'
+import { isSheetType } from '@/lib/inventory/sheets'
 
 export const dynamic = 'force-dynamic'
 
-export default async function FranchiserInventoryPage() {
+export default async function FranchiserInventoryPage({ searchParams }: { searchParams: Promise<{ low?: string; sheet?: string }> }) {
   const { supabase, user } = await requirePanelAccess('franchise', 'inventory')
   const franchiseId = (user?.app_metadata as Record<string, string>)?.franchise_id
+
+  // The dashboard's Stock Watch links here as ?low=1&sheet=food: open that sheet with Low/Out only on.
+  const sp = await searchParams
 
   // Get branches for this franchise
   const { data: branches } = await supabase
@@ -188,6 +192,8 @@ export default async function FranchiserInventoryPage() {
       cancelledMap={cancelledMap}
       voidedMap={voidedMap}
       incomingShipments={(incomingShipments || []) as unknown as Parameters<typeof FranchiserInventoryClient>[0]['incomingShipments']}
+      initialSheet={sp.sheet && isSheetType(sp.sheet) ? sp.sheet : undefined}
+      initialLowOnly={sp.low === '1'}
     />
   )
 }

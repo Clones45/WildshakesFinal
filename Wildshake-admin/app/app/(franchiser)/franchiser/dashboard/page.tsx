@@ -2,6 +2,8 @@ import type { CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { requireDashboardOrFirstPanel } from '@/lib/portal/access'
 import { fetchAll } from '@/lib/supabase/fetchAll'
+import { buildStockWatch, COUNT_LOOKBACK_DAYS } from '@/lib/inventory/stockWatch'
+import StockWatchPanel from '@/components/franchiser/StockWatchPanel'
 
 async function getFranchiserDashboardData(franchiseId: string) {
   const supabase = await createClient()
@@ -14,6 +16,10 @@ async function getFranchiserDashboardData(franchiseId: string) {
 
   // The chart shows today and the six days before it.
   const weekAgo = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000)
+
+  // Stock Watch: today's sheet, the last count inside the look-back window, and the sales since.
+  const dayStr = manilaDay(new Date())
+  const lookbackFrom = manilaDay(new Date(today.getTime() - COUNT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000))
 
   // Get ALL branches for this franchise
   const { data: branches } = await supabase
@@ -35,6 +41,12 @@ async function getFranchiserDashboardData(franchiseId: string) {
     { data: recentTx },
     topItems,
     { data: staffCount },
+    { data: invCategories },
+    { data: invItems },
+    invTags,
+    invLogs,
+    invLinks,
+    { data: invProducts },
   ] = await Promise.all([
     // Today's completed transactions (all branches)
     fetchAll(() => supabase
@@ -77,6 +89,25 @@ async function getFranchiserDashboardData(franchiseId: string) {
       .select('id', { count: 'exact' })
       .in('branch_id', branchIds)
       .eq('is_active', true),
+
+    // Stock Watch: the sheets, which items each branch sees, a month of counts and use, and recipes
+    supabase.from('inventory_categories').select('id, sheet_type'),
+    supabase.from('inventory_items').select('id, category_id, name, unit, min_stock_level').eq('is_active', true),
+    fetchAll(() => supabase
+      .from('inventory_item_tags')
+      .select('inventory_item_id, entity_id')
+      .eq('entity_type', 'branch')
+      .in('entity_id', branchIds)
+      .order('id')),
+    fetchAll(() => supabase
+      .from('daily_inventory_logs')
+      .select('branch_id, inventory_item_id, log_date, starting_stock, additional_stock, used_stock')
+      .in('branch_id', branchIds)
+      .gte('log_date', lookbackFrom)
+      .lte('log_date', dayStr)
+      .order('id')),
+    fetchAll(() => supabase.from('food_item_menu_links').select('inventory_item_id, product_id').order('id')),
+    supabase.from('products').select('id, name'),
   ])
 
   const todayRevenue  = (todayTx || []).reduce((s, t) => s + Number(t.total_amount), 0)
@@ -115,6 +146,25 @@ async function getFranchiserDashboardData(franchiseId: string) {
     .sort((a, b) => b.qty - a.qty)
     .slice(0, 5)
 
+  // Stock Watch, one per branch: only the items tagged to that branch, judged on that branch's counts.
+  const taggedTo = new Map<string, Set<string>>()
+  for (const t of invTags) {
+    const set = taggedTo.get(t.entity_id) ?? new Set<string>()
+    set.add(t.inventory_item_id)
+    taggedTo.set(t.entity_id, set)
+  }
+  const stockWatches = branches.map(b => ({
+    branchName: b.name as string,
+    watch: buildStockWatch({
+      day: dayStr,
+      items: (invItems ?? []).filter(i => taggedTo.get(b.id)?.has(i.id)),
+      categories: invCategories ?? [],
+      logs: invLogs.filter(l => l.branch_id === b.id),
+      links: invLinks,
+      products: invProducts ?? [],
+    }),
+  }))
+
   return {
     branch,
     branches,
@@ -124,6 +174,7 @@ async function getFranchiserDashboardData(franchiseId: string) {
     topItemsList,
     recentTx: recentTx || [],
     activeStaff: staffCount?.length || 0,
+    stockWatches,
   }
 }
 
@@ -143,7 +194,7 @@ export default async function FranchiserDashboard() {
   }
 
   const { branch, branches, todayRevenue, todayOrders, weekRevenue, voidedToday,
-          chartData, payBreakdown, topItemsList, recentTx, activeStaff } = data
+          chartData, payBreakdown, topItemsList, recentTx, activeStaff, stockWatches } = data
 
   const maxRevenue = Math.max(...chartData.map(d => d.revenue), 1)
   const dateNow = new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila',
@@ -206,6 +257,9 @@ export default async function FranchiserDashboard() {
           </p>
         </div>
       </div>
+
+      {/* Stock Watch: what needs restocking, most urgent first */}
+      <StockWatchPanel watches={stockWatches} inventoryHref="/franchiser/inventory" />
 
       {/* Charts Row */}
       <div className="chart-grid">
