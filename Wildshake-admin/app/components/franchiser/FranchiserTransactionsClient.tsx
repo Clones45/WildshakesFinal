@@ -1,7 +1,11 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useMemo, useState, type CSSProperties } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { manilaDay } from '@/lib/manila'
+import { resolvePeriod, shiftDay } from '@/lib/period'
+import { toCsv, downloadCsv, safeFilename } from '@/lib/inventory/csv'
+import SalesDatePicker from './SalesDatePicker'
 
 interface TxItem {
   quantity: number
@@ -48,43 +52,100 @@ interface Tx {
 
 interface Props {
   branchName: string
+  /** Month being viewed, yyyy-mm. The server fetches only this month. */
+  month: string
+  /** Today in Manila, yyyy-mm-dd — nothing after it can be picked. */
+  today: string
+  /** The day the server chose for this address, yyyy-mm-dd, or '' for the whole month. */
+  initialDay: string
+  /** Every transaction in the month, newest first. */
   transactions: Tx[]
 }
 
-export default function FranchiserTransactionsClient({ branchName, transactions }: Props) {
+// A whole month at a busy branch is over a thousand rows; draw them in batches
+// so the page stays quick, with the totals still over every row.
+const PAGE = 200
+
+// Same labels as the Sales Report and the POS so the three screens read alike.
+const MONTH_LABEL = (month: string) => {
+  const [y, m] = month.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+const DAY_LABEL = (day: string) => {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+const activePill: CSSProperties = {
+  background: 'var(--color-primary)',
+  borderColor: 'var(--color-primary)',
+  color: '#fff',
+}
+
+export default function FranchiserTransactionsClient({ branchName, month, today, initialDay, transactions }: Props) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [search, setSearch]     = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [dateFilter, setDateFilter]     = useState('30')
   const [expanded, setExpanded] = useState<string | null>(null)
-  // Taken once on mount so the render stays pure (the page is short-lived; a stale 'now' by minutes is harmless)
-  const [now] = useState(() => Date.now())
+  const [visibleCount, setVisibleCount] = useState(PAGE)
 
-  const cutoff = new Date(now - parseInt(dateFilter) * 24 * 60 * 60 * 1000)
+  // The day in view ('' = the whole month) is read from the address bar, never kept
+  // apart from it, so a refresh, the Back button and a copied link all show the same
+  // day. resolvePeriod is the same rule the server used to choose the month; the
+  // server's own choice stands in only while a change of month is on its way.
+  const fromUrl = resolvePeriod(searchParams.get('month'), searchParams.get('day'), today)
+  const selectedDay = fromUrl.month === month ? fromUrl.day : initialDay
 
-  const filtered = transactions.filter(tx => {
-    const dateOk   = new Date(tx.created_at) >= cutoff
+  const yesterday  = shiftDay(today, -1)
+  const rangeLabel = selectedDay ? DAY_LABEL(selectedDay) : MONTH_LABEL(month)
+
+  // Pick a day ('' = the whole month) in a month.
+  // Same month: everything needed is already here, so only the address changes.
+  // Next.js passes the new address to useSearchParams without asking the server
+  // again, and the list narrows at once. Another month: navigate, so the server
+  // fetches it (the page's loading screen shows meanwhile).
+  const pick = (m: string, d: string) => {
+    const query = `?month=${m}${d ? `&day=${d}` : ''}`
+    if (m !== month) { router.push(`/franchiser/transactions${query}`); return }
+    setVisibleCount(PAGE)
+    setExpanded(null)
+    window.history.replaceState(null, '', query)
+  }
+
+  // Which Manila day each sale belongs to, worked out once per load. An 11pm sale
+  // must not be filed under the next day just because UTC has already rolled over.
+  const dayOf = useMemo(() => new Map(transactions.map(tx => [tx.id, manilaDay(tx.created_at)])), [transactions])
+  const inRange = transactions.filter(tx => selectedDay === '' || dayOf.get(tx.id) === selectedDay)
+
+  const q = search.trim().toLowerCase()
+  const filtered = inRange.filter(tx => {
     const statusOk = statusFilter === 'all' || tx.status === statusFilter
     const ref      = (tx.local_ref || tx.reference_number || tx.id).toLowerCase()
     const cashier  = (tx.users?.name || '').toLowerCase()
-    const searchOk = !search || ref.includes(search.toLowerCase()) || cashier.includes(search.toLowerCase())
-    return dateOk && statusOk && searchOk
+    const searchOk = !q || ref.includes(q) || cashier.includes(q)
+    return statusOk && searchOk
   })
+  const narrowed = q !== '' || statusFilter !== 'all'
 
-  const totalRevenue = filtered.filter(t => t.status === 'completed').reduce((s, t) => s + Number(t.total_amount), 0)
+  const completed    = filtered.filter(t => t.status === 'completed')
+  const totalRevenue = completed.reduce((s, t) => s + Number(t.total_amount), 0)
   const totalVoided  = filtered.filter(t => t.status === 'voided').length
 
   function exportCSV() {
-    const header = 'Ref,Date,Cashier,Amount,Discount,Payment,Status\n'
-    const rows = filtered.map(tx =>
-      `${(tx.local_ref || tx.reference_number || tx.id).slice(-8).toUpperCase()},${new Date(tx.created_at).toLocaleString()},${tx.users?.name || ''},${tx.total_amount},${tx.discount_amount},${tx.payment_method},${tx.status}`
-    ).join('\n')
-    const blob = new Blob([header + rows], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${branchName}-transactions-${manilaDay()}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    const header = ['Ref', 'Date', 'Time', 'Branch', 'Cashier', 'Amount', 'Discount', 'Discount type', 'Payment', 'Status']
+    const rows = filtered.map(tx => [
+      (tx.local_ref || tx.reference_number || tx.id).slice(-8).toUpperCase(),
+      dayOf.get(tx.id) ?? manilaDay(tx.created_at),
+      new Date(tx.created_at).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' }),
+      tx.branches?.name ?? '',
+      tx.users?.name ?? '',
+      Number(tx.total_amount).toFixed(2),
+      Number(tx.discount_amount).toFixed(2),
+      tx.discount_type && tx.discount_type !== 'none' ? tx.discount_type : '',
+      tx.payment_method,
+      tx.status,
+    ])
+    downloadCsv(`${safeFilename(branchName)}-transactions-${selectedDay || month}.csv`, toCsv(header, rows))
   }
 
   const payLabels: Record<string, string> = {
@@ -97,9 +158,30 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
       <div className="page-header">
         <div>
           <h1>Transaction History</h1>
-          <p className="page-header-subtitle">All transactions for {branchName}</p>
+          <p className="page-header-subtitle">Every sale at {branchName}. Pick a day, or a whole month.</p>
         </div>
-        <button className="btn btn-ghost" onClick={exportCSV}>📥 Export CSV</button>
+        <div className="flex gap-1" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Today and yesterday in one tap; the calendar for any other day, or a
+              whole month. It is the same calendar as the Sales Report and the POS. */}
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            style={selectedDay === today ? activePill : undefined}
+            onClick={() => pick(today.slice(0, 7), today)}
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            style={selectedDay === yesterday ? activePill : undefined}
+            onClick={() => pick(yesterday.slice(0, 7), yesterday)}
+          >
+            Yesterday
+          </button>
+          <SalesDatePicker month={month} day={selectedDay} today={today} onPick={pick} />
+          <button className="btn btn-ghost" onClick={exportCSV}>📥 Export CSV</button>
+        </div>
       </div>
 
       {/* Summary KPIs */}
@@ -108,7 +190,7 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
           <div className="stat-card-icon green">✅</div>
           <p className="stat-card-label">Completed Revenue</p>
           <p className="stat-card-value">₱{totalRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
-          <p className="stat-card-trend neutral">{filtered.filter(t => t.status === 'completed').length} transactions</p>
+          <p className="stat-card-trend neutral">{completed.length} transactions · {rangeLabel}</p>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon red">🔴</div>
@@ -120,16 +202,19 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
         </div>
         <div className="stat-card">
           <div className="stat-card-icon gold">🧾</div>
-          <p className="stat-card-label">Total Shown</p>
+          <p className="stat-card-label">Transactions</p>
           <p className="stat-card-value">{filtered.length}</p>
-          <p className="stat-card-trend neutral">of {transactions.length} loaded</p>
+          <p className="stat-card-trend neutral">{narrowed ? `of ${inRange.length} · ${rangeLabel}` : rangeLabel}</p>
         </div>
       </div>
 
       {/* Filters */}
       <div className="table-wrapper">
         <div className="table-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-          <p className="table-title">Transactions</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <p className="table-title">Transactions</p>
+            <span className="badge badge-muted">{rangeLabel}</span>
+          </div>
           <div className="flex gap-1" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
             <div className="table-search">
               🔍
@@ -137,19 +222,19 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                 type="text"
                 placeholder="Search ref or cashier…"
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => { setSearch(e.target.value); setVisibleCount(PAGE) }}
               />
             </div>
-            <select className="form-select" style={{ width: 'auto' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+            <select
+              className="form-select"
+              style={{ width: 'auto' }}
+              value={statusFilter}
+              onChange={e => { setStatusFilter(e.target.value); setVisibleCount(PAGE) }}
+            >
               <option value="all">All Status</option>
               <option value="completed">Completed</option>
               <option value="voided">Voided</option>
               <option value="pending">Pending</option>
-            </select>
-            <select className="form-select" style={{ width: 'auto' }} value={dateFilter} onChange={e => setDateFilter(e.target.value)}>
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
             </select>
           </div>
         </div>
@@ -170,11 +255,13 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '3rem' }}>
-                  No transactions match your filters
+                  {inRange.length === 0
+                    ? `No transactions ${selectedDay ? 'on' : 'in'} ${rangeLabel}`
+                    : 'No transactions match your filters'}
                 </td>
               </tr>
             ) : (
-              filtered.map(tx => (
+              filtered.slice(0, visibleCount).map(tx => (
                 <React.Fragment key={tx.id}>
                   <tr
                     style={{ opacity: tx.status === 'voided' ? 0.65 : 1, cursor: 'pointer' }}
@@ -345,6 +432,15 @@ export default function FranchiserTransactionsClient({ branchName, transactions 
                   )}
                 </React.Fragment>
               ))
+            )}
+            {filtered.length > visibleCount && (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '0.75rem' }}>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVisibleCount(n => n + PAGE)}>
+                    Show more · {filtered.length - visibleCount} of {filtered.length} not shown
+                  </button>
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
