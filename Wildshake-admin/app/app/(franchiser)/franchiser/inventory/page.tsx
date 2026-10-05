@@ -2,6 +2,7 @@ import { requirePanelAccess } from '@/lib/portal/access'
 import { fetchAll } from '@/lib/supabase/fetchAll'
 import FranchiserInventoryClient from '@/components/franchiser/FranchiserInventoryClient'
 import { isSheetType } from '@/lib/inventory/sheets'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,10 +60,17 @@ export default async function FranchiserInventoryPage({ searchParams }: { search
     myTaggedItemIds.has(item.id)
   )
 
+  // Today's blank Starting counts are carried forward from the last counted day before the
+  // sheet is read (idempotent; a Starting a person typed is never touched).
+  if (branchId) {
+    const { error: rollErr } = await createAdminClient().rpc('inventory_roll_forward', { p_day: today, p_branch: branchId, p_apply: true })
+    if (rollErr) console.warn('[inventory] roll-forward skipped:', rollErr.message)
+  }
+
   const { data: todayLogs } = branchId
     ? await supabase
         .from('daily_inventory_logs')
-        .select('id, inventory_item_id, starting_stock, additional_stock, used_stock, ending_stock, notes')
+        .select('id, inventory_item_id, starting_stock, additional_stock, used_stock, ending_stock, notes, starting_auto')
         .eq('branch_id', branchId)
         .eq('log_date', today)
     : { data: [] }

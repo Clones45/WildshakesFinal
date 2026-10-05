@@ -46,11 +46,13 @@ export interface LogRow {
   additional_stock: number | null
   used_stock: number | null
   notes: string | null
+  /** true when the system carried Starting forward from the last counted day. */
+  starting_auto?: boolean
 }
 export interface AvailabilityRow { product_id: string; is_available: boolean; stock_qty: number | null }
 
 const ITEM_COLS = 'id, category_id, name, unit, min_stock_level, sort_order, is_active'
-const LOG_COLS  = 'id, branch_id, inventory_item_id, log_date, starting_stock, additional_stock, used_stock, notes'
+const LOG_COLS  = 'id, branch_id, inventory_item_id, log_date, starting_stock, additional_stock, used_stock, notes, starting_auto'
 
 // ---------------------------------------------------------------------------
 // Guard, history, revalidation
@@ -530,7 +532,7 @@ export async function saveDailyLog(input: {
 
   let log: LogRow
   if (existing) {
-    const { data, error } = await admin.from('daily_inventory_logs').update({ [input.field]: value, updated_at: new Date().toISOString() })
+    const { data, error } = await admin.from('daily_inventory_logs').update({ [input.field]: value, ...(input.field === 'starting_stock' ? { starting_auto: false } : {}), updated_at: new Date().toISOString() })
       .eq('id', existing.id).select(LOG_COLS).single()
     if (error || !data) return { error: error?.message ?? 'Could not save.' }
     log = data as LogRow
@@ -558,53 +560,33 @@ export async function saveDailyLog(input: {
   return { ok: true as const, historyRecorded, log, ending: computeEnding(log.starting_stock, log.additional_stock, log.used_stock) }
 }
 
-/** Fill this day's blank Starting counts from the previous day's Ending, for one branch. */
+/**
+ * Fill this day's blank Starting counts from the last counted day, for one branch.
+ * The database function carries the last Ending forward and applies the usage and
+ * deliveries of any skipped days in between; a Starting a person typed is never touched.
+ */
 export async function copyPreviousDay(input: { branch_id: string; log_date: string }) {
   const g = await requireMaster(); if ('error' in g) return g
   if (!isYmd(input.log_date)) return { error: 'Bad date.' }
   if (input.log_date > manilaDay()) return { error: 'That day has not happened yet.' }
   const admin = createAdminClient()
-  const previous = manilaDay(new Date(`${input.log_date}T12:00:00+08:00`).getTime() - 86400000)
-
-  const [{ data: prevLogs }, { data: todayLogs }, { data: branch }] = await Promise.all([
-    admin.from('daily_inventory_logs').select(LOG_COLS).eq('branch_id', input.branch_id).eq('log_date', previous),
-    admin.from('daily_inventory_logs').select(LOG_COLS).eq('branch_id', input.branch_id).eq('log_date', input.log_date),
-    admin.from('branches').select('id, name').eq('id', input.branch_id).maybeSingle(),
-  ])
+  const { data: branch } = await admin.from('branches').select('id, name').eq('id', input.branch_id).maybeSingle()
   if (!branch) return { error: 'That branch no longer exists.' }
-  if (!prevLogs || prevLogs.length === 0) return { error: `No counts were entered on ${previous}.` }
 
-  const todayByItem = new Map((todayLogs ?? []).map(l => [l.inventory_item_id as string, l as LogRow]))
-  const saved: LogRow[] = []
-  for (const p of prevLogs as LogRow[]) {
-    const ending = computeEnding(p.starting_stock, p.additional_stock, p.used_stock)
-    if (ending === null) continue
-    const t = todayByItem.get(p.inventory_item_id)
-    if (t && t.starting_stock !== null) continue
-    let row: LogRow | null = null
-    if (t) {
-      const { data } = await admin.from('daily_inventory_logs').update({ starting_stock: ending, updated_at: new Date().toISOString() }).eq('id', t.id).select(LOG_COLS).single()
-      row = (data as LogRow) ?? null
-    } else {
-      const { data } = await admin.from('daily_inventory_logs')
-        .insert({ branch_id: input.branch_id, inventory_item_id: p.inventory_item_id, log_date: input.log_date, starting_stock: ending })
-        .select(LOG_COLS).single()
-      row = (data as LogRow) ?? null
-    }
-    if (row) {
-      saved.push(row)
-      await syncAvailability(admin, input.branch_id, row.inventory_item_id, row)
-    }
-  }
+  const { data: filled, error } = await admin.rpc('inventory_roll_forward', { p_day: input.log_date, p_branch: input.branch_id, p_apply: true })
+  if (error) return { error: error.message }
+  const applied = ((filled ?? []) as { out_item_id: string; out_from_day: string; out_applied: boolean }[]).filter(r => r.out_applied)
+  const { data: logs } = await admin.from('daily_inventory_logs').select(LOG_COLS).eq('branch_id', input.branch_id).eq('log_date', input.log_date)
+  const days = [...new Set(applied.map(a => a.out_from_day))].sort()
 
-  const historyRecorded = saved.length === 0 ? true : await record(admin, g.actor, {
+  const historyRecorded = applied.length === 0 ? true : await record(admin, g.actor, {
     area: 'daily_log', action: 'copy',
-    summary: `${branch.name} - ${input.log_date}: copied ${previous} ending into Starting for ${saved.length} item(s)`,
+    summary: `${branch.name} - ${input.log_date}: filled Starting for ${applied.length} item(s) from the last counted day (${days[0]}${days.length > 1 ? ` to ${days[days.length - 1]}` : ''})`,
     branch_id: input.branch_id, reference_table: 'daily_inventory_logs',
-    after: { log_date: input.log_date, from: previous, item_ids: saved.map(s => s.inventory_item_id) },
+    after: { log_date: input.log_date, item_ids: applied.map(a => a.out_item_id) },
   })
   bump()
-  return { ok: true as const, historyRecorded, copied: saved.length, logs: saved, from: previous }
+  return { ok: true as const, historyRecorded, copied: applied.length, logs: (logs ?? []) as LogRow[], from: days[0] ?? null }
 }
 
 // ---------------------------------------------------------------------------

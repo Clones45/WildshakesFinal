@@ -116,7 +116,7 @@ export default function MasterBranchSheetClient({
   const copyPrevious = () => run('copy', () => copyPreviousDay({ branch_id: branchId, log_date: day }), r => {
     if ('logs' in r && r.logs) {
       setLogs(m => { const n = { ...m }; for (const l of r.logs as LogRow[]) n[l.inventory_item_id] = l; return n })
-      say(r.copied ? `Copied ${r.from} ending into Starting for ${r.copied} item(s).` : `Nothing to copy: every item already has a Starting count.`)
+      say(r.copied ? `Filled Starting for ${r.copied} item(s) from the last counted day.` : `Nothing to fill: every item already has a Starting, or has never been counted.`)
     }
   })
 
@@ -182,7 +182,7 @@ export default function MasterBranchSheetClient({
           />
           <button className="btn btn-ghost btn-sm" onClick={exportThisBranch}>📥 Export CSV</button>
           <button className="btn btn-ghost btn-sm" disabled={!!busy.export} onClick={exportAllBranches}>{busy.export ? '⏳ Preparing…' : '📥 Export all branches'}</button>
-          <button className="btn btn-ghost btn-sm" disabled={!!busy.copy} onClick={copyPrevious}>📋 Copy previous day&apos;s ending</button>
+          <button className="btn btn-ghost btn-sm" disabled={!!busy.copy} onClick={copyPrevious}>↻ Fill from last count</button>
           <a href="/inventory" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>⚙️ Setup</a>
         </div>
       </div>
@@ -297,7 +297,9 @@ export default function MasterBranchSheetClient({
                               <td style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.78rem' }}>{item.unit || '—'}</td>
                               <td style={{ textAlign: 'center' }}>
                                 <input key={`s-${item.id}-${log?.starting_stock ?? 'x'}`} type="number" min="0" step="0.5" placeholder="—" defaultValue={log?.starting_stock ?? ''} style={inputStyle}
+                                  title={log?.starting_auto ? 'Carried over from the last count. Type a number to replace it.' : undefined}
                                   onBlur={e => saveField(item, 'starting_stock', e.target.value)} />
+                                  {log?.starting_auto && <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>carried over</div>}
                               </td>
                               <td style={{ textAlign: 'center' }}>
                                 <input key={`a-${item.id}-${log?.additional_stock ?? 'x'}`} type="number" min="0" step="0.5" placeholder="0" defaultValue={log?.additional_stock ?? ''} style={inputStyle}

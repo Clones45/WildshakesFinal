@@ -2,6 +2,35 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getVerifiedUser } from '@/lib/auth/verify'
+import { manilaDay } from '@/lib/manila'
+
+/**
+ * Fill today's blank Starting counts for one of the caller's own branches from the last
+ * counted day (the database carries the last Ending forward and applies the usage and
+ * deliveries of any skipped days). A Starting a person typed is never touched.
+ */
+export async function fillFromLastCount(branchId: string) {
+  const supabase = await createClient()
+  const user = await getVerifiedUser(supabase)
+  if (!user) return { error: 'Please sign in again.' }
+  const franchiseId = (user.app_metadata as Record<string, string>)?.franchise_id
+  const { data: branch } = await supabase.from('branches').select('id').eq('id', branchId).eq('franchise_id', franchiseId ?? '').maybeSingle()
+  if (!branch) return { error: 'That branch is not part of your franchise.' }
+
+  const today = manilaDay()
+  const admin = createAdminClient()
+  const { data, error } = await admin.rpc('inventory_roll_forward', { p_day: today, p_branch: branchId, p_apply: true })
+  if (error) return { error: error.message }
+  const filled = ((data ?? []) as { out_applied: boolean }[]).filter(r => r.out_applied).length
+  const { data: logs } = await admin
+    .from('daily_inventory_logs')
+    .select('id, inventory_item_id, starting_stock, additional_stock, used_stock, ending_stock, notes, starting_auto')
+    .eq('branch_id', branchId).eq('log_date', today)
+  revalidatePath('/franchiser/inventory')
+  return { ok: true as const, filled, logs: logs ?? [] }
+}
 
 export async function createFranchiserStaff(formData: FormData) {
   const supabase = await createClient()

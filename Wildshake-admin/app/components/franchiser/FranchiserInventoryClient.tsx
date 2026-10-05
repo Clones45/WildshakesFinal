@@ -31,6 +31,8 @@ interface DailyLog {
   used_stock: number | null
   ending_stock: number | null
   notes: string | null
+  /** true when the system carried Starting forward from the last counted day. */
+  starting_auto?: boolean
 }
 
 interface Product {
@@ -249,6 +251,7 @@ export default function FranchiserInventoryClient({
         notes: null,
       }),
       [field]: parsed,
+      ...(field === 'starting_stock' ? { starting_auto: false } : {}),
     }
     setLogs(prev => ({ ...prev, [item.id]: newLog }))
     setSaving(prev => ({ ...prev, [item.id]: true }))
@@ -257,7 +260,7 @@ export default function FranchiserInventoryClient({
       if (existingLog?.id) {
         await supabase
           .from('daily_inventory_logs')
-          .update({ [field]: parsed })
+          .update(field === 'starting_stock' ? { starting_stock: parsed, starting_auto: false } : { [field]: parsed })
           .eq('id', existingLog.id)
       } else {
         const { data, error } = await supabase
@@ -326,37 +329,19 @@ export default function FranchiserInventoryClient({
     }
   }
 
-  /* ── Copy yesterday's ending → today's starting ───────────────── */
-  // ending is never persisted (see the Stats note above) — recomputed here from yesterday's
-  // starting/additional/used, same formula as foodEnding(). "yesterday" is
-  // derived from the `today` prop (already Asia/Manila-correct) rather than a naive
-  // Date.now() - 86400000, which can land on the wrong calendar day near midnight.
-  async function copyFromYesterday() {
+  /* ── Fill today's blank Starting counts from the last counted day ─ */
+  // The server carries the last counted Ending forward, applying the usage and deliveries
+  // of any skipped days. This also happens by itself overnight and when the page opens;
+  // the button is for refilling after a mistake. A Starting a person typed is never touched.
+  async function fillFromLastCount() {
     if (!branchId) return
-    const yesterday = manilaDay(new Date(today + 'T12:00:00+08:00').getTime() - 86400000)
-
-    const { data: yestLogs } = await supabase
-      .from('daily_inventory_logs')
-      .select('inventory_item_id, starting_stock, additional_stock, used_stock')
-      .eq('branch_id', branchId)
-      .eq('log_date', yesterday)
-
-    if (!yestLogs || yestLogs.length === 0) {
-      showToast('No yesterday logs found.')
-      return
+    const { fillFromLastCount: fill } = await import('@/lib/actions/franchiser')
+    const r = await fill(branchId)
+    if ('error' in r && r.error) { showToast(`❌ ${r.error}`); return }
+    if ('logs' in r) {
+      setLogs(prev => { const n = { ...prev }; for (const l of r.logs as DailyLog[]) n[l.inventory_item_id] = l; return n })
+      showToast(r.filled ? `✅ Filled Starting for ${r.filled} item(s) from the last count.` : 'Nothing to fill: every item already has a Starting, or has never been counted.')
     }
-    startTransition(async () => {
-      for (const yl of yestLogs) {
-        if (yl.starting_stock === null || logs[yl.inventory_item_id]?.starting_stock) continue
-        const yesterdayEnding = Math.max(0, yl.starting_stock + (yl.additional_stock ?? 0) - (yl.used_stock ?? 0))
-        await saveField(
-          { id: yl.inventory_item_id } as InventoryItem,
-          'starting_stock',
-          String(yesterdayEnding)
-        )
-      }
-      showToast(`✅ Copied yesterday's ending → today's starting.`)
-    })
   }
 
   /* ── Recipe links (read-only; head office edits them) ─────────── */
@@ -401,8 +386,8 @@ export default function FranchiserInventoryClient({
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost btn-sm" onClick={exportCSV}>📥 Export CSV</button>
-          <button className="btn btn-ghost btn-sm" onClick={copyFromYesterday}>
-            📋 Copy Yesterday&apos;s Ending
+          <button className="btn btn-ghost btn-sm" onClick={fillFromLastCount}>
+            ↻ Fill from last count
           </button>
         </div>
       </div>
@@ -616,11 +601,14 @@ export default function FranchiserInventoryClient({
                             </td>
                             <td style={{ textAlign: 'center' }}>
                               <input
+                                key={`s-${item.id}-${log?.starting_stock ?? 'x'}`}
                                 type="number" min="0" step="0.5" placeholder="—"
                                 defaultValue={log?.starting_stock ?? ''}
                                 onBlur={e => saveField(item, 'starting_stock', e.target.value)}
                                 style={inputStyle}
-                              />
+                                title={log?.starting_auto ? 'Carried over from the last count. Type a number to replace it.' : undefined}
+                                />
+                                {log?.starting_auto && <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>carried over</div>}
                             </td>
                             <td style={{ textAlign: 'center' }}>
                               <input
