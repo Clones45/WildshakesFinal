@@ -25,6 +25,15 @@ interface Props {
   links: LinkRow[]
   products: Product[]
   overrides: AvailabilityRow[]
+  /**
+   * Where branch and day changes navigate to. Defaults to the Branch Sheet page; the
+   * franchise detail page passes its own address (with its tab) so the sheet stays there.
+   */
+  basePath?: string
+  /** Which half opens first: the daily counts, or menu availability and limits. */
+  initialSection?: 'sheet' | 'menu'
+  /** Shown inside another page: a smaller heading and no link back to Setup duplicated. */
+  embedded?: boolean
 }
 
 const inputStyle: React.CSSProperties = {
@@ -37,12 +46,13 @@ const dayTitle = (ymd: string) =>
 
 export default function MasterBranchSheetClient({
   branches, branchId, branchName, day, today, categories, items, links, products, overrides: initialOverrides, logs: initialLogs,
+  basePath = '/inventory/branches', initialSection = 'sheet', embedded = false,
 }: Props) {
   const router = useRouter()
   const [logs, setLogs] = useState<Record<string, LogRow>>(() => Object.fromEntries(initialLogs.map(l => [l.inventory_item_id, l])))
   const [overrides, setOverrides] = useState<Record<string, AvailabilityRow>>(() => Object.fromEntries(initialOverrides.map(o => [o.product_id, o])))
   const [sheet, setSheet] = useState<SheetType>('food')
-  const [section, setSection] = useState<'sheet' | 'menu'>('sheet')
+  const [section, setSection] = useState<'sheet' | 'menu'>(initialSection)
   const [search, setSearch] = useState('')
   const [showOnlyLow, setShowOnlyLow] = useState(false)
   const [busy, setBusy] = useState<Record<string, boolean>>({})
@@ -80,7 +90,7 @@ export default function MasterBranchSheetClient({
     }
   }
 
-  const go = (b: string, d: string) => router.push(`/inventory/branches?branch=${b}&day=${d}`)
+  const go = (b: string, d: string) => router.push(`${basePath}${basePath.includes('?') ? '&' : '?'}branch=${b}&day=${d}`)
 
   const ending = (item: ItemRow) => {
     const l = logs[item.id]
@@ -167,13 +177,13 @@ export default function MasterBranchSheetClient({
 
       <div className="page-header">
         <div>
-          <h1>Branch Sheet</h1>
+          {embedded ? <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Inventory sheet</h2> : <h1>Branch Sheet</h1>}
           <p className="page-header-subtitle">{branchName} — {dayTitle(day)}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <select className="form-select" value={branchId} onChange={e => go(e.target.value, day)} style={{ minWidth: '180px' }}>
+          {branches.length > 1 && <select className="form-select" value={branchId} onChange={e => go(e.target.value, day)} style={{ minWidth: '180px' }}>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}{b.franchise ? ` · ${b.franchise}` : ''}</option>)}
-          </select>
+          </select>}
           <SalesDatePicker
             month={day.slice(0, 7)}
             day={day}

@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { byName } from '@/lib/inventory/sheets'
+import MasterBranchSheetClient from '@/components/admin/MasterBranchSheetClient'
+import FranchiseStaffManager, { type FranchiseStaffMember } from '@/components/admin/FranchiseStaffManager'
+import { releaseBranchDevice } from '@/lib/actions/masterFranchise'
+import type { BranchSheetData } from '@/lib/inventory/loadBranchSheet'
 
 interface Branch { id: string; name: string; location: string | null; active_device_id: string | null; status: string }
-interface StaffMember { id: string; name: string; email: string | null; role: string; pin_code: string | null; is_active: boolean; created_at: string }
 interface SalesTx { total_amount: number; discount_amount: number; payment_method: string; status: string; created_at: string }
 interface TxItem { quantity: number; unit_price: number; subtotal: number; products: { name: string; category: string } | null }
 interface Transaction {
@@ -20,14 +22,8 @@ interface Transaction {
 }
 interface ChartPoint { label: string; revenue: number; isToday: boolean }
 interface TopItem { name: string; category: string; qty: number; revenue: number }
-interface StockProduct { id: string; name: string; category: string; price: number; image_url: string | null }
-interface StockOverride { product_id: string; is_available: boolean; branch_id: string }
-// Inventory interfaces
-interface InvCategory { id: string; name: string; sheet_type: string; sort_order: number }
-interface InvItem { id: string; category_id: string; name: string; unit: string; min_stock_level: number | null; sort_order: number }
-interface InvLog { id: string; inventory_item_id: string; starting_stock: number | null; additional_stock: number | null; used_stock: number | null; ending_stock: number | null; notes: string | null }
-interface MenuItemLog { id: string; product_id: string; starting_stock: number | null; additional_stock: number | null; notes: string | null }
-interface FoodMenuLink { inventory_item_id: string; product_id: string }
+/** One branch's real daily sheet, loaded only when the Inventory or Stock tab is open. */
+export type FranchiseSheet = BranchSheetData & { branchId: string; day: string; today: string }
 
 interface Props {
   franchise: { id: string; name: string; owner_name: string; owner_email: string; region: string | null; status: string; created_at: string }
@@ -39,19 +35,8 @@ interface Props {
   topItemsList: TopItem[]
   salesTransactions: SalesTx[]
   transactions: Transaction[]
-  staff: StaffMember[]
-  allProducts: StockProduct[]
-  stockOverrides: StockOverride[]
-  // Inventory (read-only)
-  invCategories: InvCategory[]
-  invItems: InvItem[]
-  invLogs: InvLog[]
-  menuItemLogs: MenuItemLog[]
-  foodMenuLinks: FoodMenuLink[]
-  invSoldMap: Record<string, number>
-  invCancelledMap: Record<string, number>
-  invVoidedMap: Record<string, number>
-  invProducts: StockProduct[]
+  staff: FranchiseStaffMember[]
+  sheet: FranchiseSheet | null
 }
 
 const TABS = [
@@ -59,8 +44,8 @@ const TABS = [
   { id: 'sales',        label: '📈 Sales' },
   { id: 'transactions', label: '🧾 Transactions' },
   { id: 'staff',        label: '👥 Staff' },
-  { id: 'stock',        label: '🍹 Stock' },
   { id: 'inventory',    label: '📦 Inventory' },
+  { id: 'stock',        label: '🍹 Menu Availability' },
 ] as const
 
 const PAY_LABELS: Record<string, string> = { cash: '💵 Cash', gcash: '📱 GCash', maya: '🟣 Maya', bank_transfer: '🏦 Bank', other: '📎 Other' }
@@ -68,19 +53,27 @@ const PAY_LABELS: Record<string, string> = { cash: '💵 Cash', gcash: '📱 GCa
 export default function FranchiseDetailClient({
   franchise, branches, activeTab,
   todayRevenue, todayOrders, chartData, payBreakdown, topItemsList,
-  salesTransactions, transactions, staff,
-  allProducts, stockOverrides,
-  invCategories, invItems, invLogs, menuItemLogs, foodMenuLinks,
-  invSoldMap, invCancelledMap, invVoidedMap, invProducts,
+  salesTransactions, transactions, staff, sheet,
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const [tab, setTab] = useState(activeTab)
   const [txExpanded, setTxExpanded] = useState<string | null>(null)
   const [salesPeriod, setSalesPeriod] = useState('30')
-  const [stockSearch, setStockSearch] = useState('')
-  const [stockFilter, setStockFilter] = useState<'all' | 'available' | 'out'>('all')
-  const [invSheet, setInvSheet] = useState<'food_items' | 'menu_items' | 'commissary'>('menu_items')
+  const [releasing, setReleasing] = useState<string | null>(null)
+  const [released, setReleased] = useState<Record<string, boolean>>({})
+
+  async function release(b: Branch) {
+    if (!confirm(`Release the POS tablet of ${b.name}?
+
+The tablet now set up for this branch stops being its till until it is set up again. Use this when a tablet is lost, replaced or reset.`)) return
+    setReleasing(b.id)
+    const r = await releaseBranchDevice(b.id)
+    setReleasing(null)
+    if ('error' in r) { alert(r.error); return }
+    setReleased(m => ({ ...m, [b.id]: true }))
+    router.refresh()
+  }
 
   const changeTab = (t: typeof tab) => {
     setTab(t)
@@ -121,11 +114,22 @@ export default function FranchiseDetailClient({
           <p className="page-header-subtitle">{franchise.owner_name} · {franchise.owner_email} · {franchise.region || 'No region'}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {branches.map(b => (
-            <span key={b.id} className={`badge ${b.active_device_id ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.72rem' }}>
-              {b.active_device_id ? '●' : '○'} {b.name}
-            </span>
-          ))}
+          {branches.map(b => {
+            const online = !!b.active_device_id && !released[b.id]
+            return (
+              <span key={b.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span className={`badge ${online ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.72rem' }}
+                  title={online ? 'A POS tablet is set up for this branch' : 'No POS tablet set up'}>
+                  {online ? '●' : '○'} {b.name}
+                </span>
+                {online && (
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }} disabled={releasing === b.id} onClick={() => release(b)}>
+                    {releasing === b.id ? 'Releasing…' : 'Release tablet'}
+                  </button>
+                )}
+              </span>
+            )
+          })}
         </div>
       </div>
 
@@ -353,310 +357,34 @@ export default function FranchiseDetailClient({
 
       {/* ── STAFF TAB ── */}
       {tab === 'staff' && (
-        <div className="table-wrapper">
-          <div className="table-header">
-            <p className="table-title">Staff Members</p>
-            <span className="badge badge-muted">{staff.length} total · {staff.filter(s => s.is_active).length} active</span>
-          </div>
-          <table>
-            <thead><tr><th>Name</th><th>Role</th><th>Branch</th><th>PIN Set</th><th>Status</th><th>Joined</th></tr></thead>
-            <tbody>
-              {staff.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2rem' }}>No staff added yet</td></tr>
-              ) : staff.map(s => (
-                <tr key={s.id}>
-                  <td><div style={{ fontWeight: 600 }}>{s.name}</div><div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{s.email || '—'}</div></td>
-                  <td><span className={`badge ${s.role === 'manager' ? 'badge-warning' : 'badge-muted'}`}>{s.role}</span></td>
-                  <td style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>—</td>
-                  <td>{s.pin_code ? <span className="badge badge-success">✓ Set</span> : <span className="badge badge-danger">Not Set</span>}</td>
-                  <td><span className={`badge badge-${s.is_active ? 'success' : 'muted'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td>
-                  <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{new Date(s.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <FranchiseStaffManager branches={branches.map(b => ({ id: b.id, name: b.name }))} staff={staff} />
       )}
-      {/* ── STOCK TAB ── */}
-      {tab === 'stock' && (() => {
-        const outOfStockIds = new Set(stockOverrides.map(o => o.product_id))
-        const filtered = allProducts.filter(p => {
-          const matchSearch = p.name.toLowerCase().includes(stockSearch.toLowerCase()) ||
-                              p.category.toLowerCase().includes(stockSearch.toLowerCase())
-          const isOut = outOfStockIds.has(p.id)
-          const matchFilter = stockFilter === 'all' ? true : stockFilter === 'out' ? isOut : !isOut
-          return matchSearch && matchFilter
-        })
-        const outCount = allProducts.filter(p => outOfStockIds.has(p.id)).length
-
-        return (
-          <div>
-            {/* Stats */}
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-              {[
-                { label: 'Total Items', value: allProducts.length, color: 'var(--color-text)' },
-                { label: 'Available', value: allProducts.length - outCount, color: '#22c55e' },
-                { label: 'Out of Stock', value: outCount, color: '#ef4444' },
-              ].map(s => (
-                <div key={s.label} className="stat-card" style={{ minWidth: 120, padding: '0.75rem 1.25rem' }}>
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</p>
-                  <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color }}>{s.value}</p>
-                </div>
-              ))}
-              <div style={{ marginLeft: 'auto', alignSelf: 'center', padding: '0.4rem 0.75rem', background: 'rgba(74,124,89,0.08)', borderRadius: 8, fontSize: '0.75rem', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
-                🔒 View only — franchisee controls stock
-              </div>
-            </div>
-
-            {/* Filters */}
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-              <input
-                type="text"
-                placeholder="Search items…"
-                value={stockSearch}
-                onChange={e => setStockSearch(e.target.value)}
-                style={{ flex: '1 1 200px', padding: '0.5rem 0.875rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem' }}
-              />
-              <div style={{ display: 'flex', gap: '0.375rem' }}>
-                {(['all', 'available', 'out'] as const).map(f => (
-                  <button key={f} onClick={() => setStockFilter(f)} style={{
-                    padding: '0.5rem 0.875rem', borderRadius: 'var(--radius-md)', border: '1px solid',
-                    borderColor: stockFilter === f ? 'var(--color-primary)' : 'var(--color-border)',
-                    background: stockFilter === f ? 'rgba(74,124,89,0.12)' : 'var(--color-surface)',
-                    color: stockFilter === f ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
-                    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-                  }}>
-                    {f === 'all' ? 'All' : f === 'available' ? '✓ Available' : '✗ Out of Stock'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Product table */}
-            <div className="table-wrapper">
-              <div className="table-header">
-                <p className="table-title">Menu Items</p>
-                <span className="badge badge-muted">{filtered.length} of {allProducts.length} shown</span>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th>Category</th>
-                    <th>Price</th>
-                    <th>Status at Branch</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 ? (
-                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2rem' }}>No items match your filters.</td></tr>
-                  ) : filtered.map(p => {
-                    const isOut = outOfStockIds.has(p.id)
-                    return (
-                      <tr key={p.id} style={{ opacity: isOut ? 0.65 : 1 }}>
-                        <td>
-                          <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</div>
-                        </td>
-                        <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{p.category}</td>
-                        <td style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-accent)' }}>₱{Number(p.price).toFixed(0)}</td>
-                        <td>
-                          {isOut
-                            ? <span className="badge badge-danger">✗ Out of Stock</span>
-                            : <span className="badge badge-success">✓ Available</span>
-                          }
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {/* ── INVENTORY & MENU AVAILABILITY: the branch's real sheet, editable ── */}
+      {(tab === 'inventory' || tab === 'stock') && (
+        branches.length === 0 ? (
+          <div className="alert alert-warning">This franchise has no branch yet.</div>
+        ) : !sheet ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading the branch sheet…</div>
+        ) : (
+          <MasterBranchSheetClient
+            key={`${tab}-${sheet.branchId}-${sheet.day}`}
+            embedded
+            basePath={`${pathname}?tab=${tab}`}
+            initialSection={tab === 'stock' ? 'menu' : 'sheet'}
+            branches={branches.map(b => ({ id: b.id, name: b.name, franchise: null }))}
+            branchId={sheet.branchId}
+            branchName={branches.find(b => b.id === sheet.branchId)?.name ?? 'Branch'}
+            day={sheet.day}
+            today={sheet.today}
+            categories={sheet.categories}
+            items={sheet.items}
+            logs={sheet.logs}
+            links={sheet.links}
+            products={sheet.products}
+            overrides={sheet.overrides}
+          />
         )
-      })()}
-
-      {/* ── INVENTORY TAB ── */}
-      {tab === 'inventory' && (() => {
-        // Build lookup maps
-        const logByItemId: Record<string, InvLog> = {}
-        for (const l of invLogs) logByItemId[l.inventory_item_id] = l
-
-        const mLogByProductId: Record<string, MenuItemLog> = {}
-        for (const l of menuItemLogs) mLogByProductId[l.product_id] = l
-
-        const productById: Record<string, StockProduct> = {}
-        for (const p of invProducts) productById[p.id] = p
-
-        // Filter items by current sub-sheet
-        const sheetCategories = invCategories.filter(c => c.sheet_type === invSheet)
-        const catIds = new Set(sheetCategories.map(c => c.id))
-        const sheetItems = invItems.filter(i => catIds.has(i.category_id))
-
-        // For menu_items sheet, use products directly
-        const menuProducts = invProducts  // all POS products used as menu items
-
-        const sheetLabels: Record<string, string> = {
-          food_items: '🥩 Food Items',
-          menu_items: '🍹 Menu Items',
-          commissary: '🏭 Commissary',
-        }
-
-        return (
-          <div>
-            {/* Header row */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {(['menu_items', 'food_items', 'commissary'] as const).map(s => (
-                  <button key={s} onClick={() => setInvSheet(s)} style={{
-                    padding: '0.45rem 1rem', borderRadius: 'var(--radius-pill)', border: '1px solid',
-                    borderColor: invSheet === s ? 'var(--color-primary)' : 'var(--color-border)',
-                    background: invSheet === s ? 'rgba(74,124,89,0.15)' : 'transparent',
-                    color: invSheet === s ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
-                    fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
-                  }}>
-                    {sheetLabels[s]}
-                  </button>
-                ))}
-              </div>
-              <div style={{ padding: '0.35rem 0.75rem', background: 'rgba(74,124,89,0.08)', borderRadius: 8, fontSize: '0.72rem', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
-                🔒 Read-only — today’s snapshot
-              </div>
-            </div>
-
-            {/* MENU ITEMS sheet */}
-            {invSheet === 'menu_items' && (
-              <div className="table-wrapper">
-                <div className="table-header">
-                  <p className="table-title">Menu Items — Today</p>
-                  <span className="badge badge-muted">{menuProducts.length} items</span>
-                </div>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th>Category</th>
-                      <th style={{ textAlign: 'center' }}>Starting</th>
-                      <th style={{ textAlign: 'center' }}>Additional</th>
-                      <th style={{ textAlign: 'center' }}>Sold</th>
-                      <th style={{ textAlign: 'center' }}>Cancelled</th>
-                      <th style={{ textAlign: 'center' }}>Voided</th>
-                      <th style={{ textAlign: 'center' }}>Ending</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {menuProducts.length === 0 ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No menu items found.</td></tr>
-                    ) : menuProducts.map(p => {
-                      const mLog = mLogByProductId[p.id]
-                      const start = mLog?.starting_stock ?? null
-                      const add   = mLog?.additional_stock ?? 0
-                      const sold      = invSoldMap[p.id] ?? 0
-                      const cancelled = invCancelledMap[p.id] ?? 0
-                      const voided    = invVoidedMap[p.id] ?? 0
-                      const ending = start !== null ? Math.max(0, start + add - sold) : null
-                      const isOut = ending !== null && ending === 0
-                      return (
-                        <tr key={p.id} style={{ opacity: isOut ? 0.7 : 1 }}>
-                          <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</td>
-                          <td style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>{p.category}</td>
-                          <td style={{ textAlign: 'center', fontSize: '0.85rem' }}>{start ?? <span style={{ color: 'var(--color-text-dim)' }}>—</span>}</td>
-                          <td style={{ textAlign: 'center', fontSize: '0.85rem', color: add > 0 ? 'var(--color-success)' : undefined }}>{add || '—'}</td>
-                          <td style={{ textAlign: 'center', fontSize: '0.85rem', color: sold > 0 ? 'var(--color-accent)' : undefined }}>{sold || '—'}</td>
-                          <td style={{ textAlign: 'center', fontSize: '0.85rem', color: cancelled > 0 ? 'var(--color-warning)' : undefined }}>{cancelled || '—'}</td>
-                          <td style={{ textAlign: 'center', fontSize: '0.85rem', color: voided > 0 ? 'var(--color-danger-light)' : undefined }}>{voided || '—'}</td>
-                          <td style={{ textAlign: 'center', fontSize: '0.85rem', fontWeight: 700, color: isOut ? 'var(--color-danger-light)' : 'var(--color-success)' }}>
-                            {ending !== null ? ending : <span style={{ color: 'var(--color-text-dim)' }}>—</span>}
-                          </td>
-                          <td>
-                            {ending === null
-                              ? <span className="badge badge-muted">No log</span>
-                              : isOut
-                                ? <span className="badge badge-danger">Out</span>
-                                : <span className="badge badge-success">OK</span>
-                            }
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* FOOD ITEMS / COMMISSARY sheets */}
-            {(invSheet === 'food_items' || invSheet === 'commissary') && (() => {
-              if (sheetCategories.length === 0) return (
-                <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>No {sheetLabels[invSheet]} categories found.</div>
-              )
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  {sheetCategories.map(cat => {
-                    const catItemList = sheetItems.filter(i => i.category_id === cat.id).sort(byName)
-                    if (catItemList.length === 0) return null
-                    return (
-                      <div key={cat.id} className="table-wrapper">
-                        <div className="table-header">
-                          <p className="table-title">{cat.name}</p>
-                          <span className="badge badge-muted">{catItemList.length} items</span>
-                        </div>
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Item</th>
-                              <th>Unit</th>
-                              <th style={{ textAlign: 'center' }}>Starting</th>
-                              <th style={{ textAlign: 'center' }}>Additional</th>
-                              <th style={{ textAlign: 'center' }}>Used</th>
-                              <th style={{ textAlign: 'center' }}>Ending</th>
-                              <th>Status</th>
-                              <th>Notes</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {catItemList.map(item => {
-                              const log = logByItemId[item.id]
-                              const start  = log?.starting_stock ?? null
-                              const add    = log?.additional_stock ?? 0
-                              const used   = log?.used_stock ?? 0
-                              const ending = start !== null ? Math.max(0, start + add - used) : null
-                              const min    = item.min_stock_level ?? 0
-                              const isLow  = ending !== null && min > 0 && ending <= min
-                              const isOut  = ending !== null && ending === 0
-                              return (
-                                <tr key={item.id} style={{ opacity: isOut ? 0.65 : 1 }}>
-                                  <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.name}</td>
-                                  <td style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>{item.unit}</td>
-                                  <td style={{ textAlign: 'center', fontSize: '0.85rem' }}>{start ?? <span style={{ color: 'var(--color-text-dim)' }}>—</span>}</td>
-                                  <td style={{ textAlign: 'center', fontSize: '0.85rem', color: add > 0 ? 'var(--color-success)' : undefined }}>{add || '—'}</td>
-                                  <td style={{ textAlign: 'center', fontSize: '0.85rem', color: used > 0 ? 'var(--color-warning)' : undefined }}>{used || '—'}</td>
-                                  <td style={{ textAlign: 'center', fontSize: '0.85rem', fontWeight: 700,
-                                    color: isOut ? 'var(--color-danger-light)' : isLow ? 'var(--color-warning)' : 'var(--color-success)' }}>
-                                    {ending !== null ? ending : <span style={{ color: 'var(--color-text-dim)' }}>—</span>}
-                                  </td>
-                                  <td>
-                                    {ending === null
-                                      ? <span className="badge badge-muted">No log</span>
-                                      : isOut ? <span className="badge badge-danger">Out</span>
-                                      : isLow ? <span className="badge badge-warning">Low</span>
-                                      : <span className="badge badge-success">OK</span>
-                                    }
-                                  </td>
-                                  <td style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', maxWidth: 180 }}>{log?.notes || '—'}</td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })()}
-          </div>
-        )
-      })()}
+      )}
     </div>
   )
 }

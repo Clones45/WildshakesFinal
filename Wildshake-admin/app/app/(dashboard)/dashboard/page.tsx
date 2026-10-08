@@ -2,6 +2,11 @@ import type { CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { requireDashboardOrFirstPanel } from '@/lib/portal/access'
 import { fetchAll } from '@/lib/supabase/fetchAll'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { manilaDay } from '@/lib/manila'
+import { computeEnding } from '@/lib/inventory/sheets'
+
+interface LowLine { id: string; name: string; unit: string | null; branchId: string; branch: string; ending: number; min: number; out: boolean }
 
 async function getDashboardData() {
   const supabase = await createClient()
@@ -23,7 +28,7 @@ async function getDashboardData() {
     todayTx,
     { data: totalFranchises },
     { data: recentTx },
-    { data: lowStock },
+    sheetLogs,
     revenueByDay,
     branchRevenue,
     { data: allBranches },
@@ -43,10 +48,13 @@ async function getDashboardData() {
       .order('created_at', { ascending: false })
       .limit(15),
 
-    supabase
-      .from('inventory')
-      .select('id, current_stock, safety_level, ingredients(name), branches(name)')
-      .filter('current_stock', 'lt', 'safety_level'),
+    // Today's branch sheets (the same rows each branch sees on its Inventory page)
+    fetchAll(() => createAdminClient()
+      .from('daily_inventory_logs')
+      .select('id, branch_id, starting_stock, additional_stock, used_stock, inventory_items(name, unit, min_stock_level, is_active), branches(name)')
+      .eq('log_date', manilaDay())
+      .not('starting_stock', 'is', null)
+      .order('id', { ascending: true })),
 
     // 7-day trend
     fetchAll(() => supabase
@@ -69,6 +77,26 @@ async function getDashboardData() {
       .select('id, name, franchise_id, status, active_device_id')
       .eq('status', 'active'),
   ])
+
+  // Low / out of stock today, worked out exactly as the branch sheet does:
+  // Ending = Starting + Additional - Used; out at zero, low at or below the item's minimum.
+  type SheetLog = {
+    id: string; branch_id: string; starting_stock: number | null; additional_stock: number | null; used_stock: number | null
+    inventory_items: { name: string; unit: string | null; min_stock_level: number | null; is_active: boolean } | null
+    branches: { name: string } | null
+  }
+  const lowStock: LowLine[] = []
+  for (const l of sheetLogs as unknown as SheetLog[]) {
+    const item = l.inventory_items
+    if (!item || !item.is_active) continue
+    const ending = computeEnding(l.starting_stock, l.additional_stock, l.used_stock)
+    if (ending === null) continue
+    const min = Number(item.min_stock_level ?? 0)
+    const out = ending === 0
+    if (!out && !(min > 0 && ending <= min)) continue
+    lowStock.push({ id: l.id, name: item.name, unit: item.unit, branchId: l.branch_id, branch: l.branches?.name ?? 'Unknown branch', ending, min, out })
+  }
+  lowStock.sort((a, b) => Number(b.out) - Number(a.out) || (a.min ? a.ending / a.min : 0) - (b.min ? b.ending / b.min : 0) || a.name.localeCompare(b.name))
 
   const todayRevenue = (todayTx || []).reduce((sum, t) => sum + Number(t.total_amount), 0)
   const todayCount   = (todayTx || []).length
@@ -112,7 +140,7 @@ async function getDashboardData() {
     todayCount,
     franchises: totalFranchises || [],
     recentTx: recentTx || [],
-    lowStock: lowStock || [],
+    lowStock,
     chartData,
     todayPayBreakdown,
     branchLeaderboard,
@@ -183,7 +211,7 @@ export default async function DashboardPage() {
           <div className="stat-card-icon red">⚠️</div>
           <p className="stat-card-label">Low Stock Alerts</p>
           <p className="stat-card-value">{lowStock.length}</p>
-          <p className="stat-card-trend down">{lowStock.length > 0 ? 'Requires attention' : 'All stocks healthy'}</p>
+          <p className="stat-card-trend down">{lowStock.length > 0 ? `${lowStock.filter(l => l.out).length} out · across today's branch sheets` : "Nothing low on today's sheets"}</p>
         </div>
       </div>
 
@@ -330,31 +358,25 @@ export default async function DashboardPage() {
           {lowStock.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-success)' }}>
               <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✅</div>
-              <p style={{ color: 'var(--color-success)' }}>All inventory levels are healthy</p>
+              <p style={{ color: 'var(--color-success)' }}>Nothing is low or out on today&apos;s branch sheets</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {lowStock.slice(0, 6).map((item) => {
-                const pct = item.safety_level > 0
-                  ? Math.min((item.current_stock / item.safety_level) * 100, 100)
-                  : 0
+                const pct = item.out ? 0 : item.min > 0 ? Math.min((item.ending / item.min) * 100, 100) : 0
                 return (
-                  <div key={item.id}>
+                  <a key={item.id} href={`/inventory/branches?branch=${item.branchId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                     <div className="flex justify-between" style={{ marginBottom: '0.25rem' }}>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                        {(item.ingredients as unknown as { name: string } | null)?.name || 'Unknown'}
-                      </span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{item.name}</span>
                       <span style={{ fontSize: '0.75rem', color: 'var(--color-danger-light)' }}>
-                        {item.current_stock} / {item.safety_level}
+                        {item.out ? 'Out' : `${item.ending} / ${item.min}`}{item.unit ? ` ${item.unit}` : ''}
                       </span>
                     </div>
                     <div className="stock-bar">
                       <div className="stock-bar-fill low" style={{ width: `${pct}%` }} />
                     </div>
-                    <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>
-                      {(item.branches as unknown as { name: string } | null)?.name || 'Unknown branch'}
-                    </p>
-                  </div>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>{item.branch}</p>
+                  </a>
                 )
               })}
             </div>

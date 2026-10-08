@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { releaseBranchDevice } from '@/lib/actions/masterFranchise'
 
 interface Props {
   branchId: string
@@ -37,12 +38,8 @@ export default function FranchiserPosDeviceClient({
 
     startTransition(async () => {
       try {
-        const res = await fetch('/api/release-device', {
-          method: 'POST',
-          body: JSON.stringify({ branchId }),
-          headers: { 'Content-Type': 'application/json' },
-        })
-        if (!res.ok) throw new Error((await res.json()).error || 'Failed to release device')
+        const res = await releaseBranchDevice(branchId)
+        if ('error' in res) throw new Error(res.error)
         setReleased(true)
         setConfirmed(false)
       } catch (e: unknown) {

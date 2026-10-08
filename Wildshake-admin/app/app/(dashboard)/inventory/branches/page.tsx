@@ -1,9 +1,8 @@
 import { requirePanelAccess } from '@/lib/portal/access'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { fetchAll } from '@/lib/supabase/fetchAll'
+import { loadBranchSheet } from '@/lib/inventory/loadBranchSheet'
 import { manilaDay } from '@/lib/manila'
 import MasterBranchSheetClient from '@/components/admin/MasterBranchSheetClient'
-import type { ItemRow, CategoryRow, LinkRow, LogRow, AvailabilityRow } from '@/lib/actions/masterInventory'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,33 +35,7 @@ export default async function MasterBranchSheetPage({
     )
   }
 
-  // Today's blank Starting counts are carried forward from the last counted day before the
-  // sheet is read (idempotent; typed counts are never touched). Past days are shown as they were.
-  if (day === today) {
-    const { error: rollErr } = await admin.rpc('inventory_roll_forward', { p_day: day, p_branch: branchId, p_apply: true })
-    if (rollErr) console.warn('[inventory] roll-forward skipped:', rollErr.message)
-  }
-
-  const [
-    { data: categories },
-    { data: allItems },
-    { data: tagRows },
-    { data: logs },
-    links,
-    { data: products },
-    { data: overrides },
-  ] = await Promise.all([
-    admin.from('inventory_categories').select('id, name, sheet_type, sort_order').order('sheet_type').order('sort_order').order('name'),
-    admin.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order, is_active').eq('is_active', true).order('name'),
-    admin.from('inventory_item_tags').select('inventory_item_id').eq('entity_type', 'branch').eq('entity_id', branchId),
-    admin.from('daily_inventory_logs').select('id, branch_id, inventory_item_id, log_date, starting_stock, additional_stock, used_stock, notes, starting_auto').eq('branch_id', branchId).eq('log_date', day),
-    fetchAll(() => admin.from('food_item_menu_links').select('id, inventory_item_id, product_id, quantity_per_serving').order('id')),
-    admin.from('products').select('id, name, category, is_available').order('category').order('name'),
-    admin.from('branch_menu_availability').select('product_id, is_available, stock_qty').eq('branch_id', branchId),
-  ])
-
-  const tagged = new Set((tagRows ?? []).map(t => t.inventory_item_id as string))
-  const items = ((allItems ?? []) as ItemRow[]).filter(i => tagged.has(i.id))
+  const sheet = await loadBranchSheet(branchId, day, today)
 
   return (
     <MasterBranchSheetClient
@@ -71,12 +44,7 @@ export default async function MasterBranchSheetPage({
       branchName={branches.find(b => b.id === branchId)?.name ?? 'Branch'}
       day={day}
       today={today}
-      categories={(categories ?? []) as CategoryRow[]}
-      items={items}
-      logs={(logs ?? []) as LogRow[]}
-      links={links as LinkRow[]}
-      products={(products ?? []) as { id: string; name: string; category: string; is_available: boolean }[]}
-      overrides={(overrides ?? []) as AvailabilityRow[]}
+      {...sheet}
     />
   )
 }
