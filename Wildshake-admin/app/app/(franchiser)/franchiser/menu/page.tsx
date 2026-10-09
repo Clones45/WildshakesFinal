@@ -13,26 +13,43 @@ export default async function FranchiserMenuPage() {
     .order('name')
 
   const branch = branches?.[0]
+  const branchId = branch?.id ?? ''
 
-  // All globally available products (master list — read only)
-  const { data: products } = await supabase
-    .from('products')
-    .select('id, name, category, price, image_url, is_available')
-    .eq('is_available', true)
-    .order('category')
-    .order('name')
+  const [{ data: products }, { data: overrides }, { data: prices }] = await Promise.all([
+    // All globally available products (master list — read only)
+    supabase
+      .from('products')
+      .select('id, name, category, price, delivery_price, image_url, is_available')
+      .eq('is_available', true)
+      .order('category')
+      .order('name'),
+    // Branch-specific overrides (which items are hidden at this branch)
+    supabase
+      .from('branch_menu_availability')
+      .select('product_id, is_available')
+      .eq('branch_id', branchId),
+    // Prices head office set for this branch alone; a null column means the menu's price.
+    supabase
+      .from('branch_product_prices')
+      .select('product_id, price, delivery_price')
+      .eq('branch_id', branchId),
+  ])
 
-  // Branch-specific overrides (which items are hidden at this branch)
-  const { data: overrides } = await supabase
-    .from('branch_menu_availability')
-    .select('product_id, is_available')
-    .eq('branch_id', branch?.id ?? '')
+  const own = new Map((prices ?? []).map(r => [r.product_id as string, r as { price: number | null; delivery_price: number | null }]))
+  const priced = (products ?? []).map(p => {
+    const o = own.get(p.id as string)
+    return {
+      ...p,
+      price: Number(o?.price ?? p.price),
+      delivery_price: (o?.delivery_price ?? p.delivery_price) === null ? null : Number(o?.delivery_price ?? p.delivery_price),
+    }
+  })
 
   return (
     <FranchiserMenuClient
-      branchId={branch?.id ?? ''}
+      branchId={branchId}
       branchName={branch?.name ?? 'My Branch'}
-      products={(products ?? []) as Parameters<typeof FranchiserMenuClient>[0]['products']}
+      products={priced as Parameters<typeof FranchiserMenuClient>[0]['products']}
       overrides={(overrides ?? []) as Parameters<typeof FranchiserMenuClient>[0]['overrides']}
     />
   )

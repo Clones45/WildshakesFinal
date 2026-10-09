@@ -7,7 +7,6 @@ import { SizePickerModal, type SizeOption } from './SizePickerModal'
 import { FlavorPickerModal, requiresFriesFlavor, type FriesFlavor } from './FlavorPickerModal'
 import { PearlsPickerModal, type PearlOption } from './PearlsPickerModal'
 import { CoffeePickerModal, type CoffeeOption } from './CoffeePickerModal'
-import { getDeliveryPrice } from '../lib/deliveryPricing'
 import { LOW_STOCK_THRESHOLD } from '../lib/menuStockDeduction'
 
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -145,7 +144,7 @@ function getDisplayPrice(product: Product, deliveryPlatform: 'foodpanda' | 'grab
     if (SHAKE_SIZE_CATEGORIES.has(product.category) || COFFEE_CATEGORIES.has(product.category)) {
         return product.price // shown via size/coffee picker
     }
-    return getDeliveryPrice(product.name, undefined, product.category) ?? product.price
+    return product.delivery_price ?? product.price
 }
 
 export function ProductGrid({ products, categories, isLoading, menuError, onReload, deliveryPlatform, onDeliveryTabClick }: ProductGridProps) {
@@ -195,7 +194,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                 setCoffeePicker({ product, options: coffeeOpts })
                 return
             }
-            const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, 'Hot', product.category) ?? undefined : undefined
+            const deliveryOverride = deliveryPlatform ? product.delivery_price ?? undefined : undefined
             addItem(product, 'Hot', deliveryOverride)
             setFlashId(product.id)
             setTimeout(() => setFlashId(null), 350)
@@ -208,14 +207,14 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             return
         }
         // 4. Regular product — add with delivery price override if applicable
-        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, undefined, product.category) ?? undefined : undefined
+        const deliveryOverride = deliveryPlatform ? product.delivery_price ?? undefined : undefined
         addItem(product, undefined, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
     }
 
     const handleFlavorSelect = (product: Product, flavor: FriesFlavor) => {
-        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, undefined, product.category) ?? undefined : undefined
+        const deliveryOverride = deliveryPlatform ? product.delivery_price ?? undefined : undefined
         addItem(product, flavor, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
@@ -238,7 +237,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
         // In delivery mode: get delivery base price for this size, then apply pearl delta
         let effectiveFinalPrice = finalPrice
         if (deliveryPlatform) {
-            const deliveryBase = getDeliveryPrice(sizedProduct.name, sizeLabel, sizedProduct.category)
+            const deliveryBase = sizedProduct.delivery_price
             if (deliveryBase !== null) {
                 const pearlDelta = finalPrice - sizedProduct.price // e.g. +25 for add-on pearls
                 effectiveFinalPrice = deliveryBase + pearlDelta
@@ -254,7 +253,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
 
     // After coffee temp selection → add with delivery override
     const handleCoffeeSelect = (product: Product, tempLabel: 'Hot' | 'Cold') => {
-        const deliveryOverride = deliveryPlatform ? getDeliveryPrice(product.name, tempLabel, product.category) ?? undefined : undefined
+        const deliveryOverride = deliveryPlatform ? product.delivery_price ?? undefined : undefined
         addItem(product, tempLabel, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
@@ -356,6 +355,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                     baseName={pearlsPicker.sizedProduct.name}
                     sizeLabel={pearlsPicker.sizeLabel}
                     basePrice={pearlsPicker.sizedProduct.price}
+                    deliveryBasePrice={pearlsPicker.sizedProduct.delivery_price}
                     emoji={pearlsPicker.emoji}
                     onSelect={handlePearlSelect}
                     onClose={() => setPearlsPicker(null)}

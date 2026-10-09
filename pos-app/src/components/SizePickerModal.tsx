@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Product } from '../lib/supabase'
-import { getDeliveryPrice } from '../lib/deliveryPricing'
 
 export interface SizeOption {
     sizeLabel: string   // "Regular" | "Petite" | "Grande"
@@ -146,7 +145,7 @@ export function SizePickerModal({ baseName, emoji, options, onSelect, onClose, d
                                         </span>
                                     ) : (() => {
                                         const delPrice = deliveryPlatform
-                                            ? getDeliveryPrice(opt.product.name, opt.sizeLabel, opt.product.category)
+                                            ? opt.product.delivery_price
                                             : null
                                         const showDel = delPrice !== null && delPrice !== opt.product.price
                                         return (

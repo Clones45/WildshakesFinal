@@ -2,13 +2,15 @@
 
 import { useState, useMemo, useTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { hasDeliveryPrice, getDeliveryPrice } from '@/lib/deliveryPricing'
 
 interface Product {
   id: string
   name: string
   category: string
+  /** This branch's price: the menu's, or the branch's own when head office set one. */
   price: number
+  /** FoodPanda & Grab price (one shared price), or null when not offered on delivery. */
+  delivery_price: number | null
   image_url: string | null
   is_available: boolean
 }
@@ -50,7 +52,7 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
       const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
       
       if (filterCategory === 'delivery') {
-         if (!hasDeliveryPrice(p.name, p.category)) return false
+         if (p.delivery_price === null) return false
       } else {
          const matchCat = filterCategory === 'All' || p.category === filterCategory
          if (!matchCat) return false
@@ -65,14 +67,7 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
     })
   }, [products, search, filterCategory, filterStatus, availability])
 
-  function resolveDeliveryPrice(p: Product) {
-    let qualifier = undefined
-    if (p.category.includes('Petite')) qualifier = 'Petite'
-    else if (p.category.includes('Grande')) qualifier = 'Grande'
-    else if (p.category === 'Coffee Hot') qualifier = 'Hot'
-    else if (p.category === 'Coffee Iced') qualifier = 'Cold'
-    return getDeliveryPrice(p.name, qualifier, p.category)
-  }
+  const resolveDeliveryPrice = (p: Product) => p.delivery_price
 
   const availableCount = products.filter(p => availability[p.id] !== false).length
   const outCount = products.length - availableCount

@@ -94,6 +94,7 @@ export interface CachedProduct {
     name: string
     category: string
     price: number
+    delivery_price: number | null   // FoodPanda / Grab price; null = normal price applies
     image_url: string | null
     is_available: boolean
     stock_qty: number | null        // null = unlimited

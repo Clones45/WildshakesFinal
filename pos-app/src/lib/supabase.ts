@@ -66,7 +66,10 @@ export type Product = {
     id: string
     name: string
     category: string
+    /** This branch's price (the menu's, or the branch's own when head office set one). */
     price: number
+    /** FoodPanda / Grab price, one shared price; null = not offered on delivery, the till uses the normal price. */
+    delivery_price: number | null
     image_url: string | null
     is_available: boolean
     /** Remaining count at this branch when Stock Control has set one. null = unlimited. */

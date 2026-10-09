@@ -126,6 +126,7 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                         name: p.name,
                         category: p.category,
                         price: p.price,
+                        delivery_price: p.delivery_price ?? null,
                         image_url: p.image_url,
                         is_available: p.is_available,
                         stock_qty: p.stock_qty,
@@ -144,7 +145,7 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                 try {
                     const { data: extraProducts } = await supabase
                         .from('products')
-                        .select('id, name, category, price, image_url, is_available')
+                        .select('id, name, category, price, delivery_price, image_url, is_available')
                         .in('id', missingIds)
                     ;(extraProducts ?? []).forEach((p) => {
                         menuLookup.set(p.id, p as Product)
@@ -179,6 +180,7 @@ export function PendingOrders({ isOpen, onClose }: PendingOrdersProps) {
                     name: item.item_name,
                     category: 'Unknown',
                     price: item.unit_price,
+                    delivery_price: null,
                     image_url: null,
                     is_available: true,
                 }

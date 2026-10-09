@@ -1,5 +1,4 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { getDeliveryPrice } from '../lib/deliveryPricing'
 
 export type PearlOption = 'Regular Pearls' | 'Add-on Pearls' | 'No Pearls'
 
@@ -7,6 +6,7 @@ interface PearlsPickerModalProps {
     baseName: string        // e.g. "Caramel Machiato"
     sizeLabel: string       // e.g. "Grande"
     basePrice: number       // price of the chosen size variant (normal price)
+    deliveryBasePrice?: number | null // the size variant's FoodPanda / Grab price, if it has one
     emoji: string
     onSelect: (pearl: PearlOption, finalPrice: number) => void
     onClose: () => void
@@ -37,10 +37,10 @@ const PEARL_OPTIONS: { option: PearlOption; addonPrice: number; icon: string; de
     },
 ]
 
-export function PearlsPickerModal({ baseName, sizeLabel, basePrice, emoji, onSelect, onClose, deliveryPlatform }: PearlsPickerModalProps) {
+export function PearlsPickerModal({ baseName, sizeLabel, basePrice, deliveryBasePrice, emoji, onSelect, onClose, deliveryPlatform }: PearlsPickerModalProps) {
     // When in delivery mode, use the delivery base price for this size
     const effectiveBase = deliveryPlatform
-        ? (getDeliveryPrice(baseName, sizeLabel) ?? basePrice)
+        ? (deliveryBasePrice ?? basePrice)
         : basePrice
     return (
         <AnimatePresence>
