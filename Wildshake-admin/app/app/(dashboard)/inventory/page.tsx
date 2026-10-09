@@ -21,7 +21,7 @@ export default async function MasterInventoryPage() {
     history,
   ] = await Promise.all([
     admin.from('inventory_categories').select('id, name, sheet_type, sort_order').order('sheet_type').order('sort_order').order('name'),
-    admin.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order, is_active').order('name'),
+    admin.from('inventory_items').select('id, category_id, name, unit, min_stock_level, sort_order, is_active, takeout_only').order('name'),
     fetchAll(() => admin.from('inventory_item_tags').select('inventory_item_id, entity_id').eq('entity_type', 'branch').order('id')),
     fetchAll(() => admin.from('food_item_menu_links').select('id, inventory_item_id, product_id, quantity_per_serving').order('id')),
     admin.from('products').select('id, name, category, is_available').order('category').order('name'),

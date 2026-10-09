@@ -269,9 +269,10 @@ export default function MasterInventoryClient(props: Props) {
                       <table>
                         <thead>
                           <tr>
-                            <th style={{ width: '24%' }}>Item</th>
+                            <th style={{ width: '20%' }}>Item</th>
                             <th style={{ width: '8%' }}>Unit</th>
                             <th style={{ width: '8%', textAlign: 'center' }}>Minimum</th>
+                            <th style={{ width: '8%', textAlign: 'center' }} title="Packaging that goes out only with take-out and delivery orders. A dine-in order is served in glass, so the till does not deduct it.">Take-out only</th>
                             <th style={{ width: '18%' }}>Branches</th>
                             {isRecipeSheet(sheet) && <th style={{ width: '14%' }}>Recipe</th>}
                             <th style={{ width: '14%' }}>Category</th>
@@ -303,6 +304,11 @@ export default function MasterInventoryClient(props: Props) {
                                       const v = e.target.value === '' ? null : Number(e.target.value)
                                       if (v !== item.min_stock_level) saveItemField(item, { min_stock_level: v })
                                     }} />
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <input type="checkbox" checked={!!item.takeout_only} disabled={isBusy}
+                                    title="Tick for packaging used only on take-out and delivery orders (plastic cups, lids, domes). Dine-in orders are served in glass, so the till will not deduct it for them."
+                                    onChange={e => saveItemField(item, { takeout_only: e.target.checked })} />
                                 </td>
                                 <td>
                                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>

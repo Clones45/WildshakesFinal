@@ -126,6 +126,7 @@ export interface CachedIngredientStock {
     unit: string | null
     minStockLevel: number | null
     remaining: number | null  // null = no starting stock logged yet today (don't warn)
+    takeoutOnly?: boolean     // packaging for take-out and delivery only: not deducted for dine-in
     updatedAt: string
 }
 

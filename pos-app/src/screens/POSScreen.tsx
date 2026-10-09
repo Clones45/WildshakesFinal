@@ -245,7 +245,7 @@ export function POSScreen() {
 
             // Smart Inventory: instant local deduction, works fully offline — advisory only,
             // never blocks the sale. Server trigger is the source of truth once synced.
-            deductIngredientsForSale(localTx.items).then(warnings => {
+            deductIngredientsForSale(localTx.items, localTx.orderType).then(warnings => {
                 for (const w of warnings) {
                     toast(`⚠️ Low stock: ${w.name} — ${Math.max(0, Math.round(w.remaining * 10) / 10)}${w.unit ? ' ' + w.unit : ''} left`, { duration: 5000, icon: '📉' })
                 }

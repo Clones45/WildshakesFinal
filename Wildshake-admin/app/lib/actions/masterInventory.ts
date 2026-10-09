@@ -34,6 +34,8 @@ export interface ItemRow {
   min_stock_level: number | null
   sort_order: number
   is_active: boolean
+  /** Packaging used only for take-out and delivery (plastic cups, lids, domes): not deducted for a dine-in order. */
+  takeout_only?: boolean
 }
 export interface CategoryRow { id: string; name: string; sheet_type: string; sort_order: number }
 export interface LinkRow { id: string; inventory_item_id: string; product_id: string; quantity_per_serving: number | null }
@@ -51,7 +53,7 @@ export interface LogRow {
 }
 export interface AvailabilityRow { product_id: string; is_available: boolean; stock_qty: number | null }
 
-const ITEM_COLS = 'id, category_id, name, unit, min_stock_level, sort_order, is_active'
+const ITEM_COLS = 'id, category_id, name, unit, min_stock_level, sort_order, is_active, takeout_only'
 const LOG_COLS  = 'id, branch_id, inventory_item_id, log_date, starting_stock, additional_stock, used_stock, notes, starting_auto'
 
 // ---------------------------------------------------------------------------
@@ -180,7 +182,7 @@ export async function createItem(input: {
 
 export async function updateItem(
   id: string,
-  patch: { name?: string; unit?: string | null; min_stock_level?: number | null; category_id?: string }
+  patch: { name?: string; unit?: string | null; min_stock_level?: number | null; category_id?: string; takeout_only?: boolean }
 ) {
   const g = await requireMaster(); if ('error' in g) return g
   const admin = createAdminClient()
@@ -201,6 +203,7 @@ export async function updateItem(
     if (patch.min_stock_level !== null && patch.min_stock_level < 0) return { error: 'Minimum stock cannot be negative.' }
     next.min_stock_level = patch.min_stock_level
   }
+  if (patch.takeout_only !== undefined && patch.takeout_only !== !!before.takeout_only) next.takeout_only = patch.takeout_only
   if (patch.category_id !== undefined && patch.category_id !== before.category_id) {
     const { data: cat } = await admin.from('inventory_categories').select('id').eq('id', patch.category_id).maybeSingle()
     if (!cat) return { error: 'That category does not exist.' }
@@ -220,6 +223,7 @@ export async function updateItem(
   if (next.unit !== undefined) changes.push(`unit ${before.unit ?? 'blank'} to ${after.unit ?? 'blank'}`)
   if (next.min_stock_level !== undefined) changes.push(`minimum ${num(before.min_stock_level)} to ${num(after.min_stock_level)}`)
   if (next.category_id !== undefined) changes.push('moved to another category')
+  if (next.takeout_only !== undefined) changes.push(next.takeout_only ? 'now take-out only (not deducted for dine-in)' : 'no longer take-out only (deducted for every order)')
   const historyRecorded = await record(admin, g.actor, {
     area: 'item', action: 'update',
     summary: `Item ${q(after.name)}: ${changes.join('; ')}`,

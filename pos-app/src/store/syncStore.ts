@@ -149,6 +149,7 @@ async function pushTransaction(local: LocalTransaction) {
         source: local.source,
         local_ref: local.localRef,
         table_number: local.tableNumber ?? null,
+        order_type: local.orderType ?? null,
         delivery_platform: local.deliveryPlatform ?? null,
         void_reason: local.voidReason ?? null,
         voided_by: local.voidedBy ?? null,
@@ -246,7 +247,7 @@ async function pullIngredientStock(branchId: string) {
 
     const { data: items } = await supabase
         .from('inventory_items')
-        .select('id, name, unit, min_stock_level')
+        .select('id, name, unit, min_stock_level, takeout_only')
         .eq('is_active', true)
     if (!items) return
 
@@ -273,6 +274,7 @@ async function pullIngredientStock(branchId: string) {
                 name: it.name,
                 unit: it.unit,
                 minStockLevel: it.min_stock_level,
+                takeoutOnly: !!(it as { takeout_only?: boolean }).takeout_only,
                 remaining,
                 updatedAt: new Date().toISOString(),
             }
