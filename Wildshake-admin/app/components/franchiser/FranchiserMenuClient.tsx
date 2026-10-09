@@ -284,9 +284,9 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
                   </p>
                   <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
                     {product.category} · ₱{Number(product.price).toFixed(0)}
-                    {filterCategory === 'delivery' && resolveDeliveryPrice(product) && (
+                    {filterCategory === 'delivery' && resolveDeliveryPrice(product) !== null && (
                        <span style={{ color: '#e8005e', marginLeft: '0.25rem', fontWeight: 700 }}>
-                          (Delivery: ₱{resolveDeliveryPrice(product)})
+                          (Delivery: {resolveDeliveryPrice(product) === 0 ? 'Free' : `₱${resolveDeliveryPrice(product)}`})
                        </span>
                     )}
                   </p>

@@ -589,7 +589,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                                         <div className="flex items-center justify-between mt-auto pt-1">
                                             <div className="flex flex-col">
                                                 <span className="text-brand-600 font-bold text-base">
-                                                    ₱{displayPrice.toFixed(2)}
+                                                    {displayPrice === 0 ? 'FREE' : `₱${displayPrice.toFixed(2)}`}
                                                 </span>
                                                 {isPriceOverridden && !isShake && !isCoffee && (
                                                     <span className="text-[10px] text-gray-400 line-through leading-none">

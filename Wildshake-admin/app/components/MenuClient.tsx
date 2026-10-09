@@ -20,6 +20,8 @@ interface Product {
 interface Branch { id: string; name: string; franchise: string | null }
 
 const peso = (v: number | string | null | undefined) => (v === null || v === undefined ? '—' : `₱${Number(v).toFixed(2)}`)
+/** A delivery price of zero means the item goes out free on FoodPanda and Grab. */
+const delivery = (v: number | string | null | undefined) => (v !== null && v !== undefined && Number(v) === 0 ? 'Free' : peso(v))
 
 /**
  * Head office's live POS menu. Every item has a normal price and, if it is sold on
@@ -147,7 +149,7 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
               {peso(p.price)}
             </p>
             {p.delivery_price !== null && (
-              <p style={{ fontSize: '0.8rem', color: '#e8005e', fontWeight: 700, marginBottom: '0.75rem' }}>🛵 FoodPanda &amp; Grab {peso(p.delivery_price)}</p>
+              <p style={{ fontSize: '0.8rem', color: '#e8005e', fontWeight: 700, marginBottom: '0.75rem' }}>🛵 FoodPanda &amp; Grab {delivery(p.delivery_price)}</p>
             )}
             {ownPrices[p.id] && (
               <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.6rem', borderRadius: 'var(--radius-sm)', background: 'rgba(52,152,219,0.08)', border: '1px solid rgba(52,152,219,0.25)', fontSize: '0.75rem' }}>
@@ -158,7 +160,7 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
                       <strong>{branchName(r.branch_id)}</strong>{' '}
                       {r.price !== null && <span>{peso(r.price)}</span>}
                       {r.price !== null && r.delivery_price !== null && ' · '}
-                      {r.delivery_price !== null && <span style={{ color: '#e8005e' }}>🛵 {peso(r.delivery_price)}</span>}
+                      {r.delivery_price !== null && <span style={{ color: '#e8005e' }}>🛵 {delivery(r.delivery_price)}</span>}
                     </span>
                     <button className="btn btn-ghost btn-sm" style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem' }} disabled={isPending} title="Back to the menu price" onClick={() => handleReset(r, p)}>Reset</button>
                   </div>
@@ -205,8 +207,8 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
                   </div>
                   <div className="form-group">
                     <label className="form-label">FoodPanda &amp; Grab price (₱)</label>
-                    <input name="delivery_price" type="number" step="0.01" min="0" className="form-input" defaultValue={editing?.delivery_price ?? ''} placeholder="blank = not on delivery" />
-                    <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>One shared price for both platforms. Leave blank if the item is not offered on delivery.</p>
+                    <input name="delivery_price" type="number" step="0.01" min="0" className="form-input" defaultValue={editing?.delivery_price ?? ''} placeholder="blank = not on delivery, 0 = free" />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>One shared price for both platforms. Leave blank if the item is not offered on delivery; enter 0 for packaging that goes out free on delivery orders.</p>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Availability</label>
@@ -244,7 +246,7 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
                                 <strong>{b.name}</strong>{b.franchise ? <span style={{ color: 'var(--color-text-muted)' }}> · {b.franchise}</span> : null}
                                 <br />
                                 <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-                                  now {peso(now.price)}{now.delivery !== null ? ` · 🛵 ${peso(now.delivery)}` : ''}{now.isOwn ? ' (branch-only)' : ''}
+                                  now {peso(now.price)}{now.delivery !== null ? ` · 🛵 ${delivery(now.delivery)}` : ''}{now.isOwn ? ' (branch-only)' : ''}
                                 </span>
                               </span>
                             </label>

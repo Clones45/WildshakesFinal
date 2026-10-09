@@ -179,7 +179,7 @@ export function Cart({ onCheckout, onDiscount, onHold, heldCount, onShowPending 
                                         <p className={`font-medium text-xs ${
                                             item.cancelled ? 'line-through text-red-300' : 'text-surface-500'
                                         }`}>
-                                            ₱{(item.overridePrice ?? item.product.price).toFixed(2)} each
+                                            {(item.overridePrice ?? item.product.price) === 0 ? 'Free' : `₱${(item.overridePrice ?? item.product.price).toFixed(2)} each`}
                                         </p>
                                     </div>
 
