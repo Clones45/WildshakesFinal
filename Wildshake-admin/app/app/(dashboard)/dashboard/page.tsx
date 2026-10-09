@@ -5,6 +5,7 @@ import { fetchAll } from '@/lib/supabase/fetchAll'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { manilaDay } from '@/lib/manila'
 import { computeEnding } from '@/lib/inventory/sheets'
+import { addToBreakdown } from '@/lib/payments'
 
 interface LowLine { id: string; name: string; unit: string | null; branchId: string; branch: string; ending: number; min: number; out: boolean }
 
@@ -35,7 +36,7 @@ async function getDashboardData() {
   ] = await Promise.all([
     fetchAll(() => supabase
       .from('transactions')
-      .select('total_amount, status, payment_method, branch_id')
+      .select('total_amount, status, payment_method, split_payments, branch_id')
       .gte('created_at', todayUTC.toISOString())
       .eq('status', 'completed')
       .order('created_at', { ascending: true })),
@@ -101,11 +102,9 @@ async function getDashboardData() {
   const todayRevenue = (todayTx || []).reduce((sum, t) => sum + Number(t.total_amount), 0)
   const todayCount   = (todayTx || []).length
 
-  // Payment method breakdown today
+  // Payment method breakdown today: a split sale is counted part by part
   const todayPayBreakdown: Record<string, number> = {}
-  for (const t of todayTx || []) {
-    todayPayBreakdown[t.payment_method] = (todayPayBreakdown[t.payment_method] || 0) + Number(t.total_amount)
-  }
+  for (const t of todayTx || []) addToBreakdown(todayPayBreakdown, t)
 
   // 7-day chart
   const chartData = Array.from({ length: 7 }, (_, i) => {

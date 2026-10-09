@@ -4,11 +4,14 @@ import { useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import SalesDatePicker from './SalesDatePicker'
 import { withParams } from '@/lib/href'
+import { addToBreakdown } from '@/lib/payments'
 
 export interface Tx {
   total_amount: number
   discount_amount: number
   payment_method: string
+  /** The parts of a split sale (method + amount); null for a sale paid in one go. */
+  split_payments?: { method: string; amount: number }[] | null
   status: string
   delivery_platform: 'foodpanda' | 'grab' | null
   created_at: string
@@ -104,11 +107,9 @@ export default function FranchiserSalesClient({
   const netRevenue    = totalRevenue - totalDiscount
   const avgOrder      = filtered.length > 0 ? totalRevenue / filtered.length : 0
 
-  // Payment breakdown
+  // Payment breakdown: a split sale is counted part by part (cash to Cash, GCash to GCash)
   const payBreakdown: Record<string, number> = {}
-  for (const t of filtered) {
-    payBreakdown[t.payment_method] = (payBreakdown[t.payment_method] || 0) + Number(t.total_amount)
-  }
+  for (const t of filtered) addToBreakdown(payBreakdown, t)
   const maxPay = Math.max(...Object.values(payBreakdown), 1)
 
   // Delivery platform breakdown

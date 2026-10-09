@@ -66,7 +66,7 @@ export async function loadFranchiseSales(
   const [transactions, topItems, shifts] = await Promise.all([
     fetchAll(() => supabase
       .from('transactions')
-      .select('total_amount, discount_amount, payment_method, status, delivery_platform, created_at')
+      .select('total_amount, discount_amount, payment_method, split_payments, status, delivery_platform, created_at')
       .in('branch_id', branchIds)
       .eq('status', 'completed')
       .gte('created_at', start)

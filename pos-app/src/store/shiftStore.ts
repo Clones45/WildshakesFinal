@@ -57,9 +57,18 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 function bucketByMethod(transactions: LocalTransaction[]): Record<string, number> {
     const buckets: Record<string, number> = { cash: 0, gcash: 0, maya: 0, bank_transfer: 0, other: 0 }
     for (const tx of transactions) {
-        if (tx.paymentMethod === 'split' && tx.splitPayments) {
+        if (tx.paymentMethod === 'split' && tx.splitPayments && tx.splitPayments.length > 0) {
+            // Each part goes to its own method. Any change came out of the cash, so the
+            // cash part is what is left of the sale after the other methods, not what
+            // the customer handed over.
+            let nonCash = 0
             for (const s of tx.splitPayments) {
+                if (s.method === 'cash') continue
                 buckets[s.method] = (buckets[s.method] ?? 0) + s.amount
+                nonCash += s.amount
+            }
+            if (tx.splitPayments.some(s => s.method === 'cash')) {
+                buckets.cash = (buckets.cash ?? 0) + Math.max(0, tx.totalAmount - nonCash)
             }
         } else {
             buckets[tx.paymentMethod] = (buckets[tx.paymentMethod] ?? 0) + tx.totalAmount

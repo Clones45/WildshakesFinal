@@ -2,12 +2,15 @@
 
 import { useState } from 'react'
 import { manilaDay } from '@/lib/manila'
+import { addToBreakdown, describePayment } from '@/lib/payments'
 
 interface Transaction {
   id: string
   total_amount: number
   discount_amount: number
   payment_method: string
+  /** The parts of a split sale (method + amount); null for a sale paid in one go. */
+  split_payments?: { method: string; amount: number }[] | null
   status: string
   created_at: string
   branches: { name: string } | null
@@ -45,7 +48,10 @@ export default function FinancialsClient({ transactions, branches }: FinancialsC
   const netRevenue      = totalRevenue - totalDiscount
 
   const byBranch  = groupByField(filtered, t => t.branches?.name || 'Unknown')
-  const byPayment = groupByField(filtered, t => t.payment_method)
+  // A split sale is counted part by part: cash to Cash, GCash to GCash.
+  const payMap: Record<string, number> = {}
+  for (const t of filtered) addToBreakdown(payMap, t)
+  const byPayment = Object.entries(payMap).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)
   const maxBranch  = Math.max(...byBranch.map(b => b.value), 1)
   const maxPayment = Math.max(...byPayment.map(p => p.value), 1)
 
@@ -53,7 +59,7 @@ export default function FinancialsClient({ transactions, branches }: FinancialsC
   function handleExport() {
     const header = 'Date,Branch,Amount,Discount,Payment Method\n'
     const rows = filtered.map(t =>
-      `${new Date(t.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })},${t.branches?.name || ''},${t.total_amount},${t.discount_amount},${t.payment_method}`
+      `${new Date(t.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })},${t.branches?.name || ''},${t.total_amount},${t.discount_amount},${describePayment(t)}`
     ).join('\n')
     const blob = new Blob([header + rows], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
@@ -212,7 +218,7 @@ export default function FinancialsClient({ transactions, branches }: FinancialsC
                 <td style={{ fontWeight: 700, color: 'var(--color-accent)' }}>
                   ₱{(Number(t.total_amount) - Number(t.discount_amount)).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                 </td>
-                <td style={{ textTransform: 'capitalize' }}>{t.payment_method}</td>
+                <td style={{ textTransform: 'capitalize' }}>{describePayment(t)}</td>
               </tr>
             ))}
             {filtered.length === 0 && (

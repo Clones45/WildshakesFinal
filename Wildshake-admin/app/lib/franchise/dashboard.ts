@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchAll } from '@/lib/supabase/fetchAll'
 import { buildStockWatch, COUNT_LOOKBACK_DAYS } from '@/lib/inventory/stockWatch'
+import { addToBreakdown } from '@/lib/payments'
 
 /**
  * Everything on a franchise's Dashboard: today's and the week's takings, the payment
@@ -60,7 +61,7 @@ export async function loadFranchiseDashboard(supabase: SupabaseClient, franchise
     // Today's completed transactions (all branches)
     fetchAll(() => supabase
       .from('transactions')
-      .select('total_amount, status, payment_method')
+      .select('total_amount, status, payment_method, split_payments')
       .in('branch_id', branchIds)
       .eq('status', 'completed')
       .gte('created_at', today.toISOString())
@@ -125,11 +126,9 @@ export async function loadFranchiseDashboard(supabase: SupabaseClient, franchise
   const voidedToday   = (recentTx || []).filter(t => t.status === 'voided' &&
     new Date(t.created_at) >= today).length
 
-  // Payment breakdown
+  // Payment breakdown: a split sale is counted part by part (cash to Cash, GCash to GCash)
   const payBreakdown: Record<string, number> = {}
-  for (const t of todayTx || []) {
-    payBreakdown[t.payment_method] = (payBreakdown[t.payment_method] || 0) + Number(t.total_amount)
-  }
+  for (const t of todayTx || []) addToBreakdown(payBreakdown, t)
 
   // Chart: 7-day revenue, each bar one Manila calendar day
   const chartData = Array.from({ length: 7 }, (_, i) => {

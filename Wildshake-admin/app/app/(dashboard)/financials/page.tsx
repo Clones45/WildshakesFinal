@@ -18,7 +18,7 @@ export default async function FinancialsPage() {
   ] = await Promise.all([
     fetchAll(() => supabase
       .from('transactions')
-      .select('id, total_amount, discount_amount, payment_method, status, created_at, branches(name)')
+      .select('id, total_amount, discount_amount, payment_method, split_payments, status, created_at, branches(name)')
       .eq('status', 'completed')
       .gte('created_at', oneYearAgo)
       .order('created_at', { ascending: false })),
