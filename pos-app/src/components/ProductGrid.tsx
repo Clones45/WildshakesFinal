@@ -234,17 +234,11 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
         const { sizedProduct, sizeLabel } = pearlsPicker
         const combinedVariant = `${sizeLabel} · ${pearl}`
 
-        // In delivery mode: get delivery base price for this size, then apply pearl delta
-        let effectiveFinalPrice = finalPrice
-        if (deliveryPlatform) {
-            const deliveryBase = sizedProduct.delivery_price
-            if (deliveryBase !== null) {
-                const pearlDelta = finalPrice - sizedProduct.price // e.g. +25 for add-on pearls
-                effectiveFinalPrice = deliveryBase + pearlDelta
-            }
-        }
-
-        const overridePrice = effectiveFinalPrice !== sizedProduct.price ? effectiveFinalPrice : undefined
+        // finalPrice is exactly what the picker showed: the size's normal price, or its
+        // FoodPanda / Grab price in delivery mode, plus the pearl add-on. Nothing is
+        // added again here. (It used to add the delivery difference a second time, so a
+        // P145 delivery shake rang up at P171.)
+        const overridePrice = finalPrice !== sizedProduct.price ? finalPrice : undefined
         addItem(sizedProduct, combinedVariant, overridePrice)
         setFlashId(sizedProduct.id)
         setTimeout(() => setFlashId(null), 350)
