@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { withParams } from '@/lib/href'
 import { COUNT_LOOKBACK_DAYS, COVER_DAYS, SOON_DAYS, fmtDays, fmtQty, type AlertLevel, type StockAlert, type StockWatch } from '@/lib/inventory/stockWatch'
 
 /**
@@ -53,7 +54,7 @@ function StockWatchCard({ title, watch, inventoryHref }: { title: string; watch:
           {watch.soon > 0 && <span className="badge badge-muted">{watch.soon} running out soon</span>}
           {watch.recount > 0 && <span className="badge badge-muted">{watch.recount} need a recount</span>}
           {allGood && <span className="badge badge-success">All good</span>}
-          <Link href={`${inventoryHref}?low=1`} className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>Open inventory →</Link>
+          <Link href={withParams(inventoryHref, { low: '1' })} className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>Open inventory →</Link>
         </div>
       </div>
 
@@ -96,7 +97,7 @@ function StockWatchCard({ title, watch, inventoryHref }: { title: string; watch:
 
       {more > 0 && (
         <div style={{ padding: '0.6rem 1rem', fontSize: '0.78rem', color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
-          …and {more} more. <Link href={`${inventoryHref}?low=1`} style={{ color: 'var(--color-accent)' }}>See them all on the inventory page</Link>.
+          …and {more} more. <Link href={withParams(inventoryHref, { low: '1' })} style={{ color: 'var(--color-accent)' }}>See them all on the inventory page</Link>.
         </div>
       )}
 
@@ -128,7 +129,7 @@ function RecountStrip({ items, inventoryHref }: { items: StockAlert[]; inventory
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
         {shown.map(a => (
-          <Link key={a.itemId} href={`${inventoryHref}?sheet=${encodeURIComponent(a.sheetType)}`} title={a.reason}
+          <Link key={a.itemId} href={withParams(inventoryHref, { sheet: a.sheetType })} title={a.reason}
             className="badge badge-muted" style={{ textDecoration: 'none', fontSize: '0.74rem', padding: '4px 10px' }}>
             {a.name}
             {a.avgDailyUse !== null && a.avgDailyUse > 0 && <span style={{ opacity: 0.7 }}> · {fmtQty(a.avgDailyUse)}{a.unit ? ` ${a.unit}` : ''}/day</span>}
@@ -136,7 +137,7 @@ function RecountStrip({ items, inventoryHref }: { items: StockAlert[]; inventory
         ))}
         {items.length > shown.length && <span style={muted}>+{items.length - shown.length} more</span>}
         {sheets.length === 1 && (
-          <Link href={`${inventoryHref}?sheet=${encodeURIComponent(sheets[0])}`} style={{ ...muted, color: 'var(--color-accent)', marginLeft: 'auto' }}>Open that sheet →</Link>
+          <Link href={withParams(inventoryHref, { sheet: sheets[0] })} style={{ ...muted, color: 'var(--color-accent)', marginLeft: 'auto' }}>Open that sheet →</Link>
         )}
       </div>
     </div>
@@ -152,7 +153,7 @@ function AlertRow({ a, inventoryHref }: { a: StockAlert; inventoryHref: string }
   return (
     <tr style={{ background: rowBg }}>
       <td>
-        <Link href={`${inventoryHref}?low=1&sheet=${encodeURIComponent(a.sheetType)}`} style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text)', textDecoration: 'none' }}>
+        <Link href={withParams(inventoryHref, { low: '1', sheet: a.sheetType })} style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text)', textDecoration: 'none' }}>
           {a.name}
         </Link>
         <div style={muted}>

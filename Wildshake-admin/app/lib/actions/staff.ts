@@ -5,6 +5,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { roleToTenantType, validatePanelSubset, type TenantType } from '@/lib/portal/panels'
 
+// The tier role that signs in for a tenant type (the inverse of roleToTenantType).
+const tenantTypeToRole = (t: TenantType): string => (t === 'franchise' ? 'franchisee' : t)
+
 interface OwnerContext {
   authUserId: string
   role: string
@@ -52,11 +55,25 @@ async function loadOwnedStaffRow(admin: ReturnType<typeof createAdminClient>, ow
     .single()
 
   if (error || !row) return { error: 'Staff member not found.' }
-  if (row.tenant_type !== owner.tenantType) return { error: 'Forbidden.' }
-  if (owner.tenantType === 'franchise' && row.franchise_id !== owner.franchiseId) return { error: 'Forbidden.' }
-  if (owner.tenantType === 'commissary' && row.commissary_id !== owner.commissaryId) return { error: 'Forbidden.' }
+  // The master admin reaches every tenant's staff: the head office's franchise page
+  // shows the same Staff screen the owner has. Everyone else stays inside their own.
+  if (owner.tenantType !== 'master_admin') {
+    if (row.tenant_type !== owner.tenantType) return { error: 'Forbidden.' }
+    if (owner.tenantType === 'franchise' && row.franchise_id !== owner.franchiseId) return { error: 'Forbidden.' }
+    if (owner.tenantType === 'commissary' && row.commissary_id !== owner.commissaryId) return { error: 'Forbidden.' }
+  }
 
   return { row }
+}
+
+// The tenant a staff row belongs to. For an owner that is their own tenant. For the
+// master admin acting on a franchise's (or commissary's) staff, it is that row's
+// tenant, so the portal login created for the person carries the franchise's role
+// and id, not the master admin's. The actor recorded in the audit stays the caller.
+function tenantOf(owner: OwnerContext, row: { tenant_type: string; franchise_id: string | null; commissary_id: string | null }): OwnerContext {
+  if (owner.tenantType !== 'master_admin' || row.tenant_type === 'master_admin') return owner
+  const tenantType = row.tenant_type as TenantType
+  return { ...owner, tenantType, role: tenantTypeToRole(tenantType), franchiseId: row.franchise_id, commissaryId: row.commissary_id }
 }
 
 function auditMetadata(owner: OwnerContext) {
@@ -67,6 +84,7 @@ function revalidateStaffPages() {
   revalidatePath('/franchiser/staff')
   revalidatePath('/staff')
   revalidatePath('/commissary-portal/staff')
+  revalidatePath('/franchises/[id]', 'page')
 }
 
 // Tier-agnostic staff creation for master_admin/commissary, whose staff have no
@@ -163,6 +181,7 @@ export async function grantPortalAccess(staffId: string, formData: FormData) {
   const { row } = owned
 
   if (row.has_portal_access) return { error: 'This staff member already has portal access.' }
+  const tenant = tenantOf(owner, row)
 
   const email = (formData.get('email') as string)?.trim()
   const password = formData.get('password') as string
@@ -170,7 +189,7 @@ export async function grantPortalAccess(staffId: string, formData: FormData) {
 
   if (!email || !password) return { error: 'Email and password are required.' }
 
-  const panelError = validatePanelSubset(owner.tenantType, panels)
+  const panelError = validatePanelSubset(tenant.tenantType, panels)
   if (panelError) return { error: panelError }
 
   const admin = createAdminClient()
@@ -180,10 +199,10 @@ export async function grantPortalAccess(staffId: string, formData: FormData) {
     password,
     email_confirm: true,
     app_metadata: {
-      role: owner.role,
+      role: tenant.role,
       is_staff: true,
-      ...(owner.tenantType === 'franchise' ? { franchise_id: owner.franchiseId } : {}),
-      ...(owner.tenantType === 'commissary' ? { commissary_id: owner.commissaryId } : {}),
+      ...(tenant.tenantType === 'franchise' ? { franchise_id: tenant.franchiseId } : {}),
+      ...(tenant.tenantType === 'commissary' ? { commissary_id: tenant.commissaryId } : {}),
     },
     user_metadata: {},
   })
@@ -262,7 +281,7 @@ export async function updateStaffPanels(staffId: string, panels: string[]) {
 
   if (!row.has_portal_access) return { error: 'This staff member does not have portal access.' }
 
-  const panelError = validatePanelSubset(owner.tenantType, panels)
+  const panelError = validatePanelSubset(tenantOf(owner, row).tenantType, panels)
   if (panelError) return { error: panelError }
 
   const { error } = await admin.from('users').update({ panels }).eq('id', staffId)

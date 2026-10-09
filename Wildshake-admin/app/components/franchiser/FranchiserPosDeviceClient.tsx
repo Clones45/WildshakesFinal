@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { releaseBranchDevice } from '@/lib/actions/masterFranchise'
+import { releaseBranchDevice } from '@/lib/actions/franchiser'
 
 interface Props {
   branchId: string

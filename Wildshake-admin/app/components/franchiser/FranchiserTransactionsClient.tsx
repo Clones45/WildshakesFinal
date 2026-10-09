@@ -6,6 +6,7 @@ import { manilaDay } from '@/lib/manila'
 import { resolvePeriod, shiftDay } from '@/lib/period'
 import { toCsv, downloadCsv, safeFilename } from '@/lib/inventory/csv'
 import SalesDatePicker from './SalesDatePicker'
+import { withParams } from '@/lib/href'
 
 interface TxItem {
   quantity: number
@@ -30,7 +31,7 @@ interface SplitPaymentEntry {
   bankName?: string
 }
 
-interface Tx {
+export interface Tx {
   id: string
   local_ref: string | null
   reference_number: string | null
@@ -60,6 +61,8 @@ interface Props {
   initialDay: string
   /** Every transaction in the month, newest first. */
   transactions: Tx[]
+  /** Where a change of month navigates to. The owner's portal by default; the head office's franchise page passes its own address. */
+  basePath?: string
 }
 
 // A whole month at a busy branch is over a thousand rows; draw them in batches
@@ -81,7 +84,7 @@ const activePill: CSSProperties = {
   color: '#fff',
 }
 
-export default function FranchiserTransactionsClient({ branchName, month, today, initialDay, transactions }: Props) {
+export default function FranchiserTransactionsClient({ branchName, month, today, initialDay, transactions, basePath = '/franchiser/transactions' }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [search, setSearch]     = useState('')
@@ -105,11 +108,11 @@ export default function FranchiserTransactionsClient({ branchName, month, today,
   // again, and the list narrows at once. Another month: navigate, so the server
   // fetches it (the page's loading screen shows meanwhile).
   const pick = (m: string, d: string) => {
-    const query = `?month=${m}${d ? `&day=${d}` : ''}`
-    if (m !== month) { router.push(`/franchiser/transactions${query}`); return }
+    const href = withParams(basePath, { month: m, day: d })
+    if (m !== month) { router.push(href); return }
     setVisibleCount(PAGE)
     setExpanded(null)
-    window.history.replaceState(null, '', query)
+    window.history.replaceState(null, '', href)
   }
 
   // Which Manila day each sale belongs to, worked out once per load. An 11pm sale

@@ -1204,3 +1204,8 @@ tbody td {
   100% { content: '';    }
 }
 
+
+/* A branch-portal screen shown inside a head-office page (Franchises > a franchise):
+   the screen's own title steps down to a section heading under the franchise's name. */
+.embedded-panel .page-header { margin-bottom: 1.25rem; }
+.embedded-panel .page-header h1 { font-size: 1.2rem; }

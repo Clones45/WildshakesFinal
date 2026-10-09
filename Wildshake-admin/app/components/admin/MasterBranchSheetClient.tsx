@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import SalesDatePicker from '@/components/franchiser/SalesDatePicker'
 import { SHEET_TYPES, SHEET_LABELS, isRecipeSheet, getStockStatus, computeEnding, byName, type SheetType } from '@/lib/inventory/sheets'
 import { buildSheetRows, toCsv, SHEET_CSV_HEADER, downloadCsv, safeFilename } from '@/lib/inventory/csv'
+import { withParams } from '@/lib/href'
 import {
   saveDailyLog, copyPreviousDay, setBranchAvailability, exportBranchSheetsCsv,
   type ItemRow, type CategoryRow, type LinkRow, type LogRow, type AvailabilityRow,
@@ -32,6 +33,10 @@ interface Props {
   basePath?: string
   /** Which half opens first: the daily counts, or menu availability and limits. */
   initialSection?: 'sheet' | 'menu'
+  /** The sheet tab to open on (a Stock Watch link names one). */
+  initialSheet?: SheetType
+  /** Start with only Low and Out lines shown (a Stock Watch link asks for this). */
+  initialLowOnly?: boolean
   /** Shown inside another page: a smaller heading and no link back to Setup duplicated. */
   embedded?: boolean
 }
@@ -46,15 +51,15 @@ const dayTitle = (ymd: string) =>
 
 export default function MasterBranchSheetClient({
   branches, branchId, branchName, day, today, categories, items, links, products, overrides: initialOverrides, logs: initialLogs,
-  basePath = '/inventory/branches', initialSection = 'sheet', embedded = false,
+  basePath = '/inventory/branches', initialSection = 'sheet', initialSheet, initialLowOnly = false, embedded = false,
 }: Props) {
   const router = useRouter()
   const [logs, setLogs] = useState<Record<string, LogRow>>(() => Object.fromEntries(initialLogs.map(l => [l.inventory_item_id, l])))
   const [overrides, setOverrides] = useState<Record<string, AvailabilityRow>>(() => Object.fromEntries(initialOverrides.map(o => [o.product_id, o])))
-  const [sheet, setSheet] = useState<SheetType>('food')
+  const [sheet, setSheet] = useState<SheetType>(initialSheet ?? 'food')
   const [section, setSection] = useState<'sheet' | 'menu'>(initialSection)
   const [search, setSearch] = useState('')
-  const [showOnlyLow, setShowOnlyLow] = useState(false)
+  const [showOnlyLow, setShowOnlyLow] = useState(initialLowOnly)
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState<{ text: string; bad?: boolean } | null>(null)
   const [historyHint, setHistoryHint] = useState(false)
@@ -90,7 +95,7 @@ export default function MasterBranchSheetClient({
     }
   }
 
-  const go = (b: string, d: string) => router.push(`${basePath}${basePath.includes('?') ? '&' : '?'}branch=${b}&day=${d}`)
+  const go = (b: string, d: string) => router.push(withParams(basePath, { branch: b, day: d }))
 
   const ending = (item: ItemRow) => {
     const l = logs[item.id]

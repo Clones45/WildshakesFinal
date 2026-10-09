@@ -3,8 +3,9 @@
 import { useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import SalesDatePicker from './SalesDatePicker'
+import { withParams } from '@/lib/href'
 
-interface Tx {
+export interface Tx {
   total_amount: number
   discount_amount: number
   payment_method: string
@@ -13,7 +14,7 @@ interface Tx {
   created_at: string
 }
 
-interface TopItem {
+export interface TopItem {
   quantity: number
   subtotal: number
   cancelled?: boolean | null
@@ -23,7 +24,7 @@ interface TopItem {
 
 // A row of public.shifts. The commission fields exist only once the client has
 // run add_shift_platform_commission_migration.sql, so they are optional here.
-interface ShiftRow {
+export interface ShiftRow {
   id: string
   shift_number: number
   cashier_name: string
@@ -51,6 +52,8 @@ interface Props {
   initialDay?: string
   transactions: Tx[]
   topItems?: TopItem[]
+  /** Where a change of month navigates to. The owner's portal by default; the head office's franchise page passes its own address. */
+  basePath?: string
 }
 
 /**
@@ -78,8 +81,7 @@ const peso = (n: number | null | undefined) =>
 const manilaDateTime = (iso: string) =>
   new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
 export default function FranchiserSalesClient({
-  branchName, month, today, initialDay = '', transactions, topItems = [], shifts = [],
-}: Props) {
+  branchName, month, today, initialDay = '', transactions, topItems = [], shifts = [], basePath = '/franchiser/sales' }: Props) {
   const router = useRouter()
   // '' = the whole month; otherwise a single YYYY-MM-DD
   const [selectedDay, setSelectedDay] = useState(initialDay)
@@ -184,7 +186,7 @@ export default function FranchiserSalesClient({
             today={today}
             onPick={(m, d) => {
               if (m === month) { setSelectedDay(d); return }
-              router.push(`/franchiser/sales?month=${m}${d ? `&day=${d}` : ''}`)
+              router.push(withParams(basePath, { month: m, day: d }))
             }}
           />
           <button className="btn btn-ghost" onClick={exportCSV}>📥 Export CSV</button>

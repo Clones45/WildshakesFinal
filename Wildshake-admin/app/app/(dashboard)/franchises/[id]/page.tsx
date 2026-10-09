@@ -1,180 +1,160 @@
-import { createAdminClient } from '@/lib/supabase/admin'
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import FranchiseDetailClient from '@/components/admin/FranchiseDetailClient'
+import { notFound } from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { requirePanelAccess } from '@/lib/portal/access'
-import { fetchAll } from '@/lib/supabase/fetchAll'
+import { manilaDay } from '@/lib/manila'
+import { isSheetType } from '@/lib/inventory/sheets'
 import { loadBranchSheet } from '@/lib/inventory/loadBranchSheet'
+import { loadFranchiseDashboard } from '@/lib/franchise/dashboard'
+import {
+  loadFranchiseBranches, loadFranchiseSales, loadFranchiseTransactions, loadFranchiseStaff,
+  loadLastPosActivity, loadFranchiseAnnouncements, franchiseBranchLabel,
+} from '@/lib/franchise/portal'
+import { resolveFranchiseTab, type FranchiseTab } from '@/lib/franchise/tabs'
+import FranchiseDetailHeader from '@/components/admin/FranchiseDetailHeader'
+import MasterBranchSheetClient from '@/components/admin/MasterBranchSheetClient'
+import FranchiserDashboardView from '@/components/franchiser/FranchiserDashboardView'
+import FranchiserSalesClient from '@/components/franchiser/FranchiserSalesClient'
+import FranchiserTransactionsClient from '@/components/franchiser/FranchiserTransactionsClient'
+import FranchiserStaffClient from '@/components/franchiser/FranchiserStaffClient'
+import FranchiserPosDeviceClient from '@/components/franchiser/FranchiserPosDeviceClient'
+import FranchiserAnnouncementsClient from '@/components/franchiser/FranchiserAnnouncementsClient'
 
-interface PageProps {
-  params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string; branch?: string; day?: string }>
-}
+export const dynamic = 'force-dynamic'
 
-export default async function FranchiseDetailPage({ params, searchParams }: PageProps) {
+type Query = Record<string, string | undefined>
+type Branches = Awaited<ReturnType<typeof loadFranchiseBranches>>
+
+/**
+ * Franchises > one franchise: the head office's window onto that franchise. Each tab
+ * is the very screen the franchise owner sees in their own portal, drawn from the
+ * same loaders, so the master admin can see (and do) everything the branch can.
+ */
+export default async function FranchiseDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Query> }) {
   await requirePanelAccess('master_admin', 'franchises')
-
   const { id } = await params
-  const { tab = 'dashboard', branch: branchParam, day: dayParam } = await searchParams
+  const sp = await searchParams
+  const tab = resolveFranchiseTab(sp.tab)
+  const admin = createAdminClient()
 
-  const supabase = createAdminClient()
-
-  // Fetch franchise info
-  const cleanId = id.trim()
-  const { data: franchise, error } = await supabase
+  const { data: franchise } = await admin
     .from('franchises')
-    .select('id, name, owner_name, owner_email, region, status, created_at, auth_id')
-    .eq('id', cleanId)
-    .single()
+    .select('id, name, owner_name, owner_email, region, status, created_at')
+    .eq('id', id.trim())
+    .maybeSingle()
+  if (!franchise) notFound()
 
-  if (error || !franchise) {
-    notFound()
-  }
-
-  // Fetch all branches
-  const { data: branches } = await supabase
-    .from('branches')
-    .select('id, name, location, active_device_id, status')
-    .eq('franchise_id', id)
-    .order('name')
-
-  const branchIds = (branches || []).map(b => b.id)
-  const safeBranchIds = branchIds.length > 0 ? branchIds : ['00000000-0000-0000-0000-000000000000']
-
-  // Philippine time: "today" starts at midnight in Manila, not on the server's
-  // clock (UTC on Vercel, i.e. 8 AM Manila).
-  const manilaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(d)
-  const todayStr = manilaDay(new Date())
-  const today = new Date(`${todayStr}T00:00:00+08:00`)
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-
-  // Parallel data fetch
-  // Period reads go through fetchAll: the API returns at most 1,000 rows per
-  // request, and 90 days at one busy branch is several times that.
-  const [
-    todayTx,
-    weekTx,
-    salesTx,
-    { data: recentTx },
-    { data: staff },
-    topItems,
-  ] = await Promise.all([
-    // Today's revenue
-    fetchAll(() => supabase.from('transactions')
-      .select('total_amount, payment_method')
-      .in('branch_id', safeBranchIds)
-      .eq('status', 'completed')
-      .gte('created_at', today.toISOString())
-      .order('created_at', { ascending: true })),
-
-    // Week revenue (chart)
-    fetchAll(() => supabase.from('transactions')
-      .select('total_amount, created_at')
-      .in('branch_id', safeBranchIds)
-      .eq('status', 'completed')
-      .gte('created_at', weekAgo)
-      .order('created_at', { ascending: true })),
-
-    // 90-day sales for the sales tab
-    fetchAll(() => supabase.from('transactions')
-      .select('total_amount, discount_amount, payment_method, status, created_at')
-      .in('branch_id', safeBranchIds)
-      .eq('status', 'completed')
-      .gte('created_at', ninetyDaysAgo)
-      .order('created_at', { ascending: true })),
-
-    // Recent transactions
-    supabase.from('transactions')
-      .select('id, total_amount, status, payment_method, reference_number, bank_name, discount_type, discount_amount, created_at, void_reason, table_number, delivery_platform, users(name), branches(name), transaction_items(quantity, unit_price, subtotal, products(name, category))')
-      .in('branch_id', safeBranchIds)
-      .neq('status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(200),
-
-    // Staff
-    supabase.from('users')
-      .select('id, name, email, role, pin_code, is_active, created_at, branch_id')
-      .in('branch_id', safeBranchIds)
-      .order('role').order('name'),
-
-    // Top items
-    fetchAll(() => supabase.from('transaction_items')
-      .select('quantity, subtotal, products(name, category), transactions!inner(branch_id, status, created_at)')
-      .in('transactions.branch_id', safeBranchIds)
-      .eq('transactions.status', 'completed')
-      .gte('transactions.created_at', thirtyDaysAgo)
-      .order('id', { ascending: true })),
-  ])
-
-  // Inventory and Menu Availability tabs: the branch's real daily sheet, read the same
-  // way the branch's own Inventory page reads it, so both always show the same numbers.
-  let sheet: Awaited<ReturnType<typeof loadBranchSheet>> & { branchId: string; day: string; today: string } | null = null
-  if ((tab === 'inventory' || tab === 'stock') && branchIds.length > 0) {
-    const sheetBranch = branchParam && branchIds.includes(branchParam) ? branchParam : branchIds[0]
-    const sheetDay = dayParam && /^\d{4}-\d{2}-\d{2}$/.test(dayParam) && dayParam <= todayStr ? dayParam : todayStr
-    sheet = { ...(await loadBranchSheet(sheetBranch, sheetDay, todayStr)), branchId: sheetBranch, day: sheetDay, today: todayStr }
-  }
-
-  const todayRevenue = (todayTx || []).reduce((s, t) => s + Number(t.total_amount), 0)
-  const todayOrders  = (todayTx || []).length
-
-  // 7-day chart, each bar one Manila calendar day (today = Manila midnight, above)
-  const chartData = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today.getTime() - (6 - i) * 24 * 60 * 60 * 1000)
-    const dateStr = manilaDay(d)
-    const label   = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Manila' })
-    const revenue = (weekTx || [])
-      .filter(t => manilaDay(new Date(t.created_at)) === dateStr)
-      .reduce((s, t) => s + Number(t.total_amount), 0)
-    return { label, revenue, isToday: i === 6 }
-  })
-
-  const payBreakdown: Record<string, number> = {}
-  for (const t of todayTx || []) {
-    payBreakdown[t.payment_method] = (payBreakdown[t.payment_method] || 0) + Number(t.total_amount)
-  }
-
-  const itemMap: Record<string, { name: string; category: string; qty: number; revenue: number }> = {}
-  for (const row of topItems || []) {
-    const prod = row.products as unknown as { name: string; category: string } | null
-    if (!prod) continue
-    if (!itemMap[prod.name]) itemMap[prod.name] = { name: prod.name, category: prod.category, qty: 0, revenue: 0 }
-    itemMap[prod.name].qty     += Number(row.quantity)
-    itemMap[prod.name].revenue += Number(row.subtotal)
-  }
-  const topItemsList = Object.values(itemMap).sort((a, b) => b.revenue - a.revenue).slice(0, 5)
+  const branches = await loadFranchiseBranches(admin, franchise.id)
 
   return (
     <div>
-      {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-        <Link href="/franchises" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>
-          ← Franchises
-        </Link>
+        <Link href="/franchises" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>← Franchises</Link>
         <span>/</span>
         <span style={{ color: 'var(--color-text)' }}>{franchise.name}</span>
       </div>
 
-      <FranchiseDetailClient
-        franchise={franchise}
-        branches={(branches || []) as Parameters<typeof FranchiseDetailClient>[0]['branches']}
-        activeTab={tab as Parameters<typeof FranchiseDetailClient>[0]['activeTab']}
-        // Dashboard data
-        todayRevenue={todayRevenue}
-        todayOrders={todayOrders}
-        chartData={chartData}
-        payBreakdown={payBreakdown}
-        topItemsList={topItemsList}
-        // Sales data
-        salesTransactions={(salesTx || []) as Parameters<typeof FranchiseDetailClient>[0]['salesTransactions']}
-        // Transactions data
-        transactions={(recentTx || []) as unknown as Parameters<typeof FranchiseDetailClient>[0]['transactions']}
-        // Staff data
-        staff={(staff || []) as Parameters<typeof FranchiseDetailClient>[0]['staff']}
-        sheet={sheet}
-      />
+      <FranchiseDetailHeader franchise={franchise} branches={branches} tab={tab} />
+
+      <div className="embedded-panel">
+        <TabContent tab={tab} franchiseId={franchise.id} branches={branches} sp={sp} />
+      </div>
     </div>
   )
+}
+
+async function TabContent({ tab, franchiseId, branches, sp }: { tab: FranchiseTab; franchiseId: string; branches: Branches; sp: Query }) {
+  const admin = createAdminClient()
+  const base = `/franchises/${franchiseId}`
+  const here = `${base}?tab=${tab}`
+  const noBranch = <div className="alert alert-warning">This franchise has no branch yet.</div>
+
+  switch (tab) {
+    case 'dashboard': {
+      const data = await loadFranchiseDashboard(admin, franchiseId)
+      if (!data) return noBranch
+      return <FranchiserDashboardView data={data} inventoryHref={`${base}?tab=inventory`} />
+    }
+
+    case 'sales': {
+      const props = await loadFranchiseSales(admin, branches, sp)
+      return <FranchiserSalesClient key={props.month} {...props} basePath={here} />
+    }
+
+    case 'transactions': {
+      const props = await loadFranchiseTransactions(admin, branches, sp)
+      // Keyed by month: a change of month arrives as a fresh screen, with the search
+      // box, the status filter and the open row reset.
+      return <FranchiserTransactionsClient key={props.month} {...props} basePath={here} />
+    }
+
+    case 'inventory':
+    case 'menu': {
+      if (branches.length === 0) return noBranch
+      const today = manilaDay()
+      const branchId = branches.some(b => b.id === sp.branch) ? (sp.branch as string) : branches[0].id
+      const day = sp.day && /^\d{4}-\d{2}-\d{2}$/.test(sp.day) && sp.day <= today ? sp.day : today
+      const sheet = await loadBranchSheet(branchId, day, today)
+      return (
+        <MasterBranchSheetClient
+          key={`${tab}-${branchId}-${day}`}
+          embedded
+          basePath={here}
+          initialSection={tab === 'menu' ? 'menu' : 'sheet'}
+          initialSheet={sp.sheet && isSheetType(sp.sheet) ? sp.sheet : undefined}
+          initialLowOnly={sp.low === '1'}
+          branches={branches.map(b => ({ id: b.id, name: b.name, franchise: null }))}
+          branchId={branchId}
+          branchName={branches.find(b => b.id === branchId)?.name ?? 'Branch'}
+          day={day}
+          today={today}
+          {...sheet}
+        />
+      )
+    }
+
+    case 'staff': {
+      const staff = await loadFranchiseStaff(admin, franchiseId)
+      return (
+        <FranchiserStaffClient
+          branchId={branches[0]?.id ?? ''}
+          branchName={franchiseBranchLabel(branches)}
+          staff={staff}
+          isOwner
+        />
+      )
+    }
+
+    case 'pos_device': {
+      if (branches.length === 0) return noBranch
+      const devices = await Promise.all(branches.map(async b => ({ branch: b, lastActivityAt: await loadLastPosActivity(admin, b.id) })))
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          {devices.map(({ branch, lastActivityAt }) => (
+            <FranchiserPosDeviceClient
+              key={branch.id}
+              branchId={branch.id}
+              branchName={branch.name}
+              branchLocation={branch.location ?? ''}
+              activeDeviceId={branch.active_device_id}
+              lastActivityAt={lastActivityAt}
+            />
+          ))}
+        </div>
+      )
+    }
+
+    case 'announcements': {
+      const announcements = await loadFranchiseAnnouncements(admin, franchiseId)
+      return (
+        <div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+            This is what the franchise sees on its Announcements page. To send a new one, go to{' '}
+            <Link href="/broadcast" style={{ color: 'var(--color-accent)' }}>Broadcast</Link>.
+          </p>
+          <FranchiserAnnouncementsClient announcements={announcements} />
+        </div>
+      )
+    }
+  }
 }
