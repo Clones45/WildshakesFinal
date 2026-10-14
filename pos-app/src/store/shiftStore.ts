@@ -22,6 +22,20 @@ const DEFAULT_STARTING_CASH = 3000
 const LAST_STARTING_CASH_KEY = 'ws_last_starting_cash'
 const LAST_COMMISSION_KEY = 'ws_last_platform_commission'
 
+// A shift never runs past 1:00 AM Manila. Whatever is still open then is closed as of
+// that moment, by the till if it is on, or the next time it is switched on, so the new
+// day's sales can never land on yesterday's report. Manila is UTC+8 with no daylight saving.
+const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000
+const CUTOFF_HOUR_MANILA = 1
+export function shiftCutoff(openedAtIso: string): string {
+    const local = new Date(new Date(openedAtIso).getTime() + MANILA_OFFSET_MS)
+    const y = local.getUTCFullYear(), m = local.getUTCMonth(), d = local.getUTCDate()
+    const sameDay = Date.UTC(y, m, d, CUTOFF_HOUR_MANILA, 0, 0) - MANILA_OFFSET_MS
+    const cutoff = new Date(openedAtIso).getTime() < sameDay ? sameDay : Date.UTC(y, m, d + 1, CUTOFF_HOUR_MANILA, 0, 0) - MANILA_OFFSET_MS
+    return new Date(cutoff).toISOString()
+}
+const pastCutoff = (shift: LocalShift, nowMs = Date.now()) => nowMs >= new Date(shiftCutoff(shift.openedAt)).getTime()
+
 // The tablet remembers what was entered last time, so the usual case is one tap.
 export function rememberedStartingCash(): number {
     const v = Number(localStorage.getItem(LAST_STARTING_CASH_KEY))
@@ -46,6 +60,8 @@ interface ShiftState {
     startShift: (user: UserProfile, branch: Branch, startingCash: number) => Promise<void>
     previewSummary: (commission: PlatformCommission) => Promise<ShiftSummary | null>
     endShift: (commission: PlatformCommission) => Promise<ShiftSummary | null>
+    /** Close the current shift if its 1:00 AM cut-off has passed. Returns what was closed, or null. */
+    closeIfPastCutoff: () => Promise<ShiftSummary | null>
     syncPendingShifts: () => Promise<void>
 }
 
@@ -196,21 +212,34 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
             .filter(s => s.status === 'open')
             .toArray()
 
-        const existing = openShifts.find(s => s.cashierId === user.id)
-        if (existing) {
-            set({ currentShift: existing, awaitingStart: false })
+        // A shift still open past its 1:00 AM cut-off (the tablet was off, or nobody
+        // ended it) is closed as of that moment, with the last-used delivery cuts.
+        const stillOpen: LocalShift[] = []
+        for (const shift of openShifts) {
+            if (pastCutoff(shift)) {
+                const summary = await computeSummary(shift, shiftCutoff(shift.openedAt), rememberedCommission())
+                await db.shifts.put({ ...summary, closedBy: 'auto-1am' })
+            } else {
+                stillOpen.push(shift)
+            }
+        }
+        if (stillOpen.length < openShifts.length) get().syncPendingShifts()
+
+        // One shift per drawer. Whoever logs in carries on the open shift, so a cashier
+        // who signed out for the manager to take over does not get their sales cut off
+        // on a silently closed report. The opener stays the shift's cashier; everyone
+        // else who worked it is noted for the printout.
+        const shift = stillOpen[0]
+        if (shift) {
+            if (shift.cashierId !== user.id && !(shift.coveredBy ?? []).includes(user.name)) {
+                const covered = { ...shift, coveredBy: [...(shift.coveredBy ?? []), user.name] }
+                await db.shifts.put(covered)
+                set({ currentShift: covered, awaitingStart: false })
+            } else {
+                set({ currentShift: shift, awaitingStart: false })
+            }
             return
         }
-
-        // A previous cashier logged out without tapping "End Shift", leaving their
-        // shift dangling open. Auto-close it (cash taken as expected, since nobody
-        // was there) so its time window can't overlap the new shift and
-        // double-count sales when it's eventually reported.
-        for (const dangling of openShifts) {
-            const summary = await computeSummary(dangling, new Date().toISOString())
-            await db.shifts.put(summary)
-        }
-        if (openShifts.length > 0) get().syncPendingShifts()
 
         // No shift yet: the cashier enters the starting cash first (StartShiftModal
         // calls startShift). Nothing opens until they do.
@@ -267,7 +296,7 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
 
         set({ isEnding: true })
         try {
-            const summary = await computeSummary(shift, new Date().toISOString(), commission)
+            const summary: ShiftSummary = { ...(await computeSummary(shift, new Date().toISOString(), commission)), closedBy: 'cashier' }
 
             // Stored whole, receipt-only figures included, so a reprint is exact.
             await db.shifts.put(summary)
@@ -280,6 +309,16 @@ export const useShiftStore = create<ShiftState>()((set, get) => ({
             set({ isEnding: false })
             throw err
         }
+    },
+
+    closeIfPastCutoff: async () => {
+        const shift = get().currentShift
+        if (!shift || shift.status !== 'open' || !pastCutoff(shift)) return null
+        const summary: ShiftSummary = { ...(await computeSummary(shift, shiftCutoff(shift.openedAt), rememberedCommission())), closedBy: 'auto-1am' }
+        await db.shifts.put(summary)
+        set({ currentShift: null, awaitingStart: true })
+        get().syncPendingShifts()
+        return summary
     },
 
     syncPendingShifts: async () => {

@@ -170,6 +170,10 @@ export interface LocalShift {
     foodpandaCommission?: number
     grabCommission?: number
     netAfterCommission?: number
+    /** Other people who logged in and carried on this shift after its opener signed out without ending it. */
+    coveredBy?: string[]
+    /** Who closed it: a person tapping End Shift, or the till by itself at 1:00 AM. */
+    closedBy?: 'cashier' | 'auto-1am'
     syncStatus: 'pending' | 'synced' | 'failed'
     /** When the last sync attempt failed — failed shifts get a breather before the next try. */
     lastSyncAttempt?: string

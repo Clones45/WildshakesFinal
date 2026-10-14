@@ -24,6 +24,7 @@ import { TransactionsViewGated } from '../components/TransactionsView'
 import { DeliveryPlatformModal } from '../components/DeliveryPlatformModal'
 import { EndShiftModal } from '../components/EndShiftModal'
 import { StartShiftModal } from '../components/StartShiftModal'
+import { LogoutChoiceModal } from '../components/LogoutChoiceModal'
 import { LogOut, Clock, ReceiptText, Lock, Package, ClipboardCheck } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
@@ -37,7 +38,7 @@ export function POSScreen() {
     } = useCartStore()
     const { syncPending, refreshPendingCount } = useSyncStore()
     const { heldOrders, fetchHeldOrders, holdOrder, updateHeldOrder, deleteHeldOrder } = useHoldStore()
-    const { ensureShiftOpen } = useShiftStore()
+    const { ensureShiftOpen, currentShift, closeIfPastCutoff } = useShiftStore()
 
     const { products, categories, isLoading, error: menuError, reload: reloadMenu } = useMenuItems()
     useOnlineStatus()
@@ -55,6 +56,7 @@ export function POSScreen() {
     const [showStockControl, setShowStockControl] = useState(false)
     const [showDeliveryPicker, setShowDeliveryPicker] = useState(false)
     const [showEndShift, setShowEndShift] = useState(false)
+    const [showLogoutChoice, setShowLogoutChoice] = useState(false)
     const [managerPinCallback, setManagerPinCallback] = useState<() => void>(() => () => { })
     const [lastTransaction, setLastTransaction] = useState<LocalTransaction | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
@@ -96,6 +98,26 @@ export function POSScreen() {
         setShowEndShift(false)
         logoutCashier()
     }
+
+    // Signing out with a shift open is a choice: end it first, or hand it to the next person.
+    const handleLogoutTap = () => {
+        if (currentShift && currentShift.status === 'open') setShowLogoutChoice(true)
+        else logoutCashier()
+    }
+
+    // The till ends any shift still open at 1:00 AM, checked once a minute and whenever the app
+    // comes back to the front. The report can be reprinted from Transactions > Shift reports.
+    useEffect(() => {
+        const check = async () => {
+            const closed = await closeIfPastCutoff()
+            if (closed) toast(`Shift #${closed.shiftNumber} was closed automatically at 1:00 AM. Reprint it from Transactions > Shift reports.`, { duration: 10000, icon: '🕐' })
+        }
+        check()
+        const timer = window.setInterval(check, 60_000)
+        const onVisible = () => { if (document.visibilityState === 'visible') check() }
+        document.addEventListener('visibilitychange', onVisible)
+        return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible) }
+    }, [closeIfPastCutoff])
 
     const requireManager = (callback: () => void) => {
         if (user?.role === 'manager' || user?.role === 'investor') {
@@ -415,7 +437,7 @@ export function POSScreen() {
                         <Lock size={18} />
                     </button>
                     <button
-                        onClick={logoutCashier}
+                        onClick={handleLogoutTap}
                         className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center hover:bg-red-100 hover:text-red-600 text-brand-700 transition-all border border-brand-200"
                         title="Sign out Cashier"
                     >
@@ -543,6 +565,15 @@ export function POSScreen() {
 
             {/* Start Shift — asks for the drawer's cash when this cashier has no open shift */}
             <StartShiftModal />
+
+            {/* Sign out with a shift open: end it, or hand it over */}
+            <LogoutChoiceModal
+                isOpen={showLogoutChoice}
+                shift={currentShift}
+                onEndShift={() => { setShowLogoutChoice(false); setShowEndShift(true) }}
+                onJustLogout={() => { setShowLogoutChoice(false); logoutCashier() }}
+                onClose={() => setShowLogoutChoice(false)}
+            />
 
             {/* End Shift */}
             <EndShiftModal
