@@ -540,15 +540,18 @@ export function buildDayReportText(day: string, shifts: DayReportShift[], branch
     const dayLabel = new Date(`${day}T00:00:00+08:00`).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     const pct = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)}%`
 
+    // Two lines per shift: the paper is 32 characters wide, so a name and an amount
+    // cannot share a line without one of them being cut short.
     const shiftLines = shifts.flatMap(s => [
-        leftRight(`#${s.shiftNumber} ${s.cashierName}`.slice(0, W - 11), money(s.netSales)),
-        `   ${manilaTime(s.openedAt)} - ${manilaTime(s.closedAt)}${s.closedBy === 'auto-1am' ? ' (auto)' : ''}`,
+        `#${s.shiftNumber} ${s.cashierName}${s.closedBy === 'auto-1am' ? ' (auto)' : ''}`.slice(0, W),
+        leftRight(`   ${manilaTime(s.openedAt)} - ${manilaTime(s.closedAt)}`, money(s.netSales)),
         ...((s.coveredBy ?? []).length > 0 ? [`   also: ${(s.coveredBy ?? []).join(', ')}`.slice(0, W)] : []),
     ])
 
-    const drawerLines = shifts.map(s =>
-        leftRight(`#${s.shiftNumber} start ${money(s.startingCash)}`, `drawer ${money(s.expectedCash)}`),
-    )
+    const drawerLines = shifts.flatMap(s => [
+        leftRight(`#${s.shiftNumber} starting cash`, money(s.startingCash)),
+        leftRight('    cash in drawer', money(s.expectedCash)),
+    ])
 
     const foodpandaSales = sum(s => s.foodpandaSales), grabSales = sum(s => s.grabSales)
     const foodpandaCut = sum(s => s.foodpandaCommission), grabCut = sum(s => s.grabCommission)
