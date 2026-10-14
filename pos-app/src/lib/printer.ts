@@ -499,3 +499,114 @@ export async function printShiftReport(
         opts.reprint ? 'Shift report (reprint)' : 'Shift report',
     )
 }
+
+// ─── End of Day report: every shift closed on one day, added up ──────────────
+export interface DayReportShift {
+    localRef: string
+    shiftNumber: number
+    cashierName: string
+    cashierRole: string
+    openedAt: string
+    closedAt: string
+    startingCash: number
+    expectedCash: number
+    grossSales: number
+    discounts: number
+    refunds: number
+    netSales: number
+    cashSales: number
+    gcashSales: number
+    mayaSales: number
+    bankTransferSales: number
+    foodpandaSales: number
+    grabSales: number
+    foodpandaCommissionPct: number
+    grabCommissionPct: number
+    foodpandaCommission: number
+    grabCommission: number
+    netAfterCommission: number
+    paidIn: number
+    paidOut: number
+    coveredBy?: string[]
+    closedBy?: 'cashier' | 'auto-1am'
+}
+
+const manilaTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true })
+
+/** `day` is yyyy-mm-dd in Manila; `shifts` every shift closed that day, in order. */
+export function buildDayReportText(day: string, shifts: DayReportShift[], branchName: string): string {
+    const sum = (pick: (s: DayReportShift) => number) => shifts.reduce((t, s) => t + (pick(s) || 0), 0)
+    const dayLabel = new Date(`${day}T00:00:00+08:00`).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    const pct = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)}%`
+
+    const shiftLines = shifts.flatMap(s => [
+        leftRight(`#${s.shiftNumber} ${s.cashierName}`.slice(0, W - 11), money(s.netSales)),
+        `   ${manilaTime(s.openedAt)} - ${manilaTime(s.closedAt)}${s.closedBy === 'auto-1am' ? ' (auto)' : ''}`,
+        ...((s.coveredBy ?? []).length > 0 ? [`   also: ${(s.coveredBy ?? []).join(', ')}`.slice(0, W)] : []),
+    ])
+
+    const drawerLines = shifts.map(s =>
+        leftRight(`#${s.shiftNumber} start ${money(s.startingCash)}`, `drawer ${money(s.expectedCash)}`),
+    )
+
+    const foodpandaSales = sum(s => s.foodpandaSales), grabSales = sum(s => s.grabSales)
+    const foodpandaCut = sum(s => s.foodpandaCommission), grabCut = sum(s => s.grabCommission)
+    // The cut percentages can differ between shifts; show the one used when they agree.
+    const pcts = (pick: (s: DayReportShift) => number, sales: (s: DayReportShift) => number) => {
+        const used = [...new Set(shifts.filter(s => sales(s) > 0).map(pick))]
+        return used.length === 1 ? ` (${pct(used[0])})` : used.length > 1 ? ' (mixed)' : ''
+    }
+    const hasDelivery = foodpandaSales > 0 || grabSales > 0
+    const deliveryLines = hasDelivery
+        ? [
+            divider,
+            center('FoodPanda & Grab cut'),
+            divider,
+            leftRight('FoodPanda sales', money(foodpandaSales)),
+            leftRight(`FoodPanda cut${pcts(s => s.foodpandaCommissionPct, s => s.foodpandaSales)}`, '-' + money(foodpandaCut)),
+            leftRight('FoodPanda net', money(foodpandaSales - foodpandaCut)),
+            leftRight('Grab sales', money(grabSales)),
+            leftRight(`Grab cut${pcts(s => s.grabCommissionPct, s => s.grabSales)}`, '-' + money(grabCut)),
+            leftRight('Grab net', money(grabSales - grabCut)),
+        ]
+        : []
+    const other = foodpandaSales + grabSales
+
+    return [
+        center(branchName),
+        center('End of Day Report'),
+        center(dayLabel),
+        divider,
+        `Shifts: ${shifts.length}`,
+        ...shiftLines,
+        divider,
+        center('Sales summary'),
+        divider,
+        leftRight('Gross sales', money(sum(s => s.grossSales))),
+        leftRight('Refunds', money(sum(s => s.refunds))),
+        leftRight('Discounts', money(sum(s => s.discounts))),
+        leftRight('Net sales', money(sum(s => s.netSales))),
+        leftRight('Cash', money(sum(s => s.cashSales))),
+        leftRight('GCash', money(sum(s => s.gcashSales))),
+        leftRight('Maya', money(sum(s => s.mayaSales))),
+        leftRight('Bank transfer', money(sum(s => s.bankTransferSales))),
+        ...(other > 0 ? [leftRight('Other (Delivery)', money(other))] : []),
+        ...deliveryLines,
+        divider,
+        leftRight('Net after commission', money(sum(s => s.netAfterCommission))),
+        divider,
+        center('Cash drawer by shift'),
+        divider,
+        ...drawerLines,
+        leftRight('Paid in / out', `${money(sum(s => s.paidIn))} / ${money(sum(s => s.paidOut))}`),
+        divider,
+        center('*** END OF DAY REPORT ***'),
+        '\n\n\n',
+    ].join('\n')
+}
+
+/** Resolves true when the report reached the printer, false when it didn't (already toasted). */
+export async function printDayReport(text: string): Promise<boolean> {
+    return sendToPrinter(text, 'End of day report')
+}

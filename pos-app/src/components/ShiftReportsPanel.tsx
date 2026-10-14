@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast'
 import { db, type LocalShift } from '../lib/db'
 import { summaryForReprint } from '../store/shiftStore'
 import { buildShiftReportText, printShiftReport } from '../lib/printer'
+import { EndOfDayReport } from './EndOfDayReport'
 
 // Closed shifts on this tablet, newest first, each reprintable. Lives inside the
 // manager-only Transactions screen. A reprint is marked REPRINT on paper so it
@@ -68,17 +69,17 @@ export function ShiftReportsPanel({ branchId, branchName }: ShiftReportsPanelPro
         )
     }
 
-    if (shifts.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center h-40 gap-3 text-gray-600">
-                <ClipboardCheck size={36} className="opacity-40" />
-                <p className="text-sm">No closed shifts on this tablet yet</p>
-            </div>
-        )
-    }
-
     return (
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+            <EndOfDayReport branchId={branchId} branchName={branchName} />
+
+            {shifts.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-40 gap-3 text-gray-600">
+                    <ClipboardCheck size={36} className="opacity-40" />
+                    <p className="text-sm">No closed shifts on this tablet yet</p>
+                </div>
+            )}
+            {shifts.length > 0 && <p className="text-gray-400 text-xs font-bold uppercase tracking-wider pt-2">Shift reports on this tablet</p>}
             {shifts.map((s) => {
                 const cut = (s.foodpandaCommission ?? 0) + (s.grabCommission ?? 0)
                 const isOpen = openPreview === s.localRef
