@@ -68,8 +68,10 @@ export type Product = {
     category: string
     /** This branch's price (the menu's, or the branch's own when head office set one). */
     price: number
-    /** FoodPanda / Grab price, one shared price; null = not offered on delivery, the till uses the normal price. */
-    delivery_price: number | null
+    /** FoodPanda price, or null when not offered there: the till then charges the normal price. 0 = free on FoodPanda. */
+    foodpanda_price: number | null
+    /** Grab price, or null when not offered there. 0 = free on Grab. */
+    grab_price: number | null
     image_url: string | null
     is_available: boolean
     /** Remaining count at this branch when Stock Control has set one. null = unlimited. */

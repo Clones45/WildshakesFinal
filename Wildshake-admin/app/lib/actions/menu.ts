@@ -3,15 +3,17 @@
 /**
  * The live POS menu: its items, their prices, and which branches a price applies to.
  *
- * Every item has a normal price and, if it is sold on FoodPanda and Grab, one shared
- * delivery price. A price change can apply to every branch (the menu's own price
- * changes, and any branch-only price for that item is cleared so everyone is on the
- * new one) or to chosen branches only (those branches get a branch-only price; the
- * rest keep what they had). Names, categories, pictures and hidden/shown are always
- * the same everywhere. The tills pick a change up within seconds.
+ * Every item has a normal price and, if it is sold on the delivery apps, a FoodPanda
+ * price and a Grab price, set separately. A price change can apply to every branch
+ * (the menu's own price changes, and any branch-only price for that item is cleared
+ * so everyone is on the new one) or to chosen branches only (those branches get a
+ * branch-only price; the rest keep what they had). Names, categories, pictures and
+ * hidden/shown are always the same everywhere. The tills pick a change up within
+ * seconds.
  *
  * Only the master admin with the Menu panel may change the menu. Writes go through
- * the service-role client after that check.
+ * the service-role client after that check. Results are plain object literals
+ * ({ error } or { success }) so callers can test res.error directly.
  */
 
 import { revalidatePath } from 'next/cache'
@@ -28,8 +30,14 @@ export interface BranchPriceRow {
   branch_id: string
   product_id: string
   price: number | null
-  delivery_price: number | null
+  foodpanda_price: number | null
+  grab_price: number | null
 }
+
+/** The three prices an item carries. null = not offered on that platform (the till charges the normal price). */
+interface Prices { price: number; foodpanda_price: number | null; grab_price: number | null }
+const PRICE_KEYS = ['price', 'foodpanda_price', 'grab_price'] as const
+const LABELS: Record<keyof Prices, string> = { price: 'Price', foodpanda_price: 'FoodPanda price', grab_price: 'Grab price' }
 
 async function requireMenuAdmin(): Promise<{ email: string } | { error: string }> {
   try {
@@ -61,10 +69,24 @@ function pesos(raw: FormDataEntryValue | null, label: string, required: boolean)
   return Math.round(n * 100) / 100
 }
 
-/** Rows where both columns are blank say nothing, so they go. */
-async function dropEmptyRows(admin: Admin, productId: string) {
-  await admin.from('branch_product_prices').delete().eq('product_id', productId).is('price', null).is('delivery_price', null)
+/** The three prices from the form, or the first complaint. */
+function readPrices(formData: FormData): Prices | { error: string } {
+  const price = pesos(formData.get('price'), LABELS.price, true)
+  if (typeof price === 'object' && price) return { error: price.error }
+  const foodpanda_price = pesos(formData.get('foodpanda_price'), LABELS.foodpanda_price, false)
+  if (typeof foodpanda_price === 'object' && foodpanda_price) return { error: foodpanda_price.error }
+  const grab_price = pesos(formData.get('grab_price'), LABELS.grab_price, false)
+  if (typeof grab_price === 'object' && grab_price) return { error: grab_price.error }
+  return { price: price as number, foodpanda_price, grab_price }
 }
+
+/** Rows where every price column is blank say nothing, so they go. */
+async function dropEmptyRows(admin: Admin, productId: string) {
+  await admin.from('branch_product_prices').delete().eq('product_id', productId)
+    .is('price', null).is('foodpanda_price', null).is('grab_price', null)
+}
+
+const asNum = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v))
 
 // ── Items ────────────────────────────────────────────────────────────────────
 
@@ -74,14 +96,12 @@ export async function createProduct(formData: FormData) {
   const category = ((formData.get('category') as string) ?? '').trim()
   const image_url = ((formData.get('image_url') as string) ?? '').trim() || null
   const is_available = formData.get('is_available') !== 'false'
-  const price = pesos(formData.get('price'), 'Price', true)
-  const delivery_price = pesos(formData.get('delivery_price'), 'FoodPanda & Grab price', false)
   if (!name || !category) return { error: 'Name, category, and price are required.' }
-  if (typeof price === 'object' && price) return { error: price.error }
-  if (typeof delivery_price === 'object' && delivery_price) return { error: delivery_price.error }
+  const prices = readPrices(formData)
+  if ('error' in prices) return { error: prices.error }
 
   const admin = createAdminClient()
-  const { error } = await admin.from('products').insert({ name, category, price, delivery_price, image_url, is_available })
+  const { error } = await admin.from('products').insert({ name, category, image_url, is_available, ...prices })
   if (error) return { error: error.message }
 
   bump()
@@ -90,13 +110,13 @@ export async function createProduct(formData: FormData) {
 
 /**
  * Save an item. Details (name, category, picture, shown/hidden) apply everywhere.
- * Prices apply by `scope`:
+ * Prices apply by `scope`, each of the three on its own:
  *   all      - the menu's price changes; a changed price also clears every branch-only
- *              price for that item, so all branches are on the new one. A price left as
- *              it was leaves the branch-only prices alone.
- *   branches - the chosen branches (`branch_ids`) get a branch-only price where the
+ *              figure for that price, so all branches are on the new one. A price left
+ *              as it was leaves the branch-only figures alone.
+ *   branches - the chosen branches (`branch_ids`) get a branch-only figure where the
  *              entered price differs from the menu's; where it matches the menu, the
- *              branch simply follows the menu again. The menu's own price is untouched.
+ *              branch simply follows the menu again. The menu's own prices are untouched.
  */
 export async function updateProduct(id: string, formData: FormData) {
   const g = await requireMenuAdmin(); if ('error' in g) return { error: g.error }
@@ -104,47 +124,46 @@ export async function updateProduct(id: string, formData: FormData) {
   const category = ((formData.get('category') as string) ?? '').trim()
   const image_url = ((formData.get('image_url') as string) ?? '').trim() || null
   const is_available = formData.get('is_available') === 'true'
-  const price = pesos(formData.get('price'), 'Price', true)
-  const delivery_price = pesos(formData.get('delivery_price'), 'FoodPanda & Grab price', false)
   const scope = formData.get('scope') === 'branches' ? 'branches' : 'all'
   const branchIds = [...new Set(formData.getAll('branch_ids').map(String).filter(Boolean))]
   if (!name || !category) return { error: 'Name, category, and price are required.' }
-  if (typeof price === 'object' && price) return { error: price.error }
-  if (typeof delivery_price === 'object' && delivery_price) return { error: delivery_price.error }
+  const entered = readPrices(formData)
+  if ('error' in entered) return { error: entered.error }
   if (scope === 'branches' && branchIds.length === 0) return { error: 'Tick at least one branch, or apply the price to all branches.' }
 
   const admin = createAdminClient()
-  const { data: current } = await admin.from('products').select('id, price, delivery_price').eq('id', id).maybeSingle()
+  const { data: current } = await admin.from('products').select('id, price, foodpanda_price, grab_price').eq('id', id).maybeSingle()
   if (!current) return { error: 'That menu item no longer exists.' }
-  const basePrice = Number(current.price)
-  const baseDelivery = current.delivery_price === null ? null : Number(current.delivery_price)
+  const base: Prices = { price: Number(current.price), foodpanda_price: asNum(current.foodpanda_price), grab_price: asNum(current.grab_price) }
+  const changed = PRICE_KEYS.filter(k => entered[k] !== base[k])
+  const stamp = { updated_at: new Date().toISOString(), updated_by: g.email }
 
   const details: Record<string, unknown> = { name, category, image_url, is_available }
 
   if (scope === 'all') {
-    const priceChanged = price !== basePrice
-    const deliveryChanged = delivery_price !== baseDelivery
-    details.price = price
-    details.delivery_price = delivery_price
-    const { error } = await admin.from('products').update(details).eq('id', id)
+    const { error } = await admin.from('products').update({ ...details, ...entered }).eq('id', id)
     if (error) return { error: error.message }
-    // A changed price now applies everywhere: clear that column's branch-only prices.
-    if (priceChanged) await admin.from('branch_product_prices').update({ price: null, updated_at: new Date().toISOString(), updated_by: g.email }).eq('product_id', id)
-    if (deliveryChanged) await admin.from('branch_product_prices').update({ delivery_price: null, updated_at: new Date().toISOString(), updated_by: g.email }).eq('product_id', id)
-    if (priceChanged || deliveryChanged) await dropEmptyRows(admin, id)
+    // A changed price now applies everywhere: clear that column's branch-only figures.
+    if (changed.length > 0) {
+      const clear = Object.fromEntries(changed.map(k => [k, null]))
+      const { error: clrErr } = await admin.from('branch_product_prices').update({ ...clear, ...stamp }).eq('product_id', id)
+      if (clrErr) return { error: clrErr.message }
+      await dropEmptyRows(admin, id)
+    }
   } else {
     const { error } = await admin.from('products').update(details).eq('id', id)
     if (error) return { error: error.message }
     const { data: known } = await admin.from('branches').select('id').in('id', branchIds)
     const ids = (known ?? []).map(b => b.id as string)
     if (ids.length === 0) return { error: 'None of those branches exist any more.' }
-    // Only a price that differs from the menu's is a branch-only price; one that matches
+    // Only a figure that differs from the menu's is a branch-only price; one that matches
     // means "follow the menu", so the column is cleared rather than pinned.
     const rows = ids.map(branch_id => ({
       branch_id, product_id: id,
-      price: price === basePrice ? null : price,
-      delivery_price: delivery_price === baseDelivery ? null : delivery_price,
-      updated_at: new Date().toISOString(), updated_by: g.email,
+      price: entered.price === base.price ? null : entered.price,
+      foodpanda_price: entered.foodpanda_price === base.foodpanda_price ? null : entered.foodpanda_price,
+      grab_price: entered.grab_price === base.grab_price ? null : entered.grab_price,
+      ...stamp,
     }))
     const { error: upErr } = await admin.from('branch_product_prices').upsert(rows, { onConflict: 'branch_id,product_id' })
     if (upErr) return { error: upErr.message }

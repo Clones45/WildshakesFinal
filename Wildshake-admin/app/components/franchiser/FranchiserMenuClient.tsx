@@ -9,8 +9,10 @@ interface Product {
   category: string
   /** This branch's price: the menu's, or the branch's own when head office set one. */
   price: number
-  /** FoodPanda & Grab price (one shared price), or null when not offered on delivery. */
-  delivery_price: number | null
+  /** FoodPanda price, or null when not offered there. 0 = free. */
+  foodpanda_price: number | null
+  /** Grab price, or null when not offered there. 0 = free. */
+  grab_price: number | null
   image_url: string | null
   is_available: boolean
 }
@@ -52,7 +54,7 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
       const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
       
       if (filterCategory === 'delivery') {
-         if (p.delivery_price === null) return false
+         if (p.foodpanda_price === null && p.grab_price === null) return false
       } else {
          const matchCat = filterCategory === 'All' || p.category === filterCategory
          if (!matchCat) return false
@@ -67,7 +69,11 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
     })
   }, [products, search, filterCategory, filterStatus, availability])
 
-  const resolveDeliveryPrice = (p: Product) => p.delivery_price
+  const fmt = (v: number | null) => (v === 0 ? 'Free' : `₱${v}`)
+  const deliveryLabel = (p: Product) => [
+    p.foodpanda_price !== null ? `🐼 FoodPanda ${fmt(p.foodpanda_price)}` : null,
+    p.grab_price !== null ? `🟢 Grab ${fmt(p.grab_price)}` : null,
+  ].filter(Boolean).join(' · ')
 
   const availableCount = products.filter(p => availability[p.id] !== false).length
   const outCount = products.length - availableCount
@@ -284,9 +290,9 @@ export default function FranchiserMenuClient({ branchId, branchName, products, o
                   </p>
                   <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
                     {product.category} · ₱{Number(product.price).toFixed(0)}
-                    {filterCategory === 'delivery' && resolveDeliveryPrice(product) !== null && (
+                    {filterCategory === 'delivery' && deliveryLabel(product) && (
                        <span style={{ color: '#e8005e', marginLeft: '0.25rem', fontWeight: 700 }}>
-                          (Delivery: {resolveDeliveryPrice(product) === 0 ? 'Free' : `₱${resolveDeliveryPrice(product)}`})
+                          ({deliveryLabel(product)})
                        </span>
                     )}
                   </p>

@@ -3,6 +3,7 @@ import { supabase, type Product } from '../lib/supabase'
 import { db } from '../lib/db'
 import { useAuthStore } from '../store/authStore'
 import { computeEffectiveStock, SHAREABLE_INGREDIENT_NAMES } from '../lib/menuAvailability'
+import { applyBranchPrices, type BranchPriceRow } from '../lib/pricing'
 
 /**
  * Loads menu items from the `products` table.
@@ -106,7 +107,7 @@ export function useMenuItems() {
             // ── 1. Fetch all globally available products ─────────────────────
             const { data: allProducts, error: prodErr } = await supabase
                 .from('products')
-                .select('id, name, category, price, delivery_price, image_url, is_available')
+                .select('id, name, category, price, foodpanda_price, grab_price, image_url, is_available')
                 .eq('is_available', true)
                 .order('category')
                 .order('name')
@@ -124,7 +125,7 @@ export function useMenuItems() {
             // ── 2. Fetch this branch's own prices and out-of-stock overrides ──
             const unavailableIds = new Set<string>()
             const stockQuantities = new Map<string, number | null>()
-            const branchPrices = new Map<string, { price: number | null; delivery_price: number | null }>()
+            const branchPrices = new Map<string, BranchPriceRow>()
             if (branch?.id) {
                 const [{ data: overrides }, { data: prices }] = await Promise.all([
                     supabase
@@ -133,7 +134,7 @@ export function useMenuItems() {
                         .eq('branch_id', branch.id),
                     supabase
                         .from('branch_product_prices')
-                        .select('product_id, price, delivery_price')
+                        .select('product_id, price, foodpanda_price, grab_price')
                         .eq('branch_id', branch.id),
                 ])
 
@@ -146,8 +147,8 @@ export function useMenuItems() {
                         if (o.stock_qty !== null && o.stock_qty <= 0) { unavailableIds.add(o.product_id) }
                     }
                 }
-                for (const r of (prices ?? []) as { product_id: string; price: number | null; delivery_price: number | null }[]) {
-                    branchPrices.set(r.product_id, { price: r.price, delivery_price: r.delivery_price })
+                for (const r of (prices ?? []) as ({ product_id: string } & BranchPriceRow)[]) {
+                    branchPrices.set(r.product_id, { price: r.price, foodpanda_price: r.foodpanda_price, grab_price: r.grab_price })
                 }
             }
 
@@ -190,18 +191,14 @@ export function useMenuItems() {
 
             // ── 3. Apply this branch's prices and unavailable items ─────────────────
             // stock_qty rides along so the grid can warn when an item is running low.
-            // Prices are numeric in the database and arrive as numbers or strings; both
-            // become plain numbers here so the cart never adds up strings.
-            const num = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number(v))
+            // applyBranchPrices turns the database's numbers-or-strings into plain numbers
+            // and lays the branch's own prices over the menu's.
             const prods = (allProducts as Product[]).map(p => {
                 const stock_qty = stockFor(p.id)
                 const effective_stock = effective.get(p.id) ?? null
                 const soldOut = unavailableIds.has(p.id)
                     || (effective_stock !== null && effective_stock <= 0)
-                const own = branchPrices.get(p.id)
-                const price = num(own?.price) ?? Number(p.price)
-                const delivery_price = num(own?.delivery_price) ?? num(p.delivery_price)
-                return { ...p, price, delivery_price, is_available: soldOut ? false : p.is_available, stock_qty, effective_stock }
+                return { ...applyBranchPrices(p, branchPrices.get(p.id)), is_available: soldOut ? false : p.is_available, stock_qty, effective_stock }
             })
             const cats = [...new Set(prods.map((p) => p.category))]
 
@@ -232,7 +229,8 @@ export function useMenuItems() {
             if (cached.length > 0) {
                 console.log(`[useMenuItems] Using ${cached.length} cached items`)
                 const cats = [...new Set(cached.map((p) => p.category))]
-                setProducts(cached.map(p => ({ ...p, delivery_price: p.delivery_price ?? null })) as Product[])
+                // a cache written before this version has no platform prices; read them as "none"
+                setProducts(cached.map(p => ({ ...p, foodpanda_price: p.foodpanda_price ?? null, grab_price: p.grab_price ?? null })) as Product[])
                 setCategories(cats)
             } else if (!silent) {
                 setError('Could not load menu. Check your connection.')

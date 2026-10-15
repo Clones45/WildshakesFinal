@@ -19,7 +19,7 @@ export default async function FranchiserMenuPage() {
     // All globally available products (master list — read only)
     supabase
       .from('products')
-      .select('id, name, category, price, delivery_price, image_url, is_available')
+      .select('id, name, category, price, foodpanda_price, grab_price, image_url, is_available')
       .eq('is_available', true)
       .order('category')
       .order('name'),
@@ -31,17 +31,20 @@ export default async function FranchiserMenuPage() {
     // Prices head office set for this branch alone; a null column means the menu's price.
     supabase
       .from('branch_product_prices')
-      .select('product_id, price, delivery_price')
+      .select('product_id, price, foodpanda_price, grab_price')
       .eq('branch_id', branchId),
   ])
 
-  const own = new Map((prices ?? []).map(r => [r.product_id as string, r as { price: number | null; delivery_price: number | null }]))
+  type Own = { price: number | null; foodpanda_price: number | null; grab_price: number | null }
+  const own = new Map((prices ?? []).map(r => [r.product_id as string, r as Own]))
+  const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v))
   const priced = (products ?? []).map(p => {
     const o = own.get(p.id as string)
     return {
       ...p,
-      price: Number(o?.price ?? p.price),
-      delivery_price: (o?.delivery_price ?? p.delivery_price) === null ? null : Number(o?.delivery_price ?? p.delivery_price),
+      price: num(o?.price) ?? Number(p.price),
+      foodpanda_price: num(o?.foodpanda_price) ?? num(p.foodpanda_price),
+      grab_price: num(o?.grab_price) ?? num(p.grab_price),
     }
   })
 

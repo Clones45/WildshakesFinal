@@ -5,6 +5,7 @@ import { useCartStore } from '../store/cartStore'
 import { Search, Coffee, Loader2, AlertTriangle, Plus, RefreshCw, Bike } from 'lucide-react'
 import { SizePickerModal, type SizeOption } from './SizePickerModal'
 import { FlavorPickerModal, requiresFriesFlavor, type FriesFlavor } from './FlavorPickerModal'
+import { deliveryPriceFor, priceFor } from '../lib/pricing'
 import { PearlsPickerModal, type PearlOption } from './PearlsPickerModal'
 import { CoffeePickerModal, type CoffeeOption } from './CoffeePickerModal'
 import { LOW_STOCK_THRESHOLD } from '../lib/menuStockDeduction'
@@ -144,7 +145,7 @@ function getDisplayPrice(product: Product, deliveryPlatform: 'foodpanda' | 'grab
     if (SHAKE_SIZE_CATEGORIES.has(product.category) || COFFEE_CATEGORIES.has(product.category)) {
         return product.price // shown via size/coffee picker
     }
-    return product.delivery_price ?? product.price
+    return priceFor(product, deliveryPlatform)
 }
 
 export function ProductGrid({ products, categories, isLoading, menuError, onReload, deliveryPlatform, onDeliveryTabClick }: ProductGridProps) {
@@ -194,7 +195,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                 setCoffeePicker({ product, options: coffeeOpts })
                 return
             }
-            const deliveryOverride = deliveryPlatform ? product.delivery_price ?? undefined : undefined
+            const deliveryOverride = deliveryPriceFor(product, deliveryPlatform) ?? undefined
             addItem(product, 'Hot', deliveryOverride)
             setFlashId(product.id)
             setTimeout(() => setFlashId(null), 350)
@@ -207,14 +208,14 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
             return
         }
         // 4. Regular product — add with delivery price override if applicable
-        const deliveryOverride = deliveryPlatform ? product.delivery_price ?? undefined : undefined
+        const deliveryOverride = deliveryPriceFor(product, deliveryPlatform) ?? undefined
         addItem(product, undefined, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
     }
 
     const handleFlavorSelect = (product: Product, flavor: FriesFlavor) => {
-        const deliveryOverride = deliveryPlatform ? product.delivery_price ?? undefined : undefined
+        const deliveryOverride = deliveryPriceFor(product, deliveryPlatform) ?? undefined
         addItem(product, flavor, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
@@ -247,7 +248,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
 
     // After coffee temp selection → add with delivery override
     const handleCoffeeSelect = (product: Product, tempLabel: 'Hot' | 'Cold') => {
-        const deliveryOverride = deliveryPlatform ? product.delivery_price ?? undefined : undefined
+        const deliveryOverride = deliveryPriceFor(product, deliveryPlatform) ?? undefined
         addItem(product, tempLabel, deliveryOverride)
         setFlashId(product.id)
         setTimeout(() => setFlashId(null), 350)
@@ -349,7 +350,7 @@ export function ProductGrid({ products, categories, isLoading, menuError, onRelo
                     baseName={pearlsPicker.sizedProduct.name}
                     sizeLabel={pearlsPicker.sizeLabel}
                     basePrice={pearlsPicker.sizedProduct.price}
-                    deliveryBasePrice={pearlsPicker.sizedProduct.delivery_price}
+                    deliveryBasePrice={deliveryPriceFor(pearlsPicker.sizedProduct, deliveryPlatform)}
                     emoji={pearlsPicker.emoji}
                     onSelect={handlePearlSelect}
                     onClose={() => setPearlsPicker(null)}

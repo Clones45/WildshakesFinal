@@ -11,8 +11,10 @@ interface Product {
   name: string
   category: string
   price: number
-  /** FoodPanda & Grab price (one shared price), or null when not offered on delivery. */
-  delivery_price: number | null
+  /** FoodPanda price, or null when not offered there (the till charges the normal price). */
+  foodpanda_price: number | null
+  /** Grab price, or null when not offered there. */
+  grab_price: number | null
   image_url: string | null
   is_available: boolean
   created_at: string
@@ -20,14 +22,16 @@ interface Product {
 interface Branch { id: string; name: string; franchise: string | null }
 
 const peso = (v: number | string | null | undefined) => (v === null || v === undefined ? '—' : `₱${Number(v).toFixed(2)}`)
-/** A delivery price of zero means the item goes out free on FoodPanda and Grab. */
+/** A delivery price of zero means the item goes out free on that app. */
 const delivery = (v: number | string | null | undefined) => (v !== null && v !== undefined && Number(v) === 0 ? 'Free' : peso(v))
+const PANDA = { color: '#e8005e', label: '🐼 FoodPanda' }
+const GRAB = { color: '#00b14f', label: '🟢 Grab' }
 
 /**
- * Head office's live POS menu. Every item has a normal price and, if it is sold on
- * FoodPanda and Grab, one shared delivery price. Saving a price asks which branches
- * it is for: all of them, or ticked ones only. Branch-only prices are listed on the
- * item's card and can be reset so the branch follows the menu again.
+ * Head office's live POS menu. Every item has a normal price and, if it is sold on the
+ * delivery apps, a FoodPanda price and a Grab price, set separately. Saving asks which
+ * branches the prices are for: all of them, or ticked ones only. Branch-only prices are
+ * listed on the item's card and can be reset so the branch follows the menu again.
  */
 export default function MenuClient({ products, branches, branchPrices }: { products: Product[]; branches: Branch[]; branchPrices: BranchPriceRow[] }) {
   const [showModal, setShowModal]   = useState(false)
@@ -42,21 +46,24 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
 
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category))).sort()]
   const branchName = (id: string) => branches.find(b => b.id === id)?.name ?? 'Branch'
+  const hasOwn = (r: BranchPriceRow) => r.price !== null || r.foodpanda_price !== null || r.grab_price !== null
 
   /** Branch-only prices by item, only those that actually differ from the menu. */
   const ownPrices = useMemo(() => {
     const m: Record<string, BranchPriceRow[]> = {}
     for (const r of branchPrices) {
-      if (r.price === null && r.delivery_price === null) continue
+      if (!hasOwn(r)) continue
       ;(m[r.product_id] ??= []).push(r)
     }
     for (const rows of Object.values(m)) rows.sort((a, b) => branchName(a.branch_id).localeCompare(branchName(b.branch_id)))
     return m
   }, [branchPrices, branches]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const onDelivery = (p: Product) => p.foodpanda_price !== null || p.grab_price !== null
+
   const filtered = products.filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
-    if (filterCat === 'delivery') return matchSearch && p.delivery_price !== null
+    if (filterCat === 'delivery') return matchSearch && onDelivery(p)
     if (filterCat === 'branch_prices') return matchSearch && !!ownPrices[p.id]
     return matchSearch && (filterCat === 'all' || p.category === filterCat)
   })
@@ -87,7 +94,7 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
     startTransition(async () => { await deleteProduct(id) })
   }
   async function handleReset(r: BranchPriceRow, p: Product) {
-    if (!confirm(`Put ${branchName(r.branch_id)} back on the menu price for ${p.name}?`)) return
+    if (!confirm(`Put ${branchName(r.branch_id)} back on the menu prices for ${p.name}?`)) return
     startTransition(async () => { const res = await clearBranchPrice(r.branch_id, p.id); if (res.error) alert(res.error) })
   }
 
@@ -96,18 +103,32 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
   /** What a branch pays for the item being edited right now. */
   const currentAt = (branchId: string, p: Product) => {
     const own = branchPrices.find(r => r.branch_id === branchId && r.product_id === p.id)
-    return { price: own?.price ?? p.price, delivery: own?.delivery_price ?? p.delivery_price, isOwn: !!own && (own.price !== null || own.delivery_price !== null) }
+    return {
+      price: own?.price ?? p.price,
+      foodpanda: own?.foodpanda_price ?? p.foodpanda_price,
+      grab: own?.grab_price ?? p.grab_price,
+      isOwn: !!own && hasOwn(own),
+    }
   }
 
-  const deliveryCount = products.filter(p => p.delivery_price !== null).length
+  const deliveryCount = products.filter(onDelivery).length
   const ownCount = Object.keys(ownPrices).length
+
+  /** "🐼 FoodPanda ₱165 · 🟢 Grab ₱170", skipping a platform the item is not on. */
+  const platformLine = (fp: number | null, gr: number | null, size = '0.8rem') => {
+    const parts: React.ReactNode[] = []
+    if (fp !== null) parts.push(<span key="fp" style={{ color: PANDA.color }}>{PANDA.label} {delivery(fp)}</span>)
+    if (gr !== null) parts.push(<span key="gr" style={{ color: GRAB.color }}>{GRAB.label} {delivery(gr)}</span>)
+    if (parts.length === 0) return null
+    return <p style={{ fontSize: size, fontWeight: 700, marginBottom: '0.75rem', display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>{parts}</p>
+  }
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1>Menu Management</h1>
-          <p className="page-header-subtitle">The live POS menu at every branch: items, prices, and FoodPanda &amp; Grab prices</p>
+          <p className="page-header-subtitle">The live POS menu at every branch: items, prices, and the FoodPanda and Grab prices</p>
         </div>
         <button className="btn btn-accent" onClick={openAdd}>➕ Add Item</button>
       </div>
@@ -115,8 +136,8 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
       <div className="stat-grid" style={{ marginBottom: '1.5rem' }}>
         <div className="stat-card"><div className="stat-card-icon green">🍹</div><p className="stat-card-label">Menu items</p><p className="stat-card-value">{products.length}</p><p className="stat-card-trend neutral">{products.filter(p => p.is_available).length} shown on the tills</p></div>
         <div className="stat-card"><div className="stat-card-icon gold">🏷️</div><p className="stat-card-label">Categories</p><p className="stat-card-value">{categories.length - 1}</p></div>
-        <div className="stat-card"><div className="stat-card-icon" style={{ background: 'rgba(232,0,94,0.15)', color: '#e8005e' }}>🛵</div><p className="stat-card-label">On FoodPanda &amp; Grab</p><p className="stat-card-value">{deliveryCount}</p><p className="stat-card-trend neutral">items with a delivery price</p></div>
-        <div className="stat-card"><div className="stat-card-icon blue">🏪</div><p className="stat-card-label">Branch-only prices</p><p className="stat-card-value">{ownCount}</p><p className="stat-card-trend neutral">{ownCount ? 'items priced differently somewhere' : 'every branch on the menu price'}</p></div>
+        <div className="stat-card"><div className="stat-card-icon" style={{ background: 'rgba(232,0,94,0.15)', color: '#e8005e' }}>🛵</div><p className="stat-card-label">On FoodPanda or Grab</p><p className="stat-card-value">{deliveryCount}</p><p className="stat-card-trend neutral">items with a delivery price</p></div>
+        <div className="stat-card"><div className="stat-card-icon blue">🏪</div><p className="stat-card-label">Branch-only prices</p><p className="stat-card-value">{ownCount}</p><p className="stat-card-trend neutral">{ownCount ? 'items priced differently somewhere' : 'every branch on the menu prices'}</p></div>
       </div>
 
       <div className="flex gap-2 mb-4" style={{ flexWrap: 'wrap' }}>
@@ -145,24 +166,22 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
               </span>
             </div>
             <p style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem' }}>{p.name}</p>
-            <p style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-accent)', marginBottom: p.delivery_price === null ? '0.75rem' : '0.1rem' }}>
+            <p style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-accent)', marginBottom: onDelivery(p) ? '0.1rem' : '0.75rem' }}>
               {peso(p.price)}
             </p>
-            {p.delivery_price !== null && (
-              <p style={{ fontSize: '0.8rem', color: '#e8005e', fontWeight: 700, marginBottom: '0.75rem' }}>🛵 FoodPanda &amp; Grab {delivery(p.delivery_price)}</p>
-            )}
+            {platformLine(p.foodpanda_price, p.grab_price)}
             {ownPrices[p.id] && (
               <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.6rem', borderRadius: 'var(--radius-sm)', background: 'rgba(52,152,219,0.08)', border: '1px solid rgba(52,152,219,0.25)', fontSize: '0.75rem' }}>
                 <div style={{ fontWeight: 700, marginBottom: '0.25rem', color: 'var(--color-text-muted)' }}>Branch-only prices</div>
                 {ownPrices[p.id].map(r => (
                   <div key={r.branch_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.1rem 0' }}>
-                    <span>
-                      <strong>{branchName(r.branch_id)}</strong>{' '}
+                    <span style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <strong>{branchName(r.branch_id)}</strong>
                       {r.price !== null && <span>{peso(r.price)}</span>}
-                      {r.price !== null && r.delivery_price !== null && ' · '}
-                      {r.delivery_price !== null && <span style={{ color: '#e8005e' }}>🛵 {delivery(r.delivery_price)}</span>}
+                      {r.foodpanda_price !== null && <span style={{ color: PANDA.color }}>🐼 {delivery(r.foodpanda_price)}</span>}
+                      {r.grab_price !== null && <span style={{ color: GRAB.color }}>🟢 {delivery(r.grab_price)}</span>}
                     </span>
-                    <button className="btn btn-ghost btn-sm" style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem' }} disabled={isPending} title="Back to the menu price" onClick={() => handleReset(r, p)}>Reset</button>
+                    <button className="btn btn-ghost btn-sm" style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem' }} disabled={isPending} title="Back to the menu prices" onClick={() => handleReset(r, p)}>Reset</button>
                   </div>
                 ))}
               </div>
@@ -180,7 +199,7 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '680px' }}>
             <div className="modal-header">
               <p className="modal-title">{editing ? `✏️ Edit ${editing.name}` : '➕ Add New Item'}</p>
               <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
@@ -204,11 +223,7 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
                   <div className="form-group">
                     <label className="form-label">Price (₱) *</label>
                     <input name="price" type="number" step="0.01" min="0" className="form-input" defaultValue={editing?.price ?? ''} placeholder="e.g. 160" required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">FoodPanda &amp; Grab price (₱)</label>
-                    <input name="delivery_price" type="number" step="0.01" min="0" className="form-input" defaultValue={editing?.delivery_price ?? ''} placeholder="blank = not on delivery, 0 = free" />
-                    <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>One shared price for both platforms. Leave blank if the item is not offered on delivery; enter 0 for packaging that goes out free on delivery orders.</p>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>What the till charges for dine-in, take-out and pickup.</p>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Availability</label>
@@ -218,9 +233,20 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Image URL</label>
-                    <input name="image_url" className="form-input" defaultValue={editing?.image_url || ''} placeholder="https://… (optional)" />
+                    <label className="form-label" style={{ color: PANDA.color }}>{PANDA.label} price (₱)</label>
+                    <input name="foodpanda_price" type="number" step="0.01" min="0" className="form-input" defaultValue={editing?.foodpanda_price ?? ''} placeholder="blank = not on FoodPanda, 0 = free" />
                   </div>
+                  <div className="form-group">
+                    <label className="form-label" style={{ color: GRAB.color }}>{GRAB.label} price (₱)</label>
+                    <input name="grab_price" type="number" step="0.01" min="0" className="form-input" defaultValue={editing?.grab_price ?? ''} placeholder="blank = not on Grab, 0 = free" />
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', margin: '0 0 0.75rem' }}>
+                  Each app has its own price. Leave one blank if the item is not offered there; enter 0 for packaging that goes out free on that app.
+                </p>
+                <div className="form-group">
+                  <label className="form-label">Image URL</label>
+                  <input name="image_url" className="form-input" defaultValue={editing?.image_url || ''} placeholder="https://… (optional)" />
                 </div>
 
                 {editing && (
@@ -229,14 +255,14 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
                     <input type="hidden" name="scope" value={scope} />
                     <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', marginBottom: '0.4rem', cursor: 'pointer' }}>
                       <input type="radio" name="scope_pick" checked={scope === 'all'} onChange={() => setScope('all')} />
-                      <span><strong>All branches</strong><br /><span style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>Every till gets these prices. A changed price also clears any branch-only price for this item.</span></span>
+                      <span><strong>All branches</strong><br /><span style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>Every till gets these prices. A changed price also clears any branch-only figure for it on this item.</span></span>
                     </label>
                     <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', cursor: 'pointer' }}>
                       <input type="radio" name="scope_pick" checked={scope === 'branches'} onChange={() => setScope('branches')} />
-                      <span><strong>Only these branches</strong><br /><span style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>The ticked branches get these prices; the others keep what they have. The menu&apos;s own price stays as it is.</span></span>
+                      <span><strong>Only these branches</strong><br /><span style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>The ticked branches get these prices; the others keep what they have. The menu&apos;s own prices stay as they are.</span></span>
                     </label>
                     {scope === 'branches' && (
-                      <div style={{ marginTop: '0.6rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.4rem' }}>
+                      <div style={{ marginTop: '0.6rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '0.4rem' }}>
                         {branches.map(b => {
                           const now = currentAt(b.id, editing)
                           return (
@@ -246,7 +272,10 @@ export default function MenuClient({ products, branches, branchPrices }: { produ
                                 <strong>{b.name}</strong>{b.franchise ? <span style={{ color: 'var(--color-text-muted)' }}> · {b.franchise}</span> : null}
                                 <br />
                                 <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-                                  now {peso(now.price)}{now.delivery !== null ? ` · 🛵 ${delivery(now.delivery)}` : ''}{now.isOwn ? ' (branch-only)' : ''}
+                                  now {peso(now.price)}
+                                  {now.foodpanda !== null ? ` · 🐼 ${delivery(now.foodpanda)}` : ''}
+                                  {now.grab !== null ? ` · 🟢 ${delivery(now.grab)}` : ''}
+                                  {now.isOwn ? ' (branch-only)' : ''}
                                 </span>
                               </span>
                             </label>

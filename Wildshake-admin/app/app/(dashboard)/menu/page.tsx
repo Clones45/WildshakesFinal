@@ -11,9 +11,9 @@ export default async function MenuPage() {
   const admin = createAdminClient()
 
   const [{ data: products }, { data: branchRows }, branchPrices] = await Promise.all([
-    admin.from('products').select('id, name, category, price, delivery_price, image_url, is_available, created_at').order('category').order('name'),
+    admin.from('products').select('id, name, category, price, foodpanda_price, grab_price, image_url, is_available, created_at').order('category').order('name'),
     admin.from('branches').select('id, name, franchises(name)').order('name'),
-    fetchAll(() => admin.from('branch_product_prices').select('branch_id, product_id, price, delivery_price').order('id')),
+    fetchAll(() => admin.from('branch_product_prices').select('branch_id, product_id, price, foodpanda_price, grab_price').order('id')),
   ])
 
   const branches = (branchRows ?? []).map(b => ({

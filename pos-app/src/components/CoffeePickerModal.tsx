@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Product } from '../lib/supabase'
+import { deliveryPriceFor } from '../lib/pricing'
 
 export interface CoffeeOption {
     label: 'Hot' | 'Cold'
@@ -137,7 +138,7 @@ export function CoffeePickerModal({ baseName, options, onSelect, onClose, delive
                                         </span>
                                     ) : (() => {
                                         const delPrice = deliveryPlatform
-                                            ? opt.product.delivery_price
+                                            ? deliveryPriceFor(opt.product, deliveryPlatform)
                                             : null
                                         const showDel = delPrice !== null && delPrice !== opt.product.price
                                         return (
